@@ -1,0 +1,2 @@
+// Mapbox public token — safe to be in source code (public token, not secret)
+export const MAPBOX_TOKEN = 'pk.eyJ1IjoiZ2FoZXJlZGlhIiwiYSI6ImNtb3ZuN2plYzA4eWUyc3E0YTVrbGQwcGsifQ.2eXHla81liSzFSYggN2y_Q';
