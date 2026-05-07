@@ -122,14 +122,20 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     const [lon, lat] = feature.center;
     setAddress({
       label: feature.place_name,
-      meta: t('picker.us_only_note').toUpperCase(),
+      meta: 'US LOCATION',
       lat,
       lon,
     });
-    setSelectedFeature(feature);
-    setQuery('');
-    setResults([]);
-    onClose();
+    if (user) {
+      setSelectedFeature(feature);
+      setQuery('');
+      setResults([]);
+      setShowSaveModal(true);
+    } else {
+      setQuery('');
+      setResults([]);
+      onClose();
+    }
   };
 
   const handleSelectSaved = (place: SavedPlace) => {
@@ -163,6 +169,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) setSavedPlaces(data as SavedPlace[]);
+    onClose();
   };
 
   const handleDeletePlace = async (placeId: string) => {
@@ -548,7 +555,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
             />
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                onClick={() => setShowSaveModal(false)}
+                onClick={() => { setShowSaveModal(false); onClose(); }}
                 style={{
                   flex: 1,
                   padding: '12px',
