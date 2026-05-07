@@ -59,7 +59,13 @@ function HomePage() {
 
   const handleSubmit = () => {
     if (questionText.trim()) {
-      navigate({ to: '/answer' });
+      navigate({
+        to: '/answer',
+        search: {
+          q: questionText.trim(),
+          address: mockAddress,
+        },
+      });
     }
   };
 
