@@ -142,7 +142,9 @@ function AnswerPage() {
         <div
           style={{
             fontSize: '1.15rem',
-            fontWeight: 600,
+            fontWeight: 400,
+            fontStyle: 'italic',
+            color: '#9ca3af',
             textAlign: 'center',
             maxWidth: '420px',
             marginBottom: '12px',
@@ -266,7 +268,8 @@ function AnswerPage() {
         <div
           style={{
             fontSize: '5rem',
-            fontWeight: 800,
+            fontWeight: 400,
+            fontFamily: 'Fraunces, serif',
             lineHeight: 1,
             marginBottom: '4px',
           }}
@@ -293,6 +296,7 @@ function AnswerPage() {
             lineHeight: 1.45,
             marginBottom: '20px',
             fontWeight: 500,
+            fontStyle: 'italic',
           }}
         >
           &ldquo;{answer.summary}&rdquo;
@@ -309,7 +313,8 @@ function AnswerPage() {
         {/* Now strip */}
         <div
           style={{
-            border: `1px solid ${INK}1a`,
+            backgroundColor: '#0b1018',
+            color: '#faf7f0',
             borderRadius: '12px',
             padding: '14px 16px',
             marginBottom: '24px',
@@ -324,17 +329,17 @@ function AnswerPage() {
               style={{
                 fontSize: '0.7rem',
                 letterSpacing: '0.1em',
-                color: MUTED,
+                color: ACCENT,
                 marginBottom: '4px',
               }}
             >
               {t('answer.now')}
             </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#faf7f0' }}>
               {answer.current_conditions}
             </div>
           </div>
-          <div style={{ fontSize: '0.75rem', color: MUTED, textAlign: 'right' }}>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', textAlign: 'right' }}>
             {address}
           </div>
         </div>
