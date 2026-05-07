@@ -15,7 +15,7 @@ function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-paper px-6 pt-16 pb-28">
-      <p className="mono-label text-neutral-gray">{t('settings.screen_label')}</p>
+      <p className="mono-label text-amber-brand">{t('settings.screen_label')}</p>
       <h1 className="mt-4 font-serif text-3xl text-ink">{t('settings.title')}</h1>
 
       <div className="mt-10">
