@@ -272,6 +272,32 @@ function AnswerPage() {
 
   if (!answer) return null;
 
+  if (answer.mode === 'severe') {
+    return (
+      <SevereAnswerScreen
+        answer={answer}
+        question={question}
+        address={address}
+        onBack={() => navigate({ to: '/' })}
+        onSaveTrack={handleSaveTrack}
+        saving={saving}
+      />
+    );
+  }
+
+  if (answer.mode === 'hurricane') {
+    return (
+      <HurricaneAnswerScreen
+        answer={answer}
+        question={question}
+        address={address}
+        onBack={() => navigate({ to: '/' })}
+        onSaveTrack={handleSaveTrack}
+        saving={saving}
+      />
+    );
+  }
+
   // ── ANSWER STATE ───────────────────────────────
   const verdictKey = answer.verdict as string;
   const colors = VERDICT_STYLES[verdictKey] ?? VERDICT_STYLES.UNKNOWN;
