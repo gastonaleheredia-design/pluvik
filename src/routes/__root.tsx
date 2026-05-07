@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import appCss from "../styles.css?url";
 import "../i18n";
 import { AuthProvider } from "../lib/auth";
+import { AddressProvider } from "../lib/addressContext";
 
 function NotFoundComponent() {
   return (
@@ -128,9 +129,11 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Outlet />
-      </AuthProvider>
+      <AddressProvider>
+        <AuthProvider>
+          <Outlet />
+        </AuthProvider>
+      </AddressProvider>
     </QueryClientProvider>
   );
 }
