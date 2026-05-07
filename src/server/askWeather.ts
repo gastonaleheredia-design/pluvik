@@ -1,4 +1,4 @@
-import { createServerFn } from '@tanstack/start';
+import { createServerFn } from '@tanstack/react-start';
 
 interface WeatherRequest {
   question: string;
@@ -111,8 +111,8 @@ async function getNWSData(lat: number, lon: number): Promise<string> {
 }
 
 export const askWeather = createServerFn({ method: 'POST' })
-  .validator((data: WeatherRequest) => data)
-  .handler(async ({ data }) => {
+  .inputValidator((data: WeatherRequest) => data)
+  .handler(async ({ data }: { data: WeatherRequest }) => {
     const { question, lat, lon, language, address } = data;
 
     // Fetch NWS forecast data for these coordinates
