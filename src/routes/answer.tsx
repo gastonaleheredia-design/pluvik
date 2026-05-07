@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
+import { AuthModal } from '../components/AuthModal';
 
 interface WeatherAnswer {
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
@@ -58,6 +61,10 @@ function AnswerPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
+  const { user } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   const loadingPhrases = [
     t('answer.loading_1'),
@@ -99,6 +106,7 @@ function AnswerPage() {
         });
 
         setAnswer(result as WeatherAnswer);
+        setCoords(coords);
         setStatus('success');
       } catch {
         setStatus('error');
