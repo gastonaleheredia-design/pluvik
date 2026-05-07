@@ -17,7 +17,7 @@ function getGreeting(t: (key: string) => string): string {
 }
 
 function HomePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
 
   // Redirect to onboarding if not completed
@@ -27,6 +27,10 @@ function HomePage() {
       navigate({ to: '/onboarding' });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    // Re-render when language changes
+  }, [i18n.language]);
 
   // Rotating placeholder
   const placeholders = [
@@ -63,6 +67,7 @@ function HomePage() {
 
   return (
     <div
+      key={i18n.language}
       style={{
         minHeight: '100vh',
         backgroundColor: '#faf7f0',
@@ -222,6 +227,27 @@ function HomePage() {
           >
             {/* Mic button */}
             <button
+              onClick={() => {
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                  alert('Voice input is not supported in this browser. Try Chrome or Safari.');
+                  return;
+                }
+                const SpeechRecognition =
+                  (window as any).SpeechRecognition ||
+                  (window as any).webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
+                recognition.lang = i18n.language === 'es' ? 'es-US' : 'en-US';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+                recognition.onresult = (event: any) => {
+                  const transcript = event.results[0][0].transcript;
+                  setQuestionText(transcript);
+                };
+                recognition.onerror = () => {
+                  // Silently fail — user can type instead
+                };
+                recognition.start();
+              }}
               style={{
                 width: '36px',
                 height: '36px',
