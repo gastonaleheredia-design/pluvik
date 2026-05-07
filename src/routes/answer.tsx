@@ -2,19 +2,16 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
+import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
+import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
+import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { useAddress } from '../lib/addressContext';
 
-interface WeatherAnswer {
-  verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
-  percentage: number;
-  summary: string;
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
-  current_conditions: string;
-}
+type WeatherAnswer = ExtendedWeatherAnswer;
 
 export const Route = createFileRoute('/answer')({
   validateSearch: (search: Record<string, unknown>) => ({
