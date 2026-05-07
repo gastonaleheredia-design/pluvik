@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { BottomNav } from '../components/BottomNav';
+import { useAuth } from '../lib/auth';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -8,6 +9,7 @@ export const Route = createFileRoute('/settings')({
 
 function SettingsPage() {
   const { t, i18n } = useTranslation();
+  const { user, signOut } = useAuth();
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -43,6 +45,21 @@ function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {user && (
+        <div className="mt-10">
+          <p className="mono-label text-neutral-gray mb-2">
+            {t('auth.signed_in_as')}
+          </p>
+          <p className="text-sm text-ink mb-4">{user.email}</p>
+          <button
+            onClick={() => signOut()}
+            className="w-full py-3 px-4 rounded-full font-medium text-sm border border-[rgba(11,16,24,0.15)] text-ink bg-paper"
+          >
+            {t('auth.sign_out')}
+          </button>
+        </div>
+      )}
 
       <BottomNav />
     </div>
