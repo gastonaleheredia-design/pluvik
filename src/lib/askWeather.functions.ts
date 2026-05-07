@@ -8,69 +8,220 @@ interface WeatherRequest {
   address: string;
 }
 
-interface WeatherAnswer {
+export interface ExtendedWeatherAnswer {
+  mode: 'regular' | 'severe' | 'hurricane';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
   percentage: number;
   summary: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   current_conditions: string;
+  // Severe fields
+  risk_level?: string;
+  risk_level_num?: number;
+  threats?: Array<{ type: string; level: string }>;
+  timing?: string;
+  active_alerts?: string[];
+  // Hurricane fields
+  storm_name?: string;
+  storm_category?: string;
+  advisory_number?: string;
+  hours_to_impact?: number | null;
+  impacts?: {
+    ts_wind_pct: number;
+    ts_wind_level: string;
+    hurricane_wind_pct: number;
+    hurricane_wind_level: string;
+    rain_inches: string;
+    surge: string;
+  };
+  last_change?: string;
 }
 
-const SYSTEM_PROMPT = `You are a working broadcast meteorologist with 10+ years of Gulf Coast severe weather and hurricane forecasting experience. A user has asked you a weather question about a specific location.
+const NWS_HEADERS = {
+  'User-Agent': 'Pluvik Weather App (support@pluvik.app)',
+  Accept: 'application/geo+json',
+};
 
-You have been provided with NWS hourly forecast data and the local Area Forecast Discussion (AFD) written by NWS forecasters for that region.
-
-Answer their question like a real meteorologist talking to a friend — honest, specific, direct. Not like a generic weather app.
+const REGULAR_PROMPT = `You are a working broadcast meteorologist with 10+ years of Gulf Coast severe weather and hurricane forecasting experience. Answer the user's weather question based on the NWS forecast data provided.
 
 Rules:
 - Be specific to their question and location
-- Be honest about uncertainty — if models disagree, say so
-- If the question is not weather-related, set verdict to UNKNOWN
-- Write the summary in the language specified in the request
-- Keep the summary under 20 words — one sentence only
-- Do not mention the data sources in your summary
+- Be honest about uncertainty
+- Write the summary in the language specified
+- Keep the summary under 20 words
+- If the question is not weather-related set verdict to UNKNOWN
 
-Respond ONLY with valid JSON, no markdown, no explanation:
+Respond ONLY with valid JSON, no other text:
 {
   "verdict": "GO",
   "percentage": 15,
-  "summary": "Skies look great Saturday afternoon — keep the party outdoors.",
+  "summary": "Skies look great Saturday — keep the party outdoors.",
   "confidence": "HIGH",
   "current_conditions": "74°F · Partly Cloudy · Light SE Wind"
 }
+Verdict: GO | CAUTION | NO-GO | UNKNOWN
+Confidence: HIGH | MEDIUM | LOW
+Percentage: 0-100`;
 
-Verdict must be exactly one of: GO, CAUTION, NO-GO, UNKNOWN
-Confidence must be exactly one of: HIGH, MEDIUM, LOW
-Percentage must be a number 0-100`;
+const SEVERE_PROMPT = `You are a working broadcast meteorologist. The user's location has ACTIVE SEVERE WEATHER ALERTS. Assess their specific risk based on NWS alerts and forecast data.
 
-async function getNWSData(lat: number, lon: number): Promise<string> {
-  const headers = {
-    'User-Agent': 'Pluvik Weather App (support@pluvik.app)',
-    Accept: 'application/geo+json',
-  };
+Respond ONLY with valid JSON, no other text:
+{
+  "verdict": "CAUTION",
+  "percentage": 65,
+  "summary": "Enhanced risk at your location — storms likely by 4 PM.",
+  "confidence": "HIGH",
+  "current_conditions": "78°F · Partly Cloudy · S Wind 15 mph",
+  "risk_level": "Enhanced",
+  "risk_level_num": 3,
+  "threats": [
+    {"type": "Damaging Wind", "level": "HIGH"},
+    {"type": "Hail", "level": "MODERATE"},
+    {"type": "Tornado", "level": "LOW"},
+    {"type": "Flash Flood", "level": "LOW"}
+  ],
+  "timing": "Storms develop 2 PM. Peak threat 4-7 PM. Clears by 10 PM.",
+  "active_alerts": ["Severe Thunderstorm Watch until 10 PM CDT"]
+}
+risk_level: Marginal | Slight | Enhanced | Moderate | High
+risk_level_num: 1-5
+threat level: HIGH | MODERATE | LOW
+Write summary in the user's language, under 20 words.`;
+
+const HURRICANE_PROMPT = `You are a working broadcast meteorologist. There is an ACTIVE TROPICAL SYSTEM near the user's location. Assess the specific impact at their address based on NHC data and NWS tropical alerts.
+
+Respond ONLY with valid JSON, no other text:
+{
+  "verdict": "CAUTION",
+  "percentage": 52,
+  "summary": "Tropical Storm Beryl approaches. TS winds probable Wednesday night.",
+  "confidence": "MEDIUM",
+  "current_conditions": "82°F · Partly Cloudy · SE Wind 12 mph",
+  "storm_name": "Beryl",
+  "storm_category": "Tropical Storm",
+  "advisory_number": "12",
+  "hours_to_impact": 38,
+  "impacts": {
+    "ts_wind_pct": 52,
+    "ts_wind_level": "MODERATE",
+    "hurricane_wind_pct": 8,
+    "hurricane_wind_level": "LOW",
+    "rain_inches": "3-5",
+    "surge": "Outside Zone"
+  },
+  "last_change": "Track shifted 12 miles west. Less wind for your location."
+}
+impact levels: HIGH | MODERATE | LOW
+surge: Inside Zone | Outside Zone | Near Zone
+Write summary in the user's language, under 20 words.`;
+
+function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3959;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function detectWeatherMode(lat: number, lon: number): Promise<{
+  mode: 'regular' | 'severe' | 'hurricane';
+  alertsSummary: string;
+  stormInfo: string;
+}> {
+  const tropicalKeywords = ['hurricane', 'tropical storm', 'storm surge', 'tropical depression'];
+  const severeKeywords = ['tornado', 'severe thunderstorm', 'flash flood'];
+
+  let hasTropical = false;
+  let hasSevere = false;
+  let alertsSummary = '';
+  let stormInfo = '';
 
   try {
-    // Step 1: Get NWS grid point for this location
+    const alertsRes = await fetch(
+      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
+      { headers: NWS_HEADERS }
+    );
+    if (alertsRes.ok) {
+      const data = await alertsRes.json();
+      const alerts: any[] = data.features ?? [];
+
+      hasTropical = alerts.some((a) =>
+        tropicalKeywords.some((kw) =>
+          a.properties?.event?.toLowerCase().includes(kw)
+        )
+      );
+      hasSevere = alerts.some((a) =>
+        severeKeywords.some((kw) =>
+          a.properties?.event?.toLowerCase().includes(kw)
+        )
+      );
+
+      if (alerts.length > 0) {
+        alertsSummary = alerts
+          .slice(0, 5)
+          .map(
+            (a) =>
+              `${a.properties.event}: ${(a.properties.headline ?? a.properties.description ?? '').slice(0, 200)}`
+          )
+          .join('\n');
+      }
+    }
+  } catch {
+    // Alerts unavailable
+  }
+
+  try {
+    const nhcRes = await fetch('https://www.nhc.noaa.gov/CurrentStorms.json', {
+      headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
+    });
+    if (nhcRes.ok) {
+      const nhcData = await nhcRes.json();
+      const storms: any[] = nhcData.activeStorms ?? [];
+      for (const storm of storms) {
+        const dist = distanceMiles(
+          lat,
+          lon,
+          storm.latitudeNumeric,
+          storm.longitudeNumeric
+        );
+        if (dist < 800) {
+          hasTropical = true;
+          stormInfo = `Storm: ${storm.name} (${storm.classification}), position ${storm.latitude} ${storm.longitude}, intensity ${storm.intensity} kt, advisory #${storm.publicAdvisory?.advisoryNumber ?? 'N/A'}, ~${Math.round(dist)} miles from user.`;
+          break;
+        }
+      }
+    }
+  } catch {
+    // NHC unavailable
+  }
+
+  if (hasTropical) return { mode: 'hurricane', alertsSummary, stormInfo };
+  if (hasSevere) return { mode: 'severe', alertsSummary, stormInfo };
+  return { mode: 'regular', alertsSummary: '', stormInfo: '' };
+}
+
+async function getNWSData(lat: number, lon: number): Promise<string> {
+  try {
     const pointsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-      { headers }
+      { headers: NWS_HEADERS }
     );
-
-    if (!pointsRes.ok) {
-      return 'NWS data unavailable for this location (may be outside US coverage).';
-    }
+    if (!pointsRes.ok) return 'NWS data unavailable for this location.';
 
     const pointsData = await pointsRes.json();
     const { forecastHourly, cwa } = pointsData.properties;
 
-    // Step 2: Get hourly forecast (next 24 hours)
     let forecastText = '';
     try {
-      const hourlyRes = await fetch(forecastHourly, { headers });
+      const hourlyRes = await fetch(forecastHourly, { headers: NWS_HEADERS });
       if (hourlyRes.ok) {
         const hourlyData = await hourlyRes.json();
-        const periods = hourlyData.properties.periods.slice(0, 24);
-        forecastText = periods
+        forecastText = hourlyData.properties.periods
+          .slice(0, 24)
           .map(
             (p: any) =>
               `${p.startTime.slice(0, 16)}: ${p.temperature}°${p.temperatureUnit}, ${p.shortForecast}, Wind: ${p.windSpeed} ${p.windDirection}, PoP: ${p.probabilityOfPrecipitation?.value ?? 0}%`
@@ -81,32 +232,29 @@ async function getNWSData(lat: number, lon: number): Promise<string> {
       forecastText = 'Hourly forecast unavailable.';
     }
 
-    // Step 3: Get Area Forecast Discussion (AFD) — forecaster reasoning
     let afdText = '';
     try {
       const afdListRes = await fetch(
         `https://api.weather.gov/products?type=AFD&location=${cwa}&limit=1`,
-        { headers }
+        { headers: NWS_HEADERS }
       );
       if (afdListRes.ok) {
         const afdList = await afdListRes.json();
         if (afdList['@graph']?.length > 0) {
-          const afdId = afdList['@graph'][0]['@id'];
-          const afdRes = await fetch(afdId, { headers });
+          const afdRes = await fetch(afdList['@graph'][0]['@id'], { headers: NWS_HEADERS });
           if (afdRes.ok) {
             const afdData = await afdRes.json();
-            // First 1500 chars of AFD is enough context
             afdText = afdData.productText?.slice(0, 1500) ?? '';
           }
         }
       }
     } catch {
-      // AFD is bonus context — not required
+      // AFD unavailable
     }
 
-    return `HOURLY FORECAST (next 24 hours):\n${forecastText}\n\nAREA FORECAST DISCUSSION (NWS forecaster notes):\n${afdText || 'Not available.'}`;
-  } catch (err) {
-    return `Weather data temporarily unavailable. Error: ${String(err)}`;
+    return `HOURLY FORECAST:\n${forecastText}\n\nAREA FORECAST DISCUSSION:\n${afdText || 'Not available.'}`;
+  } catch {
+    return 'Weather data temporarily unavailable.';
   }
 }
 
@@ -115,10 +263,26 @@ export const askWeather = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: WeatherRequest }) => {
     const { question, lat, lon, language, address } = data;
 
-    // Fetch NWS forecast data for these coordinates
-    const weatherContext = await getNWSData(lat, lon);
+    const [modeResult, weatherContext] = await Promise.all([
+      detectWeatherMode(lat, lon),
+      getNWSData(lat, lon),
+    ]);
 
-    // Call Claude API
+    const { mode, alertsSummary, stormInfo } = modeResult;
+
+    const systemPrompt =
+      mode === 'severe'
+        ? SEVERE_PROMPT
+        : mode === 'hurricane'
+        ? HURRICANE_PROMPT
+        : REGULAR_PROMPT;
+
+    const userMessage = `Location: ${address} (${lat.toFixed(4)}, ${lon.toFixed(4)})
+Language: ${language.startsWith('es') ? 'Spanish' : 'English'}
+User question: ${question}
+
+${weatherContext}${alertsSummary ? `\n\nACTIVE NWS ALERTS:\n${alertsSummary}` : ''}${stormInfo ? `\n\nNHC STORM DATA:\n${stormInfo}` : ''}`;
+
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -128,38 +292,25 @@ export const askWeather = createServerFn({ method: 'POST' })
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 512,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Location: ${address} (coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)})
-Language for response: ${language.startsWith('es') ? 'Spanish' : 'English'}
-User question: ${question}
-
-${weatherContext}`,
-          },
-        ],
+        max_tokens: 768,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
       }),
     });
 
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text();
-      throw new Error(`Claude API error: ${claudeRes.status} ${errText}`);
-    }
+    if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
 
     const claudeData = await claudeRes.json();
     const responseText = claudeData.content?.[0]?.text?.trim() ?? '';
 
-    // Parse JSON — try direct parse first, then extract from text
-    let answer: WeatherAnswer;
+    let answer: any;
     try {
       answer = JSON.parse(responseText);
     } catch {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Claude returned invalid JSON');
-      answer = JSON.parse(jsonMatch[0]);
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Invalid JSON from Claude');
+      answer = JSON.parse(match[0]);
     }
 
-    return answer;
+    return { ...answer, mode } as ExtendedWeatherAnswer;
   });
