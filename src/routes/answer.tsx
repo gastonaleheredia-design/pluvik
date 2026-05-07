@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
+import { AuthModal } from '../components/AuthModal';
 
 interface WeatherAnswer {
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
@@ -58,6 +61,10 @@ function AnswerPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
+  const { user } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   const loadingPhrases = [
     t('answer.loading_1'),
@@ -99,6 +106,7 @@ function AnswerPage() {
         });
 
         setAnswer(result as WeatherAnswer);
+        setCoords(coords);
         setStatus('success');
       } catch {
         setStatus('error');
@@ -108,6 +116,56 @@ function AnswerPage() {
     fetchAnswer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const saveAndTrack = async () => {
+    if (!answer) return;
+    setSaving(true);
+    try {
+      const { data: eventData, error: eventError } = await supabase
+        .from('tracked_events')
+        .insert({
+          user_id: user!.id,
+          question,
+          address,
+          lat: coords?.lat ?? null,
+          lon: coords?.lon ?? null,
+          current_verdict: answer.verdict,
+          current_percentage: answer.percentage,
+          current_summary: answer.summary,
+          current_confidence: answer.confidence,
+        })
+        .select()
+        .single();
+
+      if (eventError || !eventData) {
+        setSaving(false);
+        return;
+      }
+
+      await supabase.from('journal_entries').insert({
+        event_id: eventData.id,
+        user_id: user!.id,
+        verdict: answer.verdict,
+        percentage: answer.percentage,
+        summary: answer.summary,
+        confidence: answer.confidence,
+        current_conditions: answer.current_conditions,
+      });
+
+      navigate({ to: '/dashboard' });
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveTrack = () => {
+    if (!answer) return;
+    if (user) {
+      saveAndTrack();
+    } else {
+      setShowAuthModal(true);
+    }
+  };
 
   // ── LOADING STATE ──────────────────────────────
   if (status === 'loading') {
@@ -385,22 +443,34 @@ function AnswerPage() {
 
         {/* Save & track */}
         <button
+          onClick={handleSaveTrack}
+          disabled={saving}
           style={{
-            marginTop: '28px',
             width: '100%',
-            backgroundColor: INK,
-            color: PAGE_BG,
+            marginTop: '20px',
             padding: '14px',
+            backgroundColor: saving ? '#e5e7eb' : '#0b1018',
+            color: saving ? '#9ca3af' : '#faf7f0',
             borderRadius: '100px',
             border: 'none',
-            fontFamily: 'inherit',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            cursor: 'pointer',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '0.88rem',
+            cursor: saving ? 'default' : 'pointer',
           }}
         >
-          {t('answer.save_track')}
+          {saving ? '...' : t('answer.save_track')}
         </button>
+
+        {showAuthModal && (
+          <AuthModal
+            onSuccess={() => {
+              setShowAuthModal(false);
+              saveAndTrack();
+            }}
+            onClose={() => setShowAuthModal(false)}
+          />
+        )}
       </div>
     </div>
   );
