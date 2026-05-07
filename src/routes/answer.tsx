@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
-import { askWeather } from '../server/askWeather';
+import { askWeather } from '../lib/askWeather.functions';
 import { MAPBOX_TOKEN } from '../config/keys';
 
 interface WeatherAnswer {
