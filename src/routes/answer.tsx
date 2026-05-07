@@ -6,6 +6,7 @@ import { MAPBOX_TOKEN } from '../config/keys';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
+import { useAddress } from '../lib/addressContext';
 
 interface WeatherAnswer {
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
@@ -62,6 +63,7 @@ function AnswerPage() {
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const { user } = useAuth();
+  const { address: selectedAddress } = useAddress();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
@@ -89,7 +91,10 @@ function AnswerPage() {
 
     const fetchAnswer = async () => {
       try {
-        const coords = await geocodeAddress(address);
+        const coords =
+          selectedAddress.lat && selectedAddress.lon
+            ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
+            : await geocodeAddress(address);
         if (!coords) {
           setStatus('error');
           return;
