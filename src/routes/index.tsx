@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
+import { useAddress } from '../lib/addressContext';
+import { AddressPicker } from '../components/AddressPicker';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 
@@ -40,6 +42,8 @@ function HomePage() {
   ];
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [questionText, setQuestionText] = useState('');
+  const { address: selectedAddress, setAddress } = useAddress();
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -48,9 +52,8 @@ function HomePage() {
     return () => clearInterval(interval);
   }, [placeholders.length]);
 
-  // Mock location (real location comes in Phase 4)
-  const mockAddress = 'Houston, TX';
-  const mockAddressMeta = t('home.address_current');
+  const mockAddress = selectedAddress.label;
+  const mockAddressMeta = selectedAddress.meta;
 
   // Template pills — fill question field on tap
   const handleTemplate = (text: string) => {
@@ -63,7 +66,7 @@ function HomePage() {
         to: '/answer',
         search: {
           q: questionText.trim(),
-          address: mockAddress,
+          address: selectedAddress.label,
         },
       });
     }
@@ -143,6 +146,7 @@ function HomePage() {
             </div>
           </div>
           <button
+            onClick={() => setShowPicker(true)}
             style={{
               background: 'none',
               border: 'none',
@@ -338,6 +342,9 @@ function HomePage() {
       </div>
 
       <BottomNav />
+      {showPicker && (
+        <AddressPicker onClose={() => setShowPicker(false)} />
+      )}
     </div>
   );
 }
