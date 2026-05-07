@@ -119,7 +119,6 @@ function RootComponent() {
     import("react-onesignal").then(({ default: OneSignal }) => {
       OneSignal.init({
         appId: "5f6c103c-d301-44dd-8e5c-e4d11212f1b6",
-        notifyButton: { enable: false },
         allowLocalhostAsSecureOrigin: true,
       }).catch(() => {
         // OneSignal init failed silently — notifications unavailable
