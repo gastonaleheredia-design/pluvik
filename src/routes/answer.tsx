@@ -117,6 +117,56 @@ function AnswerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const saveAndTrack = async () => {
+    if (!answer) return;
+    setSaving(true);
+    try {
+      const { data: eventData, error: eventError } = await supabase
+        .from('tracked_events')
+        .insert({
+          user_id: user!.id,
+          question,
+          address,
+          lat: coords?.lat ?? null,
+          lon: coords?.lon ?? null,
+          current_verdict: answer.verdict,
+          current_percentage: answer.percentage,
+          current_summary: answer.summary,
+          current_confidence: answer.confidence,
+        })
+        .select()
+        .single();
+
+      if (eventError || !eventData) {
+        setSaving(false);
+        return;
+      }
+
+      await supabase.from('journal_entries').insert({
+        event_id: eventData.id,
+        user_id: user!.id,
+        verdict: answer.verdict,
+        percentage: answer.percentage,
+        summary: answer.summary,
+        confidence: answer.confidence,
+        current_conditions: answer.current_conditions,
+      });
+
+      navigate({ to: '/dashboard' });
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveTrack = () => {
+    if (!answer) return;
+    if (user) {
+      saveAndTrack();
+    } else {
+      setShowAuthModal(true);
+    }
+  };
+
   // ── LOADING STATE ──────────────────────────────
   if (status === 'loading') {
     return (
@@ -393,22 +443,34 @@ function AnswerPage() {
 
         {/* Save & track */}
         <button
+          onClick={handleSaveTrack}
+          disabled={saving}
           style={{
-            marginTop: '28px',
             width: '100%',
-            backgroundColor: INK,
-            color: PAGE_BG,
+            marginTop: '20px',
             padding: '14px',
+            backgroundColor: saving ? '#e5e7eb' : '#0b1018',
+            color: saving ? '#9ca3af' : '#faf7f0',
             borderRadius: '100px',
             border: 'none',
-            fontFamily: 'inherit',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            cursor: 'pointer',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '0.88rem',
+            cursor: saving ? 'default' : 'pointer',
           }}
         >
-          {t('answer.save_track')}
+          {saving ? '...' : t('answer.save_track')}
         </button>
+
+        {showAuthModal && (
+          <AuthModal
+            onSuccess={() => {
+              setShowAuthModal(false);
+              saveAndTrack();
+            }}
+            onClose={() => setShowAuthModal(false)}
+          />
+        )}
       </div>
     </div>
   );
