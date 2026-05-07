@@ -206,8 +206,7 @@ function EventPage() {
         {/* Current forecast card */}
         <div
           style={{
-            backgroundColor: '#fff',
-            border: `1px solid ${INK}14`,
+            backgroundColor: '#0b1018',
             borderRadius: '16px',
             padding: '20px',
             marginBottom: '32px',
@@ -217,7 +216,7 @@ function EventPage() {
             style={{
               fontSize: '0.7rem',
               letterSpacing: '0.12em',
-              color: MUTED,
+              color: '#f59e0b',
               marginBottom: '12px',
             }}
           >
@@ -250,6 +249,7 @@ function EventPage() {
               fontWeight: 400,
               lineHeight: 1,
               marginBottom: '10px',
+              color: '#faf7f0',
             }}
           >
             {event.current_percentage}%
@@ -260,7 +260,7 @@ function EventPage() {
             style={{
               fontSize: '1rem',
               fontStyle: 'italic',
-              color: INK,
+              color: 'rgba(250,247,240,0.88)',
               lineHeight: 1.45,
             }}
           >
