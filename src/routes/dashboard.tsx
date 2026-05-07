@@ -11,7 +11,7 @@ function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-paper px-6 pt-16 pb-28">
-      <p className="mono-label text-neutral-gray">{t('dashboard.screen_label')}</p>
+      <p className="mono-label text-amber-brand">{t('dashboard.screen_label')}</p>
       <p className="mt-8 text-ink-soft">{t('common.coming_soon')}</p>
       <BottomNav />
     </div>
