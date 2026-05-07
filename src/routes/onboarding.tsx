@@ -41,9 +41,20 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-parchment">
+    <div
+      className="min-h-screen flex flex-col relative overflow-hidden"
+      style={{ backgroundColor: '#0b1018', color: '#faf7f0' }}
+    >
       {/* Gradient overlays */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-brand/10 via-transparent to-navy-deep/5" />
+      <div
+        style={{
+          background:
+            'radial-gradient(ellipse at 80% 10%, rgba(245, 158, 11, 0.22) 0%, transparent 60%), radial-gradient(ellipse at 10% 90%, rgba(71, 85, 105, 0.4) 0%, transparent 60%)',
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+        }}
+      />
 
       {/* Content */}
       <div className="relative z-10 flex min-h-screen flex-col justify-between px-6 py-10">
@@ -62,7 +73,18 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
             </em>
           </h1>
 
-          <p className="text-base text-navy-deep/80">
+          <p
+            className="text-base"
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              fontWeight: 300,
+              fontSize: '0.92rem',
+              lineHeight: 1.5,
+              opacity: 0.85,
+              marginBottom: '12px',
+            }}
+          >
             {t('onboarding.subtitle')}
           </p>
 
