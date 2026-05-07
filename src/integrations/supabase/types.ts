@@ -14,7 +14,181 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      journal_entries: {
+        Row: {
+          checked_at: string | null
+          confidence: string | null
+          current_conditions: string | null
+          event_id: string
+          id: string
+          percentage: number | null
+          summary: string | null
+          user_id: string
+          verdict: string | null
+        }
+        Insert: {
+          checked_at?: string | null
+          confidence?: string | null
+          current_conditions?: string | null
+          event_id: string
+          id?: string
+          percentage?: number | null
+          summary?: string | null
+          user_id: string
+          verdict?: string | null
+        }
+        Update: {
+          checked_at?: string | null
+          confidence?: string | null
+          current_conditions?: string | null
+          event_id?: string
+          id?: string
+          percentage?: number | null
+          summary?: string | null
+          user_id?: string
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tracked_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          id: string
+          language: string | null
+          notification_sensitivity: string | null
+          quiet_hours_end: number | null
+          quiet_hours_start: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id: string
+          language?: string | null
+          notification_sensitivity?: string | null
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          language?: string | null
+          notification_sensitivity?: string | null
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+        }
+        Relationships: []
+      }
+      saved_places: {
+        Row: {
+          address: string
+          created_at: string | null
+          emoji: string | null
+          id: string
+          lat: number
+          lon: number
+          nickname: string
+          user_id: string
+        }
+        Insert: {
+          address: string
+          created_at?: string | null
+          emoji?: string | null
+          id?: string
+          lat: number
+          lon: number
+          nickname: string
+          user_id: string
+        }
+        Update: {
+          address?: string
+          created_at?: string | null
+          emoji?: string | null
+          id?: string
+          lat?: number
+          lon?: number
+          nickname?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_places_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracked_events: {
+        Row: {
+          address: string
+          created_at: string | null
+          current_confidence: string | null
+          current_percentage: number | null
+          current_summary: string | null
+          current_verdict: string | null
+          id: string
+          is_active: boolean | null
+          last_checked_at: string | null
+          lat: number | null
+          lon: number | null
+          question: string
+          user_id: string
+        }
+        Insert: {
+          address: string
+          created_at?: string | null
+          current_confidence?: string | null
+          current_percentage?: number | null
+          current_summary?: string | null
+          current_verdict?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          question: string
+          user_id: string
+        }
+        Update: {
+          address?: string
+          created_at?: string | null
+          current_confidence?: string | null
+          current_percentage?: number | null
+          current_summary?: string | null
+          current_verdict?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          question?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracked_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
