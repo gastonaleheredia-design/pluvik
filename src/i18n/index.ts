@@ -16,8 +16,12 @@ i18n.use(initReactI18next).init({
   supportedLngs: ['en', 'es'],
   interpolation: { escapeValue: false },
   react: { useSuspense: false },
-  initImmediate: false,
   returnNull: false,
 });
+
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log('[i18n] initialized?', i18n.isInitialized, 'lang:', i18n.language, 'sample:', i18n.t('answer.error_title'));
+}
 
 export default i18n;
