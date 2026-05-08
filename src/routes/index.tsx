@@ -119,8 +119,11 @@ function HomePage() {
         </div>
 
         {/* ADDRESS ROW */}
-        <div
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
           style={{
+            width: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -128,6 +131,8 @@ function HomePage() {
             border: '1px solid rgba(11,16,24,0.06)',
             borderRadius: '14px',
             padding: '12px 14px',
+            cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
@@ -158,21 +163,20 @@ function HomePage() {
               </span>
             </div>
           </div>
-          <button
-            onClick={() => setShowPicker(true)}
+          <span
             style={{
               background: 'none',
               border: 'none',
-              cursor: 'pointer',
               fontFamily: 'JetBrains Mono, ui-monospace, monospace',
               fontSize: '0.65rem',
               letterSpacing: '0.08em',
               color: '#c2410c',
+              flexShrink: 0,
             }}
           >
             {t('home.address_change')}
-          </button>
-        </div>
+          </span>
+        </button>
 
         {/* QUESTION BOX */}
         <div
