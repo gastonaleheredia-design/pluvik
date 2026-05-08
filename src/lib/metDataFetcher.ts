@@ -1,5 +1,7 @@
 import type { ParsedQuestion } from './weatherIntelligence';
 import { calculateStormIntercept } from './stormIntercept';
+import type { ScenarioProfile } from './classifyScenario';
+import { getSourcePriority } from './sourcePriority';
 
 const NWS = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', Accept: 'application/geo+json' };
 const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
@@ -539,6 +541,82 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.ensemble,
     briefing.afd,
   ].filter(Boolean).join('\n\n');
+}
+
+// Map source-priority keys → MetBriefing field names
+const SOURCE_KEY_TO_FIELD: Record<string, keyof MetBriefing> = {
+  radar: 'radarCells',
+  glm: 'glmLightning',
+  surfaceObs: 'surfaceObs',
+  hrrr: 'hourlyForecast',
+  alerts: 'alerts',
+  md: 'mesoscaleDiscussion',
+  spc: 'spcOutlook',
+  spcDay1: 'spcOutlook',
+  spcDay2: 'spcDay2',
+  spcDay3: 'spcDay3',
+  spcDay48: 'spcDay48',
+  day48: 'spcDay48',
+  multiModel: 'modelComparison',
+  ensemble: 'ensemble',
+  sounding: 'sounding',
+  afd: 'afd',
+  wpcEro: 'wpcEro',
+  satellite: 'satellite',
+  marine: 'marine',
+  fireWeather: 'fireWeather',
+  fireOutlook: 'fireOutlook',
+  drought: 'droughtMonitor',
+};
+
+function keysToFields(keys: string[]): Set<keyof MetBriefing> {
+  const out = new Set<keyof MetBriefing>();
+  for (const k of keys) {
+    const f = SOURCE_KEY_TO_FIELD[k];
+    if (f) out.add(f);
+  }
+  return out;
+}
+
+/**
+ * Prioritized briefing: tags sections by scenario+horizon importance.
+ * Primary sources go first with [PRIMARY], secondary with [SECONDARY],
+ * remaining context with [CONTEXT]. Ignored sources are dropped entirely.
+ */
+export function assemblePrioritizedBriefing(
+  briefing: MetBriefing,
+  profile: ScenarioProfile,
+): string {
+  const { primary, secondary, ignore } = getSourcePriority(profile.scenario, profile.horizon);
+  const primarySet = keysToFields(primary);
+  const secondarySet = keysToFields(secondary);
+  const ignoreSet = keysToFields(ignore);
+
+  const allFields: (keyof MetBriefing)[] = [
+    'alerts', 'spcOutlook', 'spcDay2', 'spcDay3', 'spcDay48', 'mesoscaleDiscussion',
+    'wpcEro', 'fireOutlook', 'droughtMonitor', 'glmLightning', 'surfaceObs',
+    'hourlyForecast', 'modelComparison', 'radarCells', 'sounding', 'satellite',
+    'marine', 'airQuality', 'fireWeather', 'ensemble', 'afd',
+  ];
+
+  const primaryBlocks: string[] = [];
+  const secondaryBlocks: string[] = [];
+  const contextBlocks: string[] = [];
+
+  for (const f of allFields) {
+    const value = briefing[f];
+    if (!value) continue;
+    if (ignoreSet.has(f)) continue;
+    if (primarySet.has(f)) primaryBlocks.push(`[PRIMARY] ${value}`);
+    else if (secondarySet.has(f)) secondaryBlocks.push(`[SECONDARY] ${value}`);
+    else contextBlocks.push(`[CONTEXT] ${value}`);
+  }
+
+  const header =
+    `SCENARIO: ${profile.scenario.toUpperCase()} | HORIZON: ${profile.horizon.toUpperCase()} | BASE CONFIDENCE: ${profile.confidenceBase}\n` +
+    `REASONING PATH:\n${profile.reasoningPath.map((s, i) => `  ${i + 1}. ${s}`).join('\n')}`;
+
+  return [header, ...primaryBlocks, ...secondaryBlocks, ...contextBlocks].join('\n\n');
 }
 
 // SPC Day 2/3 Convective Outlooks (text product)
