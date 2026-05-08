@@ -5,6 +5,8 @@ import { BottomNav } from '../components/BottomNav';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, type HomeBriefing } from '../lib/homeBriefing.functions';
+import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 
@@ -21,17 +23,54 @@ function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
   const { address: selectedAddress } = useAddress();
+  const { user, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
 
   // Redirect to onboarding if not completed.
+  // Wait for auth to finish hydrating so signed-in users with a saved
+  // onboarding flag in their profile are not bounced to onboarding.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onboardingDone = localStorage.getItem(ONBOARDING_KEY);
-    if (!onboardingDone) navigate({ to: '/onboarding' });
-  }, [navigate]);
+    if (authLoading) return;
+
+    const localDone = localStorage.getItem(ONBOARDING_KEY) === 'true';
+
+    // Anonymous: rely on local flag only.
+    if (!user) {
+      if (!localDone) navigate({ to: '/onboarding' });
+      return;
+    }
+
+    // Signed in: check profile flag, mirror to local for fast subsequent loads.
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('onboarding_completed_at')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const remoteDone = !!data?.onboarding_completed_at;
+        if (remoteDone) {
+          try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
+          return;
+        }
+        // Remote says not done. If local says done, backfill remote.
+        if (localDone) {
+          supabase
+            .from('profiles')
+            .update({ onboarding_completed_at: new Date().toISOString() })
+            .eq('id', user.id)
+            .then(() => {});
+          return;
+        }
+        navigate({ to: '/onboarding' });
+      });
+    return () => { cancelled = true; };
+  }, [authLoading, user, navigate]);
 
   // Fetch the home briefing for the saved address.
   useEffect(() => {
