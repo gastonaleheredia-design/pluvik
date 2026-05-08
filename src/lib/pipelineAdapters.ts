@@ -153,6 +153,7 @@ const ALWAYS_KEEP: Set<keyof MetBriefing> = new Set([
   'atmosphericState',
   'shearProfile',
   'radarTrend',
+  'rotationSignatures',
 ]);
 
 /**

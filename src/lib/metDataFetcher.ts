@@ -4,6 +4,7 @@ import type { ScenarioProfile } from './classifyScenario';
 import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
+import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
 
 /**
  * Robustly extract a bulk shear value (in knots) for a given layer
@@ -132,6 +133,7 @@ export interface MetBriefing {
   atmosphericState: string;
   shearProfile: string;
   radarTrend: string;
+  rotationSignatures: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -647,6 +649,7 @@ export async function buildMetBriefing(
     atmosphericState: '',
     shearProfile: '',
     radarTrend: '',
+    rotationSignatures: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -675,6 +678,7 @@ export async function buildMetBriefing(
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
   fetches.push(fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }));
   fetches.push(fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }));
+  fetches.push(fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; }));
 
   await Promise.all(fetches);
 
@@ -700,6 +704,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.atmosphericState,
     briefing.shearProfile,
     briefing.radarTrend,
+    briefing.rotationSignatures,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
@@ -766,7 +771,7 @@ export function assemblePrioritizedBriefing(
     'alerts', 'spcOutlook', 'spcDay2', 'spcDay3', 'spcDay48', 'mesoscaleDiscussion',
     'wpcEro', 'fireOutlook', 'droughtMonitor', 'glmLightning', 'surfaceObs',
     'atmosphericState', 'shearProfile', 'hourlyForecast', 'modelComparison',
-    'radarCells', 'radarTrend', 'sounding', 'satellite',
+    'radarCells', 'radarTrend', 'rotationSignatures', 'sounding', 'satellite',
     'marine', 'airQuality', 'fireWeather', 'ensemble', 'afd',
   ];
 
