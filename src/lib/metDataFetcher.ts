@@ -39,14 +39,20 @@ function deriveAtmosphericState(b: MetBriefing): string {
     ? Math.min(...motionMatches.map(m => parseInt(m[1], 10)))
     : null;
 
+  // Shear (knots) parsed from the shearProfile block
+  const sh06Match = b.shearProfile.match(/0-6km bulk shear:\s*(\d+)\s*kt/i);
+  const sh01Match = b.shearProfile.match(/0-1km shear:\s*(\d+)\s*kt/i);
+  const shear06 = sh06Match ? parseInt(sh06Match[1], 10) : null;
+  const shear01 = sh01Match ? parseInt(sh01Match[1], 10) : null;
+
   // Bail out if we have basically nothing to interpret
-  if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0) {
+  if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0 && shear06 === null) {
     return '';
   }
 
   const state: AtmosphericState = interpretAtmosphere(
     peakCape, cin, li, tpw, dewpoint, tempDewSpread,
-    null, null, // shear data not currently fetched
+    shear06, shear01,
     b.wpcEro,
     stormMotionMph,
   );
@@ -89,6 +95,7 @@ export interface MetBriefing {
   droughtMonitor: string;
   glmLightning: string;
   atmosphericState: string;
+  shearProfile: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -513,6 +520,63 @@ async function fetchFireWeather(lat: number, lon: number): Promise<string> {
   }
 }
 
+// 0-6 km bulk shear (10m vs 500 hPa) and 0-1 km shear (10m vs 925 hPa).
+// Free Open-Meteo pressure-level winds. Returns a short text block plus
+// numeric values that deriveAtmosphericState parses out via regex.
+async function fetchShearProfile(lat: number, lon: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&hourly=wind_speed_10m,wind_direction_10m,` +
+      `wind_speed_925hPa,wind_direction_925hPa,` +
+      `wind_speed_500hPa,wind_direction_500hPa` +
+      `&wind_speed_unit=kn&forecast_days=1&timezone=auto`
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    const h = data.hourly;
+    if (!h?.time?.length) return '';
+
+    // Use the first available hour (current/next-hour analysis)
+    const i = 0;
+    const sfcSpd = h.wind_speed_10m?.[i];
+    const sfcDir = h.wind_direction_10m?.[i];
+    const lowSpd = h.wind_speed_925hPa?.[i];
+    const lowDir = h.wind_direction_925hPa?.[i];
+    const midSpd = h.wind_speed_500hPa?.[i];
+    const midDir = h.wind_direction_500hPa?.[i];
+    if (sfcSpd == null || midSpd == null) return '';
+
+    const vec = (spd: number, dir: number) => {
+      // Meteorological direction = where wind is FROM. Convert to vector.
+      const rad = ((dir + 180) % 360) * Math.PI / 180;
+      return { u: spd * Math.sin(rad), v: spd * Math.cos(rad) };
+    };
+    const sfc = vec(sfcSpd, sfcDir ?? 0);
+    const mid = vec(midSpd, midDir ?? 0);
+    const shear06 = Math.round(Math.sqrt((mid.u - sfc.u) ** 2 + (mid.v - sfc.v) ** 2));
+
+    let shear01: number | null = null;
+    if (lowSpd != null && lowDir != null) {
+      const low = vec(lowSpd, lowDir);
+      shear01 = Math.round(Math.sqrt((low.u - sfc.u) ** 2 + (low.v - sfc.v) ** 2));
+    }
+
+    const flag06 =
+      shear06 >= 40 ? '⚠ SUPERCELL SHEAR' :
+      shear06 >= 25 ? 'ORGANIZED SHEAR' :
+      shear06 >= 15 ? 'MARGINAL SHEAR' : 'WEAK SHEAR';
+
+    return [
+      'WIND SHEAR PROFILE:',
+      `0-6km bulk shear: ${shear06} kt (${flag06})`,
+      shear01 != null ? `0-1km shear: ${shear01} kt${shear01 >= 20 ? ' ⚠ TORNADO-FAVORABLE LOW-LEVEL SHEAR' : ''}` : '',
+    ].filter(Boolean).join('\n');
+  } catch {
+    return '';
+  }
+}
+
 export async function buildMetBriefing(
   lat: number,
   lon: number,
@@ -545,6 +609,7 @@ export async function buildMetBriefing(
     droughtMonitor: '',
     glmLightning: '',
     atmosphericState: '',
+    shearProfile: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -571,6 +636,7 @@ export async function buildMetBriefing(
   fetches.push(fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }));
   fetches.push(fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }));
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
+  fetches.push(fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }));
 
   await Promise.all(fetches);
 
@@ -594,6 +660,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.glmLightning,
     briefing.surfaceObs,
     briefing.atmosphericState,
+    briefing.shearProfile,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
@@ -659,7 +726,8 @@ export function assemblePrioritizedBriefing(
   const allFields: (keyof MetBriefing)[] = [
     'alerts', 'spcOutlook', 'spcDay2', 'spcDay3', 'spcDay48', 'mesoscaleDiscussion',
     'wpcEro', 'fireOutlook', 'droughtMonitor', 'glmLightning', 'surfaceObs',
-    'hourlyForecast', 'modelComparison', 'radarCells', 'sounding', 'satellite',
+    'atmosphericState', 'shearProfile', 'hourlyForecast', 'modelComparison',
+    'radarCells', 'sounding', 'satellite',
     'marine', 'airQuality', 'fireWeather', 'ensemble', 'afd',
   ];
 
