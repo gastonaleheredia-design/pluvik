@@ -65,6 +65,14 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
     if (d.percentage == null && typeof d.impact_percent === 'number') {
       d.percentage = d.impact_percent;
     }
+    // Bridge new prompt field names → legacy UI field names so the regular
+    // mode answer screen renders correctly with current systemPrompt.ts.
+    if (!d.current_conditions && typeof d.current_state === 'string') {
+      d.current_conditions = d.current_state;
+    }
+    if (!d.why_this_risk && typeof d.mechanism === 'string') {
+      d.why_this_risk = d.mechanism;
+    }
     return { ok: true, data: d };
   }
   const issues = parsed.error.issues.map(i => `${i.path.join('.') || '<root>'}: ${i.message}`);

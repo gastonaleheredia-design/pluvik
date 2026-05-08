@@ -22,21 +22,32 @@ export const Route = createFileRoute('/answer')({
   component: AnswerPage,
 });
 
-async function geocodeAddress(
-  address: string
-): Promise<{ lat: number; lon: number } | null> {
+type GeocodeResult =
+  | { ok: true; lat: number; lon: number }
+  | { ok: false; reason: 'out_of_coverage' | 'not_found' | 'network' };
+
+async function geocodeAddress(address: string): Promise<GeocodeResult> {
   try {
     const encoded = encodeURIComponent(address);
+    // Search globally, then check the country in the result so we can
+    // explain the limit instead of silently failing for non-US users.
     const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&country=US&limit=1&types=address,place,postcode,poi`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address,place,postcode,poi,region,locality`
     );
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, reason: 'network' };
     const data = await res.json();
-    if (!data.features?.length) return null;
-    const [lon, lat] = data.features[0].center;
-    return { lat, lon };
+    const feature = data.features?.[0];
+    if (!feature) return { ok: false, reason: 'not_found' };
+    const ctx: Array<{ id: string; short_code?: string }> = feature.context ?? [];
+    const country = ctx.find((c) => c.id?.startsWith('country'));
+    const isUS =
+      country?.short_code?.toLowerCase() === 'us' ||
+      feature.properties?.short_code?.toLowerCase() === 'us';
+    if (!isUS) return { ok: false, reason: 'out_of_coverage' };
+    const [lon, lat] = feature.center;
+    return { ok: true, lat, lon };
   } catch {
-    return null;
+    return { ok: false, reason: 'network' };
   }
 }
 
@@ -77,7 +88,7 @@ function AnswerPage() {
   const navigate = useNavigate();
   const { q: question, address } = Route.useSearch();
 
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const { user } = useAuth();
@@ -111,13 +122,16 @@ function AnswerPage() {
 
     const fetchAnswer = async () => {
       try {
-        const coords =
-          selectedAddress.lat && selectedAddress.lon
-            ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
-            : await geocodeAddress(address);
-        if (!coords) {
-          setStatus('error');
-          return;
+        let coords: { lat: number; lon: number } | null = null;
+        if (selectedAddress.lat && selectedAddress.lon) {
+          coords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
+        } else {
+          const geo = await geocodeAddress(address);
+          if (!geo.ok) {
+            setStatus(geo.reason === 'out_of_coverage' ? 'out_of_coverage' : 'error');
+            return;
+          }
+          coords = { lat: geo.lat, lon: geo.lon };
         }
 
         const result = await askWeather({
@@ -241,6 +255,49 @@ function AnswerPage() {
         <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em' }}>
           {t('answer.for_location')} {address}
         </div>
+      </div>
+    );
+  }
+
+  // ── OUT-OF-COVERAGE STATE ──────────────────────
+  if (status === 'out_of_coverage') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          backgroundColor: PAGE_BG,
+          color: INK,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🗺️</div>
+        <div style={{ fontFamily: 'Fraunces, serif', fontSize: '1.4rem', fontWeight: 500, marginBottom: '10px', maxWidth: 360 }}>
+          {t('answer.coverage_title')}
+        </div>
+        <div style={{ fontSize: '0.95rem', color: MUTED, maxWidth: 380, marginBottom: '24px', lineHeight: 1.5 }}>
+          {t('answer.coverage_message')}
+        </div>
+        <button
+          onClick={() => navigate({ to: '/' })}
+          style={{
+            backgroundColor: ACCENT,
+            color: '#faf7f0',
+            padding: '12px 28px',
+            borderRadius: '100px',
+            border: 'none',
+            fontWeight: 600,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+          }}
+        >
+          {t('answer.coverage_change_address')}
+        </button>
       </div>
     );
   }
