@@ -5,6 +5,35 @@ import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 
 /**
+ * Robustly extract a bulk shear value (in knots) for a given layer
+ * (e.g. 0-6 km, 0-1 km) from a free-form shear-profile text block.
+ * Tolerates label/unit/format variations.
+ */
+function extractShearKt(text: string, lo: number, hi: number): number | null {
+  if (!text) return null;
+  // Hyphen variants: ASCII -, en/em dash, "to", "thru". Spacing flexible.
+  const sep = `\\s*(?:-|–|—|to|thru|through)\\s*`;
+  // Optional "km" after either bound.
+  const layer = `${lo}(?:\\s*km)?${sep}${hi}\\s*km`;
+  // Optional descriptors between layer and number ("bulk", "deep-layer",
+  // "low-level", "wind", "shear", separators, language words).
+  const middle = `[^\\d\\n\\r]{0,40}?`;
+  // Number: integer or decimal, optional sign.
+  // Unit: kt|kts|knot|knots|kn (case-insensitive). Sometimes m/s — convert.
+  const re = new RegExp(
+    `${layer}${middle}(-?\\d+(?:\\.\\d+)?)\\s*(kts?|knots?|kn|m\\/s|mps)?`,
+    'i'
+  );
+  const m = text.match(re);
+  if (!m) return null;
+  let val = parseFloat(m[1]);
+  if (!isFinite(val)) return null;
+  const unit = (m[2] || 'kt').toLowerCase();
+  if (unit === 'm/s' || unit === 'mps') val *= 1.94384; // m/s → kt
+  return Math.round(val);
+}
+
+/**
  * Extract the peak/most-relevant numeric atmospheric values from the
  * already-fetched briefing strings and run them through interpretAtmosphere.
  * Returns a plain-language summary block, or '' if we can't extract enough.
@@ -39,11 +68,16 @@ function deriveAtmosphericState(b: MetBriefing): string {
     ? Math.min(...motionMatches.map(m => parseInt(m[1], 10)))
     : null;
 
-  // Shear (knots) parsed from the shearProfile block
-  const sh06Match = b.shearProfile.match(/0-6km bulk shear:\s*(\d+)\s*kt/i);
-  const sh01Match = b.shearProfile.match(/0-1km shear:\s*(\d+)\s*kt/i);
-  const shear06 = sh06Match ? parseInt(sh06Match[1], 10) : null;
-  const shear01 = sh01Match ? parseInt(sh01Match[1], 10) : null;
+  // Shear (knots) parsed from the shearProfile block.
+  // Hardened: tolerant of formatting/label/unit/language variations.
+  //  - hyphen variants: "-", "–", "—", "to"
+  //  - spacing: "0-6km", "0 - 6 km", "0 to 6 km"
+  //  - labels: "bulk shear", "deep-layer shear", "shear", "wind shear"
+  //  - units: kt, kts, knot, knots, kn (case-insensitive)
+  //  - separators: ":", "=", "→", "is", or just whitespace
+  //  - decimals accepted, rounded to integer
+  const shear06 = extractShearKt(b.shearProfile, 0, 6);
+  const shear01 = extractShearKt(b.shearProfile, 0, 1);
 
   // Bail out if we have basically nothing to interpret
   if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0 && shear06 === null) {
