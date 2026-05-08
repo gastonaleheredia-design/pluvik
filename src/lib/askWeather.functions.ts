@@ -32,6 +32,10 @@ export interface ExtendedWeatherAnswer {
   summary: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   current_conditions: string;
+  // Minimal-view (3-second test) fields
+  verdict_word?: 'YES' | 'NO' | 'MAYBE';
+  verdict_sentence?: string;
+  headline_number?: { value: string; label: string } | null;
   // Plan-aware context (kept for backward compatibility with answer.tsx)
   plan_type?: string;
   time_context?: string;
