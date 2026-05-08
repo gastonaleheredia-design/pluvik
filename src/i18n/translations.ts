@@ -125,6 +125,17 @@ export const translations = {
         language: 'Language',
         language_english: 'English',
         language_spanish: 'Español',
+        units_section: 'Units',
+        temp_unit: 'Temperature',
+        wind_unit: 'Wind speed',
+        time_format: 'Time format',
+        location_section: 'Default location',
+        location_change: 'Change default location',
+        saved_places_section: 'Saved places',
+        saved_places_empty: 'No saved places yet.',
+        saved_places_manage: 'Tap a place to remove it.',
+        about_section: 'About',
+        version_label: 'Version',
       },
       // Help
       help: {
