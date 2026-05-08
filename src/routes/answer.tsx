@@ -325,260 +325,139 @@ function AnswerPage() {
   }
 
   // ── ANSWER STATE ───────────────────────────────
-  const decisionKey =
-    (answer.decision as string | undefined) ??
-    deriveDecision(answer.verdict, answer.percentage, answer.confidence);
-  const decisionStyle = DECISION_STYLES[decisionKey] ?? DECISION_STYLES.UNKNOWN;
-
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        backgroundColor: PAGE_BG,
-        color: INK,
-        fontFamily: 'Inter, sans-serif',
-        padding: '24px',
-      }}
-    >
-      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-        {/* Back button */}
-        <button
-          onClick={() => navigate({ to: '/' })}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            marginBottom: '20px',
-            color: MUTED,
-            fontSize: '0.85rem',
-            letterSpacing: '0.05em',
-            fontFamily: 'inherit',
-          }}
-        >
-          {t('answer.back')}
+    <div style={{ minHeight: '100vh', backgroundColor: '#faf7f0', paddingBottom: '48px' }}>
+      <div style={{ padding: '56px 24px 0 24px' }}>
+        {/* Back */}
+        <button onClick={() => navigate({ to: '/' })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: '24px' }}>
+          <span className="mono-label" style={{ color: '#9ca3af', fontSize: '0.6rem' }}>← BACK</span>
         </button>
 
-        {/* Decision tag */}
-        <div style={{ marginBottom: '24px' }}>
-          <span
-            style={{
-              display: 'inline-block',
-              backgroundColor: decisionStyle.bg,
-              color: decisionStyle.text,
-              padding: '8px 16px',
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-            }}
-          >
-            {t(decisionStyle.labelKey)}
+        {/* Verdict badge */}
+        <div style={{ marginBottom: '16px' }}>
+          <span style={{
+            display: 'inline-block',
+            padding: '6px 16px',
+            borderRadius: '100px',
+            backgroundColor: (VERDICT_STYLES[answer.verdict as string] ?? VERDICT_STYLES.UNKNOWN).bg,
+            color: (VERDICT_STYLES[answer.verdict as string] ?? VERDICT_STYLES.UNKNOWN).text,
+          }}>
+            <span className="mono-label" style={{ fontSize: '0.65rem' }}>
+              {t(`answer.verdict_${answer.verdict.toLowerCase().replace('-','_')}`)}
+            </span>
           </span>
         </div>
 
-        {/* Decision window — between verdict tag and big percentage */}
+        {/* Decision window — the headline */}
         {answer.decision_window && (
-          <div style={{
+          <p style={{
             fontFamily: 'Fraunces, serif',
             fontStyle: 'italic',
-            fontSize: '1.1rem',
+            fontWeight: 400,
+            fontSize: 'clamp(1.2rem, 4vw, 1.5rem)',
+            lineHeight: 1.2,
             color: '#0b1018',
-            marginBottom: '8px',
-            marginTop: '4px',
+            marginBottom: '20px',
+            letterSpacing: '-0.01em',
           }}>
             {answer.decision_window}
-          </div>
+          </p>
         )}
 
-        {/* Big percentage */}
-        <div
-          style={{
-            fontSize: '5rem',
-            fontWeight: 400,
+        {/* Percentage — supporting, not headline */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
+          <span style={{
             fontFamily: 'Fraunces, serif',
+            fontWeight: 400,
+            fontSize: '3.5rem',
             lineHeight: 1,
-            marginBottom: '4px',
-          }}
-        >
-          {answer.percentage}%
+            letterSpacing: '-0.04em',
+            color: '#0b1018',
+          }}>
+            {answer.percentage}%
+          </span>
         </div>
-
-        {/* Chance label */}
-        <div
-          style={{
-            fontSize: '0.75rem',
-            letterSpacing: '0.1em',
-            color: MUTED,
-            marginBottom: '6px',
-          }}
-        >
+        <div className="mono-label" style={{ color: '#9ca3af', fontSize: '0.58rem', marginBottom: '20px' }}>
           {t('answer.chance_label')}
         </div>
 
-        {/* Time + plan context */}
-        {(answer.time_context || answer.plan_type) && (
-          <div
-            style={{
-              fontSize: '0.85rem',
-              color: INK,
-              marginBottom: '6px',
-              fontWeight: 500,
-            }}
-          >
-            {t('answer.time_context_for')}{' '}
-            <span style={{ color: INK }}>{answer.time_context ?? ''}</span>
-            {answer.plan_type ? ` · ${answer.plan_type}` : ''}
-          </div>
-        )}
-
-        {/* Impact caption */}
-        <div
-          style={{
-            fontSize: '0.75rem',
-            color: MUTED,
-            lineHeight: 1.4,
-            marginBottom: '20px',
-            fontStyle: 'italic',
-          }}
-        >
-          {t('answer.impact_caption')}
-        </div>
-
         {/* Summary */}
-        <div
-          style={{
-            fontSize: '1.15rem',
-            lineHeight: 1.45,
+        <p style={{
+          fontFamily: 'Fraunces, serif',
+          fontStyle: 'italic',
+          fontSize: '1.05rem',
+          lineHeight: 1.5,
+          color: '#0b1018',
+          marginBottom: '20px',
+          paddingBottom: '20px',
+          borderBottom: '1px solid rgba(11,16,24,0.08)',
+        }}>
+          "{answer.summary}"
+        </p>
+
+        {/* Combined context card */}
+        {(answer.main_concern || answer.action) && (
+          <div style={{
+            backgroundColor: '#0b1018',
+            borderRadius: '16px',
+            padding: '20px',
             marginBottom: '16px',
-            fontWeight: 500,
-            fontStyle: 'italic',
-          }}
-        >
-          &ldquo;{answer.summary}&rdquo;
-        </div>
-
-        {answer.main_concern && (
-          <div style={{
-            backgroundColor: '#f0ebde',
-            borderRadius: '10px',
-            padding: '12px 14px',
-            marginBottom: '8px',
-            borderLeft: '3px solid #c2410c',
           }}>
-            <div className="mono-label" style={{ fontSize: '0.52rem', color: '#c2410c', marginBottom: '4px' }}>
-              MAIN CONCERN
-            </div>
-            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: '#0b1018' }}>
-              {answer.main_concern}
-            </div>
-          </div>
-        )}
-
-        {answer.action && (
-          <div style={{
-            backgroundColor: '#0b1018',
-            borderRadius: '10px',
-            padding: '12px 14px',
-            marginBottom: '12px',
-          }}>
-            <div className="mono-label" style={{ fontSize: '0.52rem', color: '#f59e0b', marginBottom: '4px' }}>
-              RECOMMENDATION
-            </div>
-            <div style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#faf7f0' }}>
-              {answer.action}
-            </div>
-          </div>
-        )}
-
-        {/* Confidence */}
-        <div style={{ fontSize: '0.85rem', color: MUTED, marginBottom: '28px' }}>
-          {t('answer.confidence_label')}:{' '}
-          <span style={{ color: INK, fontWeight: 600 }}>{answer.confidence}</span>
-        </div>
-
-        {/* Now strip */}
-        <div
-          style={{
-            backgroundColor: '#0b1018',
-            color: '#faf7f0',
-            borderRadius: '12px',
-            padding: '14px 16px',
-            marginBottom: '24px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '12px',
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: '0.7rem',
-                letterSpacing: '0.1em',
-                color: ACCENT,
-                marginBottom: '4px',
-              }}
-            >
-              {t('answer.now')}
-            </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#faf7f0' }}>
-              {answer.current_conditions}
-            </div>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af', textAlign: 'right' }}>
-            {address}
-          </div>
-        </div>
-
-        {/* Why this risk — single expandable explanation */}
-        {answer.why_this_risk && (
-          <div style={{ borderTop: `1px solid ${INK}14`, marginTop: '4px' }}>
-            <button
-              onClick={() => setShowWhy((s) => !s)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '16px 4px',
-                background: 'none',
-                border: 'none',
-                borderBottom: `1px solid ${INK}14`,
-                fontSize: '0.92rem',
-                fontFamily: 'inherit',
-                color: INK,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <span>{showWhy ? t('answer.why_hide') : t('answer.why_this_risk')}</span>
-              <span style={{ color: MUTED, fontSize: '1rem' }}>{showWhy ? '−' : '→'}</span>
-            </button>
-            {showWhy && (
-              <div
-                style={{
-                  padding: '14px 4px 18px',
-                  fontSize: '0.92rem',
-                  lineHeight: 1.55,
-                  color: INK,
-                  borderBottom: `1px solid ${INK}14`,
-                }}
-              >
-                {answer.why_this_risk}
+            {answer.main_concern && (
+              <div style={{ marginBottom: answer.action ? '14px' : 0 }}>
+                <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.52rem', marginBottom: '6px' }}>MAIN CONCERN</div>
+                <p style={{ fontFamily: 'Fraunces, serif', fontSize: '0.92rem', color: '#faf7f0', lineHeight: 1.4 }}>
+                  {answer.main_concern}
+                </p>
+              </div>
+            )}
+            {answer.main_concern && answer.action && (
+              <div style={{ height: '1px', backgroundColor: 'rgba(250,247,240,0.1)', marginBottom: '14px' }} />
+            )}
+            {answer.action && (
+              <div>
+                <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.52rem', marginBottom: '6px' }}>RECOMMENDATION</div>
+                <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: '0.92rem', color: 'rgba(250,247,240,0.9)', lineHeight: 1.4 }}>
+                  {answer.action}
+                </p>
               </div>
             )}
           </div>
         )}
 
-        {/* Save & track */}
+        {/* Confidence */}
+        <div className="mono-label" style={{ fontSize: '0.58rem', color: '#9ca3af', marginBottom: '14px' }}>
+          CONFIDENCE: <span style={{ color: '#c2410c', fontWeight: 700 }}>{answer.confidence}</span>
+        </div>
+
+        {/* Now strip */}
+        <div style={{
+          backgroundColor: '#0b1018',
+          borderRadius: '12px',
+          padding: '14px 16px',
+          marginBottom: '20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <div>
+            <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.5rem', marginBottom: '4px' }}>RIGHT NOW</div>
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '0.92rem', color: '#faf7f0' }}>
+              {answer.current_conditions}
+            </div>
+          </div>
+          <div className="mono-label" style={{ color: 'rgba(250,247,240,0.4)', fontSize: '0.48rem', textAlign: 'right', maxWidth: '120px' }}>
+            {address.split(',').slice(0,2).join(',').trim()}
+          </div>
+        </div>
+
+        {/* Save button */}
         <button
           onClick={handleSaveTrack}
           disabled={saving}
           style={{
             width: '100%',
-            marginTop: '20px',
-            padding: '14px',
+            padding: '15px',
             backgroundColor: saving ? '#e5e7eb' : '#0b1018',
             color: saving ? '#9ca3af' : '#faf7f0',
             borderRadius: '100px',
@@ -591,17 +470,14 @@ function AnswerPage() {
         >
           {saving ? '...' : t('answer.save_track')}
         </button>
-
-        {showAuthModal && (
-          <AuthModal
-            onSuccess={() => {
-              setShowAuthModal(false);
-              saveAndTrack();
-            }}
-            onClose={() => setShowAuthModal(false)}
-          />
-        )}
       </div>
+
+      {showAuthModal && (
+        <AuthModal
+          onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
+          onClose={() => setShowAuthModal(false)}
+        />
+      )}
     </div>
   );
 }
