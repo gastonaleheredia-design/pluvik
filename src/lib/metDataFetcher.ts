@@ -646,6 +646,7 @@ export async function buildMetBriefing(
     glmLightning: '',
     atmosphericState: '',
     shearProfile: '',
+    radarTrend: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -673,6 +674,7 @@ export async function buildMetBriefing(
   fetches.push(fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }));
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
   fetches.push(fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }));
+  fetches.push(fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }));
 
   await Promise.all(fetches);
 
@@ -697,6 +699,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.surfaceObs,
     briefing.atmosphericState,
     briefing.shearProfile,
+    briefing.radarTrend,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
@@ -763,7 +766,7 @@ export function assemblePrioritizedBriefing(
     'alerts', 'spcOutlook', 'spcDay2', 'spcDay3', 'spcDay48', 'mesoscaleDiscussion',
     'wpcEro', 'fireOutlook', 'droughtMonitor', 'glmLightning', 'surfaceObs',
     'atmosphericState', 'shearProfile', 'hourlyForecast', 'modelComparison',
-    'radarCells', 'sounding', 'satellite',
+    'radarCells', 'radarTrend', 'sounding', 'satellite',
     'marine', 'airQuality', 'fireWeather', 'ensemble', 'afd',
   ];
 
