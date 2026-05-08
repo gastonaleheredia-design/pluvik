@@ -318,16 +318,18 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
 }
 
 /**
- * Fallback radar source: sample Open-Meteo nowcast precipitation on a 5x5
- * grid (~10 mi spacing) around the user, treat each cell with heavy precip
- * as a pseudo storm cell, and use 700 hPa wind as the storm-motion vector.
- * Produces the same line format as fetchRadarCells so downstream
- * parseAndComputeIntercepts() works unchanged.
+ * Fallback radar source: sample HRRR nowcast precipitation on a 7x7
+ * grid (~12 mi spacing → ~36 mi radius) around the user, treat each cell
+ * with heavy precip as a pseudo storm cell, and use PER-CELL 700 hPa wind
+ * as the storm-motion vector. Emits a richer line format that includes the
+ * cell's classification (multicell line / pulse / supercell / etc.) and
+ * primary threat. parseAndComputeIntercepts() reads the legacy INTERCEPT
+ * block; the new TYPE / INTENSITY / THREAT fields flow to the LLM verbatim.
  */
 async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
   try {
-    const STEP_DEG = 0.145; // ~10 mi at mid-latitudes
-    const N = 2;            // -2..+2 → 5x5 = 25 points
+    const STEP_DEG = 0.175; // ~12 mi at mid-latitudes
+    const N = 3;            // -3..+3 → 7x7 = 49 points (~36 mi radius)
     const lats: number[] = [];
     const lons: number[] = [];
     const cosLat = Math.cos(lat * Math.PI / 180) || 1;
