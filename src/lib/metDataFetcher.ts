@@ -2,6 +2,7 @@ import type { ParsedQuestion } from './weatherIntelligence';
 import { calculateStormIntercept } from './stormIntercept';
 import type { ScenarioProfile } from './classifyScenario';
 import { getSourcePriority } from './sourcePriority';
+import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 
 const NWS = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', Accept: 'application/geo+json' };
 const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
@@ -31,6 +32,7 @@ export interface MetBriefing {
   fireOutlook: string;
   droughtMonitor: string;
   glmLightning: string;
+  atmosphericState: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -486,6 +488,7 @@ export async function buildMetBriefing(
     fireOutlook: '',
     droughtMonitor: '',
     glmLightning: '',
+    atmosphericState: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -514,6 +517,10 @@ export async function buildMetBriefing(
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
 
   await Promise.all(fetches);
+
+  // Derive plain-language atmospheric state from the assembled numeric data.
+  result.atmosphericState = deriveAtmosphericState(result);
+
   return result;
 }
 
@@ -530,6 +537,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.droughtMonitor,
     briefing.glmLightning,
     briefing.surfaceObs,
+    briefing.atmosphericState,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
