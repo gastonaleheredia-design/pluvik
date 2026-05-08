@@ -528,22 +528,81 @@ async function fetchSPCOutlook(): Promise<string> {
 }
 
 // SPC Mesoscale Discussions — issued when severe weather is imminent (next 1-6h)
-async function fetchMesoscaleDiscussion(): Promise<string> {
+// Geo-filtered: only returns MDs whose state-zone list (e.g. OKZ000-, TXZ000-)
+// contains the user's state, so an OK user never sees a Florida MD.
+async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<string> {
   try {
+    // 1. Resolve the user's state via NWS points (free, fast, cached).
+    let userState: string | null = null;
+    try {
+      const ptRes = await fetch(
+        `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+        { headers: NWS }
+      );
+      if (ptRes.ok) {
+        const pt = await ptRes.json();
+        userState = pt.properties?.relativeLocation?.properties?.state ?? null;
+      }
+    } catch { /* ignore */ }
+
+    // 2. Pull the active MD index.
     const res = await fetch('https://www.spc.noaa.gov/products/md/', { headers: UA });
     if (!res.ok) return '';
     const html = await res.text();
-    // Look for active MD numbers in the page
-    const mdMatch = html.match(/md(\d{4})\.html/);
-    if (!mdMatch) return 'SPC MESOSCALE DISCUSSIONS: None active.';
-    const mdNum = mdMatch[1];
-    const mdRes = await fetch(`https://www.spc.noaa.gov/products/md/md${mdNum}.txt`, { headers: UA });
-    if (!mdRes.ok) return `SPC MD #${mdNum} active (text unavailable).`;
-    const mdText = await mdRes.text();
-    return `SPC MESOSCALE DISCUSSION #${mdNum}:\n${mdText.slice(0, 1500)}`;
+    const mdNums = Array.from(new Set(
+      Array.from(html.matchAll(/md(\d{4})\.html/g)).map(m => m[1])
+    )).slice(0, 8);
+    if (mdNums.length === 0) return 'SPC MESOSCALE DISCUSSIONS: None active.';
+
+    // 3. Fetch each MD and keep ones that match the user's state.
+    const matches: { num: string; text: string }[] = [];
+    for (const num of mdNums) {
+      try {
+        const r = await fetch(`https://www.spc.noaa.gov/products/md/md${num}.txt`, { headers: UA });
+        if (!r.ok) continue;
+        const text = await r.text();
+        if (!userState) {
+          // Without state, fall back to the very first one only.
+          matches.push({ num, text });
+          break;
+        }
+        // State zones appear as lines like "OKZ000-082200-" or "TXZ001-002-".
+        const stateZoneRe = new RegExp(`\\b${userState}Z\\d`, 'i');
+        // Or "Areas affected...parts of central Oklahoma".
+        const stateNameRe = new RegExp(`\\b${stateAbbrToName(userState)}\\b`, 'i');
+        if (stateZoneRe.test(text) || stateNameRe.test(text)) {
+          matches.push({ num, text });
+        }
+        if (matches.length >= 2) break;
+      } catch { /* skip this MD */ }
+    }
+
+    if (matches.length === 0) {
+      return `SPC MESOSCALE DISCUSSIONS: ${mdNums.length} active nationwide, none currently affect ${userState ?? 'this area'}.`;
+    }
+    return matches.map(m =>
+      `SPC MESOSCALE DISCUSSION #${m.num} (matches ${userState}):\n${m.text.slice(0, 1500)}`
+    ).join('\n\n');
   } catch {
     return '';
   }
+}
+
+// US state abbreviation → full name lookup for MD body matching.
+function stateAbbrToName(abbr: string): string {
+  const map: Record<string, string> = {
+    AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
+    CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',
+    IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',
+    ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',
+    MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',
+    NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',
+    NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',
+    PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',
+    TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',
+    WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Columbia',
+  };
+  return map[abbr.toUpperCase()] ?? abbr;
 }
 
 // Marine conditions: wave height, period, swell, SST (Open-Meteo Marine API)
