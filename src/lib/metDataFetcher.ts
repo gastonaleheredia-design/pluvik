@@ -929,7 +929,7 @@ export async function buildMetBriefing(
   const cached = briefingCache.get(cacheKey);
   if (cached && now - cached.t < 60_000) return cached.v;
 
-  const fetches: Promise<void>[] = [];
+  // Concurrency-limited fan-out below; no longer firing all promises at once.
   const result: MetBriefing = {
     surfaceObs: '',
     hourlyForecast: '',
