@@ -340,31 +340,25 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       }
     }
 
-    // Storm motion: 700 hPa wind for steering layer
-    const motionRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
-      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2&wind_speed_unit=mph&timezone=auto`
-    );
-    let stormDirDeg: number | null = null;
-    let stormSpeedMph: number | null = null;
-    if (motionRes.ok) {
-      const md = await motionRes.json();
-      const fromDeg = md.hourly?.wind_direction_700hPa?.[0];
-      const sp = md.hourly?.wind_speed_700hPa?.[0];
-      if (fromDeg != null) stormDirDeg = (fromDeg + 180) % 360; // toward
-      if (sp != null) stormSpeedMph = Math.round(sp);
-    }
-
-    // Precipitation grid
+    // PER-CELL motion + precip in one batched HRRR request. Each grid
+    // point gets its own 700 hPa wind so a cell 30 mi west isn't steered
+    // by the wind at the user's exact point. HRRR is requested explicitly
+    // (`models=gfs_hrrr`) — it resolves convection far better than the
+    // GFS-seamless default used in the previous version.
     const gridRes = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
-      `&minutely_15=precipitation&forecast_minutely_15=8&timezone=auto&precipitation_unit=inch`
+      `&minutely_15=precipitation&forecast_minutely_15=8` +
+      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2` +
+      `&models=gfs_hrrr&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
     );
     if (!gridRes.ok) return 'RADAR: Cell data unavailable (grid fetch failed).';
     const gridJson = await gridRes.json();
     const arr: any[] = Array.isArray(gridJson) ? gridJson : [gridJson];
 
-    type GridCell = { lat: number; lon: number; dbz: number; precip: number };
+    type GridCell = {
+      lat: number; lon: number; dbz: number; precip: number;
+      motionDirDeg: number | null; motionSpeedMph: number | null;
+    };
     const candidates: GridCell[] = [];
     for (const point of arr) {
       const precip: number[] = point.minutely_15?.precipitation ?? [];
@@ -373,7 +367,16 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       const mmPerHr = max15 * 4 * 25.4;                    // 15-min in → in/hr → mm/hr
       // Marshall-Palmer: Z = 200 R^1.6  →  dBZ = 10*log10(Z)
       const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
-      candidates.push({ lat: point.latitude, lon: point.longitude, dbz, precip: max15 });
+      const fromDeg = point.hourly?.wind_direction_700hPa?.[0];
+      const sp = point.hourly?.wind_speed_700hPa?.[0];
+      candidates.push({
+        lat: point.latitude,
+        lon: point.longitude,
+        dbz,
+        precip: max15,
+        motionDirDeg: fromDeg != null ? (fromDeg + 180) % 360 : null,
+        motionSpeedMph: sp != null ? Math.round(sp) : null,
+      });
     }
     if (candidates.length === 0) {
       return 'RADAR: No active precipitation cells within ~50 miles (grid sample).';
