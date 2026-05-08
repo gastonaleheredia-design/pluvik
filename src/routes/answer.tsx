@@ -6,6 +6,7 @@ import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { BriefingScreen, type BriefingFact, type BriefingVerdict } from '../components/BriefingScreen';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
