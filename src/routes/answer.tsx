@@ -6,6 +6,7 @@ import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { BriefingScreen, type BriefingFact, type BriefingVerdict } from '../components/BriefingScreen';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
@@ -49,33 +50,6 @@ async function geocodeAddress(address: string): Promise<GeocodeResult> {
   } catch {
     return { ok: false, reason: 'network' };
   }
-}
-
-const DECISION_STYLES: Record<string, { bg: string; text: string; labelKey: string }> = {
-  GOOD_TO_GO: { bg: '#15803d', text: '#faf7f0', labelKey: 'answer.decision_good_to_go' },
-  WATCH_IT:   { bg: '#f59e0b', text: '#0b1018', labelKey: 'answer.decision_watch_it' },
-  BACKUP:     { bg: '#ea580c', text: '#faf7f0', labelKey: 'answer.decision_backup' },
-  MOVE_IT:    { bg: '#b91c1c', text: '#faf7f0', labelKey: 'answer.decision_move_it' },
-  CHECK_AGAIN:{ bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.decision_check_again' },
-  UNKNOWN:    { bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.verdict_unknown' },
-};
-
-const VERDICT_STYLES: Record<string, { bg: string; text: string }> = {
-  'GO':      { bg: '#15803d', text: '#faf7f0' },
-  'CAUTION': { bg: '#f59e0b', text: '#0b1018' },
-  'NO-GO':   { bg: '#b91c1c', text: '#faf7f0' },
-  'UNKNOWN': { bg: '#6b7280', text: '#faf7f0' },
-};
-
-// Fallback if model didn't return `decision` — derive from verdict + percentage
-function deriveDecision(verdict: string, percentage: number, confidence: string): string {
-  if (verdict === 'UNKNOWN') return 'UNKNOWN';
-  if (confidence === 'LOW') return 'CHECK_AGAIN';
-  if (verdict === 'GO') return 'GOOD_TO_GO';
-  if (verdict === 'NO-GO') return 'MOVE_IT';
-  // CAUTION
-  if (percentage >= 50) return 'BACKUP';
-  return 'WATCH_IT';
 }
 
 const PAGE_BG = '#faf7f0';
@@ -382,159 +356,72 @@ function AnswerPage() {
   }
 
   // ── ANSWER STATE ───────────────────────────────
+  // Build the 4-block briefing from the validated answer.
+  const verdict: BriefingVerdict =
+    (['GO', 'CAUTION', 'NO-GO', 'UNKNOWN'].includes(answer.verdict)
+      ? answer.verdict
+      : 'UNKNOWN') as BriefingVerdict;
+
+  // Block 1 — the direct answer. Prefer decision_window (already a sentence
+  // like "Safe until 2 PM"), fall back to summary.
+  const directAnswer =
+    (answer.decision_window && answer.decision_window.trim()) ||
+    answer.summary ||
+    t('answer.error_message');
+
+  // Block 2 — numbers that matter for everyday/rain plans.
+  const facts: BriefingFact[] = [
+    {
+      label: t('answer.chance_label', { defaultValue: 'CHANCE' }),
+      value: `${answer.percentage}%`,
+      tone:
+        answer.percentage >= 60 ? 'danger' :
+        answer.percentage >= 30 ? 'caution' : 'good',
+    },
+    ...(answer.main_concern
+      ? [{
+          label: 'MAIN CONCERN',
+          value: answer.main_concern,
+          tone: 'caution' as const,
+        }]
+      : []),
+    ...(answer.current_conditions
+      ? [{
+          label: 'RIGHT NOW',
+          value: answer.current_conditions,
+          tone: 'neutral' as const,
+        }]
+      : []),
+    ...(answer.time_context
+      ? [{
+          label: 'WINDOW',
+          value: answer.time_context,
+          tone: 'neutral' as const,
+        }]
+      : []),
+  ];
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#faf7f0', paddingBottom: '48px' }}>
-      <div style={{ padding: '56px 24px 0 24px' }}>
-        {/* Back */}
-        <button onClick={() => navigate({ to: '/' })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: '24px' }}>
-          <span className="mono-label" style={{ color: '#9ca3af', fontSize: '0.6rem' }}>← BACK</span>
-        </button>
-
-        {/* Verdict badge */}
-        <div style={{ marginBottom: '16px' }}>
-          <span style={{
-            display: 'inline-block',
-            padding: '6px 16px',
-            borderRadius: '100px',
-            backgroundColor: (VERDICT_STYLES[answer.verdict as string] ?? VERDICT_STYLES.UNKNOWN).bg,
-            color: (VERDICT_STYLES[answer.verdict as string] ?? VERDICT_STYLES.UNKNOWN).text,
-          }}>
-            <span className="mono-label" style={{ fontSize: '0.65rem' }}>
-              {t(`answer.verdict_${answer.verdict.toLowerCase().replace('-','_')}`)}
-            </span>
-          </span>
-        </div>
-
-        {/* Decision window — the headline */}
-        {answer.decision_window && (
-          <p style={{
-            fontFamily: 'Fraunces, serif',
-            fontStyle: 'italic',
-            fontWeight: 400,
-            fontSize: 'clamp(1.2rem, 4vw, 1.5rem)',
-            lineHeight: 1.2,
-            color: '#0b1018',
-            marginBottom: '20px',
-            letterSpacing: '-0.01em',
-          }}>
-            {answer.decision_window}
-          </p>
-        )}
-
-        {/* Percentage — supporting, not headline */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-          <span style={{
-            fontFamily: 'Fraunces, serif',
-            fontWeight: 400,
-            fontSize: '3.5rem',
-            lineHeight: 1,
-            letterSpacing: '-0.04em',
-            color: '#0b1018',
-          }}>
-            {answer.percentage}%
-          </span>
-        </div>
-        <div className="mono-label" style={{ color: '#9ca3af', fontSize: '0.58rem', marginBottom: '20px' }}>
-          {t('answer.chance_label')}
-        </div>
-
-        {/* Summary */}
-        <p style={{
-          fontFamily: 'Fraunces, serif',
-          fontStyle: 'italic',
-          fontSize: '1.05rem',
-          lineHeight: 1.5,
-          color: '#0b1018',
-          marginBottom: '20px',
-          paddingBottom: '20px',
-          borderBottom: '1px solid rgba(11,16,24,0.08)',
-        }}>
-          "{answer.summary}"
-        </p>
-
-        {/* Combined context card */}
-        {(answer.main_concern || answer.action) && (
-          <div style={{
-            backgroundColor: '#0b1018',
-            borderRadius: '16px',
-            padding: '20px',
-            marginBottom: '16px',
-          }}>
-            {answer.main_concern && (
-              <div style={{ marginBottom: answer.action ? '14px' : 0 }}>
-                <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.52rem', marginBottom: '6px' }}>MAIN CONCERN</div>
-                <p style={{ fontFamily: 'Fraunces, serif', fontSize: '0.92rem', color: '#faf7f0', lineHeight: 1.4 }}>
-                  {answer.main_concern}
-                </p>
-              </div>
-            )}
-            {answer.main_concern && answer.action && (
-              <div style={{ height: '1px', backgroundColor: 'rgba(250,247,240,0.1)', marginBottom: '14px' }} />
-            )}
-            {answer.action && (
-              <div>
-                <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.52rem', marginBottom: '6px' }}>RECOMMENDATION</div>
-                <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: '0.92rem', color: 'rgba(250,247,240,0.9)', lineHeight: 1.4 }}>
-                  {answer.action}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Confidence */}
-        <div className="mono-label" style={{ fontSize: '0.58rem', color: '#9ca3af', marginBottom: '14px' }}>
-          CONFIDENCE: <span style={{ color: '#c2410c', fontWeight: 700 }}>{answer.confidence}</span>
-        </div>
-
-        {/* Now strip */}
-        <div style={{
-          backgroundColor: '#0b1018',
-          borderRadius: '12px',
-          padding: '14px 16px',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <div>
-            <div className="mono-label" style={{ color: '#f59e0b', fontSize: '0.5rem', marginBottom: '4px' }}>RIGHT NOW</div>
-            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '0.92rem', color: '#faf7f0' }}>
-              {answer.current_conditions}
-            </div>
-          </div>
-          <div className="mono-label" style={{ color: 'rgba(250,247,240,0.4)', fontSize: '0.48rem', textAlign: 'right', maxWidth: '120px' }}>
-            {address.split(',').slice(0,2).join(',').trim()}
-          </div>
-        </div>
-
-        {/* Save button */}
-        <button
-          onClick={handleSaveTrack}
-          disabled={saving}
-          style={{
-            width: '100%',
-            padding: '15px',
-            backgroundColor: saving ? '#e5e7eb' : '#0b1018',
-            color: saving ? '#9ca3af' : '#faf7f0',
-            borderRadius: '100px',
-            border: 'none',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 500,
-            fontSize: '0.88rem',
-            cursor: saving ? 'default' : 'pointer',
-          }}
-        >
-          {saving ? '...' : t('answer.save_track')}
-        </button>
-      </div>
-
+    <>
+      <BriefingScreen
+        scenario="rain"
+        contextLabel={address.split(',').slice(0, 2).join(',').trim()}
+        directAnswer={directAnswer}
+        facts={facts}
+        story={answer.summary}
+        verdict={verdict}
+        action={answer.action ?? t('answer.error_message')}
+        confidence={answer.confidence}
+        onBack={() => navigate({ to: '/' })}
+        onSaveTrack={handleSaveTrack}
+        saving={saving}
+      />
       {showAuthModal && (
         <AuthModal
           onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
           onClose={() => setShowAuthModal(false)}
         />
       )}
-    </div>
+    </>
   );
 }
