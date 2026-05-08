@@ -3,6 +3,7 @@ import { calculateStormIntercept } from './stormIntercept';
 import type { ScenarioProfile } from './classifyScenario';
 import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
+import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 
 /**
  * Robustly extract a bulk shear value (in knots) for a given layer
