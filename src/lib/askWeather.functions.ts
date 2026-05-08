@@ -339,5 +339,5 @@ export const askWeather = createServerFn({ method: 'POST' })
       mode,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
-    } as ExtendedWeatherAnswer;
+    } as unknown as ExtendedWeatherAnswer;
   });
