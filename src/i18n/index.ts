@@ -19,7 +19,5 @@ i18n.use(initReactI18next).init({
   returnNull: false,
 });
 
-// eslint-disable-next-line no-console
-console.log('[i18n] module loaded, init?', i18n.isInitialized, 'sample:', i18n.t('answer.error_title'));
 
 export default i18n;
