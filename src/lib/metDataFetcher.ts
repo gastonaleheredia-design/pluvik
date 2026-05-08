@@ -6,6 +6,11 @@ import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpr
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
 
+// Module-scoped briefing cache. Lives for the duration of a Worker isolate
+// (typically minutes). 60-second TTL covers retry storms and identical
+// follow-up questions without serving stale weather.
+const briefingCache = new Map<string, { t: number; v: MetBriefing }>();
+
 /**
  * Robustly extract a bulk shear value (in knots) for a given layer
  * (e.g. 0-6 km, 0-1 km) from a free-form shear-profile text block.
