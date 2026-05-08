@@ -69,8 +69,18 @@ Return ONLY valid JSON matching this schema:
   "confidence": "HIGH" | "MEDIUM" | "LOW" | "VERY_LOW",
   "confidence_reason": "1 sentence plain English",
   "action": "single specific action",
-  "check_back_minutes": 30 | 60 | 120 | 240 | null
+  "check_back_minutes": 30 | 60 | 120 | 240 | null,
+  "verdict_word": "YES" | "NO" | "MAYBE",
+  "verdict_sentence": "ONE short sentence (max 12 words) that directly answers the user's question. Plain English. No hedging.",
+  "headline_number": { "value": "8%", "label": "CHANCE OF RAIN" } | null
 }
+
+## MINIMAL-VIEW FIELDS (verdict_word / verdict_sentence / headline_number)
+The user sees these THREE fields BIG and FIRST, before anything else.
+- verdict_word: answers the user's yes/no question. YES = it will happen / safe to go, NO = it won't / not safe, MAYBE = uncertain.
+- verdict_sentence: one short, direct sentence. Example: "No rain expected from 3 to 8 PM Saturday." Do NOT repeat the location.
+- headline_number: ONE number that matters most for THIS question. Use null when no single number is meaningful.
+  Examples: { "value": "8%", "label": "CHANCE OF RAIN" }, { "value": "in 4h", "label": "RAIN STARTS" }, { "value": "65 mph", "label": "PEAK GUSTS" }.
 
 ## HARD RULES
 - Never expose CAPE, CIN, LI, hodograph, shear, TPW, or dBZ values in the output
