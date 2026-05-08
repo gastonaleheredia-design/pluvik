@@ -175,7 +175,10 @@ Respond ONLY with valid JSON:
   "current_conditions": "72°F · Mostly Cloudy · Light NE Wind",
   "decision_window": "Safe until 10:00 AM",
   "main_concern": "Afternoon convection developing after noon",
-  "action": "Start the pour by 6 AM to finish before the window closes"
+  "action": "Start the pour by 6 AM to finish before the window closes",
+  "verdict_word": "YES",
+  "verdict_sentence": "Safe to pour until 10 AM, then storms arrive.",
+  "headline_number": { "value": "22%", "label": "CHANCE OF RAIN" }
 }`;
 }
 
@@ -191,6 +194,9 @@ Respond ONLY with valid JSON:
   "decision_window": "Threatening after 3 PM",
   "main_concern": "Damaging wind gusts to 60 mph",
   "action": "Be indoors by 3 PM",
+  "verdict_word": "MAYBE",
+  "verdict_sentence": "Severe storms likely after 3 PM today.",
+  "headline_number": { "value": "65%", "label": "STORM RISK" },
   "risk_level": "Enhanced",
   "risk_level_num": 3,
   "threats": [
@@ -215,6 +221,9 @@ Respond ONLY with valid JSON:
   "decision_window": "Conditions deteriorate after Tuesday noon",
   "main_concern": "Tropical storm force winds and 3-5 inches of rain",
   "action": "Complete outdoor preparations by Tuesday morning",
+  "verdict_word": "MAYBE",
+  "verdict_sentence": "TS Beryl arrives Tuesday night with rain and wind.",
+  "headline_number": { "value": "38h", "label": "TO IMPACT" },
   "storm_name": "Beryl",
   "storm_category": "Tropical Storm",
   "advisory_number": "12",
