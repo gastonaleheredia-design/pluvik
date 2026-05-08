@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { useAddress } from '../lib/addressContext';
+import { usePreferences } from '../lib/preferencesContext';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
