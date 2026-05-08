@@ -1,98 +1,61 @@
-# Expand the Meteorological Brain — Free Sources Only
 
-Add every free national-product source to the briefing pipeline. No paid APIs, no satellite image rendering (text/numeric extraction only to avoid Claude multimodal cost).
+# Hardening Plan — Full Re-Audit
 
-## What gets added to `src/lib/metDataFetcher.ts`
+I went back through the code with your concerns in mind. Here is what I found, grouped by severity, and what I propose to do. Nothing here is exploratory — these are concrete fixes.
 
-Seven new fetchers, each with its own try/catch and short timeout. All run in parallel with the existing 14 sources.
+## What I confirmed in the code
 
-### 1. SPC Day 2 & Day 3 Convective Outlooks
-- `https://www.spc.noaa.gov/products/outlook/day2otlk.txt`
-- `https://www.spc.noaa.gov/products/outlook/day3otlk.txt`
-- Categorical risk + discussion text. Trim to ~1200 chars each.
+1. **Field-name mismatch is real and shipping.** `systemPrompt.ts` instructs Claude to return `current_state`, `mechanism`, `storm_tracking`. But `answer.tsx` (regular mode) reads `answer.current_conditions` for the "RIGHT NOW" strip. The schema validator normalizes `percentage`/`impact_percent` but does NOT bridge `current_state` → `current_conditions`. Result: the dark "RIGHT NOW" card in regular mode is rendering empty for many answers right now.
+2. **Onboarding has no auth path.** `AuthModal` is email/password only — no Google, no Apple, no "forgot password". Users who forget their password are stuck. Lovable Cloud supports managed Google sign-in natively; we are not using it.
+3. **No "Account" surface.** Settings has units, language, saved places, and a sign-out button, but no way to update email, change password, or delete account.
+4. **`/dashboard` is mislabeled.** What you call "tracking" in the bottom nav lives at `/dashboard`. There is no real account dashboard.
+5. **US-only is silent.** `geocodeAddress` hardcodes `country=US`. Outside the US the call returns nothing and the user gets a generic "error" screen with no explanation.
+6. **No caching, no rate limiting** on `askWeather` — every question re-runs all 21 NOAA fetches and re-bills Claude. Identical questions within a minute cost the same as fresh ones.
+7. **Mode detection runs after the full fan-out** — in hurricane mode we still pay for SPC fire/drought outlooks the prompt ignores.
+8. **Inline styles everywhere** — `#faf7f0`, `#0b1018`, `#c2410c`, Fraunces, JetBrains Mono are hardcoded in every component instead of using the design tokens already wired up in `src/styles.css`.
 
-### 2. SPC Day 4–8 Extended Outlook
-- `https://www.spc.noaa.gov/products/exper/day4-8/`
-- Lower-resolution combined outlook for week-ahead severe potential. Useful for the "this weekend / next week" questions.
+## Plan (in priority order)
 
-### 3. WPC Excessive Rainfall Outlook (Day 1, 2, 3)
-- `https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php`
-- Categorical flash flood risk (MRGL/SLGT/MDT/HIGH). Pull the discussion text.
-- Critical addition — wedding/concrete/event questions need flash-flood awareness, not just thunder.
+### Phase 1 — Stop the bleeding (silent regressions)
 
-### 4. SPC Fire Weather Outlook (Day 1, 2, Day 3–8)
-- `https://www.spc.noaa.gov/products/fire_wx/fwdy1.txt`
-- `https://www.spc.noaa.gov/products/fire_wx/fwdy2.txt`
-- `https://www.spc.noaa.gov/products/exper/fire_wx/`
-- Critical / Extremely Critical fire risk areas + discussion.
+1. **Bridge prompt fields to UI fields** in `weatherAnswerSchema.ts`:
+   - If `current_state` present and `current_conditions` missing → copy across.
+   - Same for `mechanism` (surface as `why_this_risk` or render directly).
+   - Verify every field `answer.tsx` reads is either produced by the prompt or filled by the validator.
+2. **Add a graceful "outside coverage" path**: if geocode returns no result OR returns a non-US country, show a clear screen ("Pluvik currently covers the US. Mexico and international coverage is coming — we don't yet have radar data we trust outside the US."). Don't relax `country=US` until we have radar replacements; make the limit honest instead of silent.
 
-### 5. US Drought Monitor
-- `https://droughtmonitor.unl.edu/DmData/DataDownload/ComprehensiveStatistics.aspx` JSON endpoint, queried by lat/lon county FIPS
-- Returns D0–D4 categorical drought level. Weekly product (Thursdays).
-- Relevant for fire weather, agriculture, long-range planning.
+### Phase 2 — Real auth (Google + password reset + Apple optional)
 
-### 6. GOES GLM Lightning (free, ~70% efficiency, ~20s latency)
-- NOAA Open Data on AWS: `s3://noaa-goes16/GLM-L2-LCFA/` (and goes18 for west coast)
-- Public HTTP access: `https://noaa-goes16.s3.amazonaws.com/GLM-L2-LCFA/{YYYY}/{DDD}/{HH}/`
-- Strategy: list files for the most recent hour, fetch the latest NetCDF chunk, parse via lightweight CDF reader OR use the simpler approach: NWS point-based lightning count via Iowa State Mesonet's GLM aggregator if available.
-- Fallback path (simpler, recommended): use **Iowa Environmental Mesonet's GLM hourly count by polygon** which exposes JSON: `https://mesonet.agron.iastate.edu/cgi-bin/request/gis/glm.py` — returns lightning flash counts within a radius for a time window.
-- Output: "Lightning in past hour within 25mi: 47 flashes (closest 8mi NE, 4 min ago)"
+3. **Enable managed Google sign-in** via Lovable Cloud and the `lovable.auth.signInWithOAuth("google", ...)` flow. Add a "Continue with Google" button at the top of `AuthModal`, with a divider and the existing email/password below it.
+4. **Add "Forgot password?" link** on the sign-in tab. Wire to `supabase.auth.resetPasswordForEmail` with `redirectTo` pointing at a new `/reset-password` route that lets the user set a new password.
+5. **Update onboarding flow** so the welcome → use-cases sequence ends on the home page (current behavior), and the auth modal only appears after the user gets their first answer and tries to save it (current behavior). This is already the right pattern — I'll just make sure the new Google button is visible there too.
 
-### 7. GOES Derived Products (text/numeric — no images, no Claude multimodal cost)
-NOAA publishes derived products as plain numeric data. Pull the relevant ones via Open-Meteo's satellite-adjacent fields (already partly done via cloud cover) plus these dedicated endpoints:
-- **Cloud-Top Temperature & Height** — NOAA `nowcoast.noaa.gov` WMS GetFeatureInfo at point
-- **Total Precipitable Water (TPW)** — `api.open-meteo.com` exposes `total_column_integrated_water_vapor` in some models; pull it
-- **Convective Available Potential Energy from satellite-derived sounding (GOES-DSI)** — already pulled via HRRR; cross-reference
+### Phase 3 — Account surface
 
-Practical implementation: extend `fetchSatelliteContext()` to also pull TPW and any available cloud-top temp from the existing Open-Meteo endpoint (no extra calls). Add a separate `fetchGOESDerived()` for nowcoast point queries.
+6. **Add an "Account" section to `/settings`** (or split it off as `/settings/account`) with:
+   - Current email + "Change email" (uses `supabase.auth.updateUser({ email })`, sends verification).
+   - "Change password" (works for password users; hidden for OAuth-only users).
+   - "Delete account" (calls a new `deleteAccount` server function using the admin client).
+7. **Rename bottom nav `/dashboard` label** to "Tracking" (it already says `nav.tracking` — confirm no confusing copy elsewhere). Optionally rename the route to `/tracking` for clarity.
 
-## Updated AI system prompt (`src/lib/askWeather.functions.ts`)
+### Phase 4 — Operational safety
 
-Expand the bullet list of available data and reasoning steps:
-- Add: SPC Day 2/3/4-8, WPC ERO Day 1/2/3, Fire Weather Outlook Day 1/2/3-8, Drought Monitor, GOES GLM lightning counts
-- Add reasoning step: "Cross-reference WPC ERO with HRRR rainfall — flash flood risk often hides under generic PoP"
-- Add reasoning step: "Check GLM lightning history — if cells have produced lightning in the last hour, treat as active threat"
-- Add reasoning step: "Match SPC outlook day to the user's time window (Day 1 = today, Day 2 = tomorrow)"
+8. **Move mode detection BEFORE the fan-out**: do a fast NHC + alerts check first, then call a slimmed-down fetcher in hurricane mode that skips fire/drought/SPC.
+9. **Add request-level caching** for `askWeather`: hash `(lat rounded to 0.01, lon rounded to 0.01, parsed.timeWindow, scenario)` and cache the assembled briefing for 60 seconds in memory. Saves cost on rapid retries.
+10. **Add basic rate limiting** on `askWeather` keyed by user id (or IP for anon): max 20 questions per hour per user. Use a `request_log` table with RLS.
 
-## What the briefing will look like (order in `assembleBriefingText`)
+### Phase 5 — Polish (can ship later)
 
-```text
-NWS ALERTS
-SPC DAY 1 OUTLOOK
-SPC DAY 2 OUTLOOK
-SPC DAY 3 OUTLOOK
-SPC DAY 4-8 OUTLOOK
-SPC MESOSCALE DISCUSSION
-WPC ERO DAY 1/2/3
-SPC FIRE WEATHER DAY 1/2/3-8
-US DROUGHT MONITOR
-GLM LIGHTNING (past hour)
-SURFACE OBSERVATIONS
-HRRR HOURLY FORECAST
-MULTI-MODEL COMPARISON
-NEXRAD CELLS
-RUC SOUNDING
-SATELLITE CLOUD STRUCTURE + GOES DERIVED
-MARINE
-AIR QUALITY
-FIRE WEATHER (current)
-GFS ENSEMBLE
-NWS AFD
-```
+11. **Migrate inline styles to design tokens.** Replace literal colors and font families with the existing `bg-paper`, `text-ink`, `text-amber-brand`, `font-serif`, `font-mono` classes already defined in `src/styles.css`. Start with the answer screens since they're the most visible.
+12. **Strip remaining `as any`** in mic/speech recognition code (use proper Web Speech types).
 
-## Honest gaps I'm NOT adding (and why)
+## Out of scope on purpose
 
-- **GOES satellite imagery (visible/IR/water vapor PNG)**: would require server-side rendering with cartopy/satpy and Claude multimodal input (~$0.025–$0.04/question + 2–4s latency). Skipped per your direction.
-- **Vaisala/ENTLN ground lightning**: paid ($300–$2,000+/month). Using GLM instead.
-- **Persistent trend memory** ("HRRR is wetter than 6h ago"): separate task — needs a database table to store past briefings.
+- **Mexico / international coverage.** You and I agree the radar story isn't there yet. The honest answer is the "outside coverage" screen in Phase 1 — we don't ship a worse forecast just to widen the map.
+- **Apple sign-in.** Easy to add later; defaulting to Google + email is enough for first launch.
 
-## Risk
+## Suggested order to actually ship
 
-A few of these endpoints are plain-text NWS products that occasionally return 404 during the brief windows when products are being re-issued. The per-fetcher try/catch handles this — the briefing degrades gracefully. GLM via Iowa State Mesonet is the most likely to be flaky; if it fails repeatedly we can fall back to direct NOAA S3 with a NetCDF parse later.
+I'd do Phase 1 first as one PR (it's silent breakage), then Phase 2+3 as the next big push (real auth + account screen — this is what "feels like a finished product"), then Phase 4 once you see usage in the wild, then Phase 5 as a design pass.
 
-## Files changed
-
-- `src/lib/metDataFetcher.ts` — add 7 fetchers, extend `MetBriefing` interface, add to `buildMetBriefing` and `assembleBriefingText`
-- `src/lib/askWeather.functions.ts` — expand system prompt with new sources + reasoning steps
-
-No DB changes. No new dependencies. No secrets needed (everything is public NOAA/NWS).
+Tell me which phases to start with and I'll implement. If you want all of Phase 1 + Phase 2 + Phase 3 in one go, that's the natural unit — it's the difference between "demo" and "people can actually live in this app."
