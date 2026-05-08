@@ -474,6 +474,63 @@ async function fetchAlerts(lat: number, lon: number): Promise<string> {
   }
 }
 
+/**
+ * Lightweight radar probe used by the home-screen briefing. Returns a
+ * structured summary of the most threatening approaching cell, or
+ * `approaching:false` if nothing meaningful is inbound.
+ */
+export interface ImminentStormProbe {
+  approaching: boolean;
+  etaMinutes: number | null;
+  bearingFromUser: string | null;
+  intensityWord: 'light' | 'moderate' | 'heavy' | 'intense' | 'extreme' | null;
+  cellTypeLabel: string | null;
+  distanceMiles: number | null;
+}
+
+export async function probeImminentStorm(lat: number, lon: number): Promise<ImminentStormProbe> {
+  const empty: ImminentStormProbe = {
+    approaching: false, etaMinutes: null, bearingFromUser: null,
+    intensityWord: null, cellTypeLabel: null, distanceMiles: null,
+  };
+  try {
+    const text = await fetchRadarCellsFromGrid(lat, lon);
+    if (!text || /No active|unavailable/.test(text)) return empty;
+    const lines = text.split('\n').filter(l => l.startsWith('Cell '));
+    if (lines.length === 0) return empty;
+
+    const parsed = lines.map(l => {
+      const head = l.match(/^Cell\s+(\w+)\s+at\s+(\d+)mi/);
+      const eta = l.match(/ETA:(\d+)min/);
+      const intensity = l.match(/INTENSITY:(\w+)/);
+      const type = l.match(/TYPE:([^|]+?)\s*\|/);
+      const zone = l.match(/INTERCEPT:(DIRECT|EDGE|NEAR_MISS|MISS)/);
+      return {
+        bearing: head?.[1] ?? '?',
+        dist: head ? parseInt(head[2], 10) : 999,
+        eta: eta ? parseInt(eta[1], 10) : null,
+        intensity: (intensity?.[1] ?? null) as ImminentStormProbe['intensityWord'],
+        type: (type?.[1] ?? '').trim() || null,
+        approaching: zone ? (zone[1] === 'DIRECT' || zone[1] === 'EDGE') : false,
+      };
+    });
+    const hit = parsed
+      .filter(p => p.approaching && p.eta != null && p.eta <= 90)
+      .sort((a, b) => (a.eta ?? 999) - (b.eta ?? 999))[0];
+    if (!hit) return empty;
+    return {
+      approaching: true,
+      etaMinutes: hit.eta,
+      bearingFromUser: hit.bearing,
+      intensityWord: hit.intensity,
+      cellTypeLabel: hit.type,
+      distanceMiles: hit.dist,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 async function fetchEnsemble(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(
