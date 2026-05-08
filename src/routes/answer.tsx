@@ -52,33 +52,6 @@ async function geocodeAddress(address: string): Promise<GeocodeResult> {
   }
 }
 
-const DECISION_STYLES: Record<string, { bg: string; text: string; labelKey: string }> = {
-  GOOD_TO_GO: { bg: '#15803d', text: '#faf7f0', labelKey: 'answer.decision_good_to_go' },
-  WATCH_IT:   { bg: '#f59e0b', text: '#0b1018', labelKey: 'answer.decision_watch_it' },
-  BACKUP:     { bg: '#ea580c', text: '#faf7f0', labelKey: 'answer.decision_backup' },
-  MOVE_IT:    { bg: '#b91c1c', text: '#faf7f0', labelKey: 'answer.decision_move_it' },
-  CHECK_AGAIN:{ bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.decision_check_again' },
-  UNKNOWN:    { bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.verdict_unknown' },
-};
-
-const VERDICT_STYLES: Record<string, { bg: string; text: string }> = {
-  'GO':      { bg: '#15803d', text: '#faf7f0' },
-  'CAUTION': { bg: '#f59e0b', text: '#0b1018' },
-  'NO-GO':   { bg: '#b91c1c', text: '#faf7f0' },
-  'UNKNOWN': { bg: '#6b7280', text: '#faf7f0' },
-};
-
-// Fallback if model didn't return `decision` — derive from verdict + percentage
-function deriveDecision(verdict: string, percentage: number, confidence: string): string {
-  if (verdict === 'UNKNOWN') return 'UNKNOWN';
-  if (confidence === 'LOW') return 'CHECK_AGAIN';
-  if (verdict === 'GO') return 'GOOD_TO_GO';
-  if (verdict === 'NO-GO') return 'MOVE_IT';
-  // CAUTION
-  if (percentage >= 50) return 'BACKUP';
-  return 'WATCH_IT';
-}
-
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const MUTED = '#6b6357';
