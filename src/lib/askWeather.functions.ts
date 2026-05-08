@@ -6,6 +6,9 @@ interface WeatherRequest {
   lon: number;
   language: string;
   address: string;
+  tempUnit?: 'F' | 'C';
+  windUnit?: 'mph' | 'kph';
+  timeFormat?: '12h' | '24h';
 }
 
 export interface ExtendedWeatherAnswer {
@@ -289,7 +292,16 @@ async function getNWSData(lat: number, lon: number): Promise<string> {
 export const askWeather = createServerFn({ method: 'POST' })
   .inputValidator((data: WeatherRequest) => data)
   .handler(async ({ data }: { data: WeatherRequest }) => {
-    const { question, lat, lon, language, address } = data;
+    const {
+      question,
+      lat,
+      lon,
+      language,
+      address,
+      tempUnit = 'F',
+      windUnit = 'mph',
+      timeFormat = '12h',
+    } = data;
 
     const [modeResult, weatherContext] = await Promise.all([
       detectWeatherMode(lat, lon),
@@ -305,8 +317,11 @@ export const askWeather = createServerFn({ method: 'POST' })
         ? HURRICANE_PROMPT
         : REGULAR_PROMPT;
 
+    const unitsLine = `Units: temperature in °${tempUnit}, wind in ${windUnit === 'kph' ? 'km/h' : 'mph'}, times in ${timeFormat === '24h' ? '24-hour' : '12-hour'} format. Convert any source values into these units in current_conditions, time_context, timing, and summary.`;
+
     const userMessage = `Location: ${address} (${lat.toFixed(4)}, ${lon.toFixed(4)})
 Language: ${language.startsWith('es') ? 'Spanish' : 'English'}
+${unitsLine}
 User question: ${question}
 
 ${weatherContext}${alertsSummary ? `\n\nACTIVE NWS ALERTS:\n${alertsSummary}` : ''}${stormInfo ? `\n\nNHC STORM DATA:\n${stormInfo}` : ''}`;
