@@ -1,8 +1,17 @@
 import { createServerFn } from '@tanstack/react-start';
 import { parseQuestion } from './weatherIntelligence';
-import { buildMetBriefing, assemblePrioritizedBriefing } from './metDataFetcher';
+import { buildMetBriefing, assembleBriefingText } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
 import { validateWeatherAnswer } from './weatherAnswerSchema';
+import {
+  parseAndComputeIntercepts,
+  extractAndInterpret,
+  extractModelSpread,
+  extractAFDConfidence,
+  filterBriefingBySources,
+} from './pipelineAdapters';
+import { calculateConfidence } from './confidenceCalculator';
+import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 
 interface WeatherRequest {
   question: string;
@@ -89,7 +98,7 @@ async function detectMode(lat: number, lon: number, alerts: string): Promise<'re
   return 'regular';
 }
 
-function buildSystemPrompt(sensitivityProfile: string, _activityType: string, language: string): string {
+function buildLegacySystemPrompt(sensitivityProfile: string, _activityType: string, language: string): string {
   return `You are a working broadcast meteorologist with 10+ years of Gulf Coast severe weather and hurricane forecasting experience. A user has asked you about a specific plan at a specific location.
 
 You have been provided with a FULL meteorological briefing on every request, including:
@@ -222,38 +231,67 @@ export const askWeather = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: WeatherRequest }) => {
     const { question, lat, lon, language, address } = data;
 
+    // 1. Parse question
     const parsed = parseQuestion(question);
 
+    // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
-    const profile = classifyScenario(briefing, parsed);
-    const briefingText = assemblePrioritizedBriefing(briefing, profile);
 
-    const { calculateConfidence } = await import('./confidenceCalculator');
-    const { deriveModelSpread, deriveAfdConfidenceHint, hasActiveCells } = await import('./confidenceSignals');
-    const confidence = calculateConfidence(
-      profile.horizon,
-      profile.scenario,
-      deriveModelSpread(briefing),
-      deriveAfdConfidenceHint(briefing),
-      hasActiveCells(briefing),
+    // 3. Classify scenario + time horizon
+    const scenarioProfile = classifyScenario(briefing, parsed);
+
+    // 4. Storm intercepts for all active cells (rehydrated from radar text)
+    const stormIntercepts = parseAndComputeIntercepts(briefing.radarCells, lat, lon);
+
+    // 5. Atmospheric state (object form for the prompt)
+    const atmosphericState = extractAndInterpret(
+      briefing.hourlyForecast,
+      briefing.sounding,
+      briefing.satellite,
+      briefing.shearProfile,
+      briefing.surfaceObs,
+      briefing.wpcEro,
+      briefing.radarCells,
     );
 
-    const mode = await detectMode(lat, lon, briefing.alerts);
+    // 6. Confidence
+    const modelSpread = extractModelSpread(briefing);
+    const afdHint = extractAFDConfidence(briefing);
+    const confidence = calculateConfidence(
+      scenarioProfile.horizon,
+      scenarioProfile.scenario,
+      modelSpread,
+      afdHint,
+      stormIntercepts.some(s => s.willIntercept),
+    );
 
+    // 7. Filter briefing by source priority, then assemble plain text
+    const filteredBriefing = filterBriefingBySources(briefing, scenarioProfile.activeSources);
+    const briefingText = assembleBriefingText(filteredBriefing);
+
+    // 8. Mode detection (severe/hurricane override) + system prompt
+    const mode = await detectMode(lat, lon, briefing.alerts);
     const systemPrompt =
       mode === 'severe' ? SEVERE_PROMPT :
       mode === 'hurricane' ? HURRICANE_PROMPT :
-      buildSystemPrompt(parsed.sensitivityProfile, parsed.activityType, language);
+      buildScenarioSystemPrompt(
+        scenarioProfile.scenario,
+        scenarioProfile.horizon,
+        atmosphericState,
+        stormIntercepts,
+        confidence,
+        parsed.sensitivityProfile,
+      );
 
     const userMessage =
       `Location: ${address} (${lat.toFixed(4)}, ${lon.toFixed(4)})\n` +
       `Language: ${language.startsWith('es') ? 'Spanish' : 'English'}\n` +
       `Activity type detected: ${parsed.activityType}\n` +
       `Time window: ${parsed.timeWindow}\n` +
-      `Detected scenario: ${profile.scenario} (${profile.horizon}, base confidence ${profile.confidenceBase})\n` +
+      `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
-      `METEOROLOGICAL BRIEFING (sections tagged [PRIMARY] are most relevant; [SECONDARY] support; [CONTEXT] background; ignored sources removed):\n${briefingText}`;
+      `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
@@ -296,5 +334,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       console.warn('[askWeather] schema validation failed:', validated.issues);
     }
 
-    return { ...validated.data, mode } as ExtendedWeatherAnswer;
+    return {
+      ...validated.data,
+      mode,
+      scenario: scenarioProfile.scenario,
+      horizon: scenarioProfile.horizon,
+    } as unknown as ExtendedWeatherAnswer;
   });
