@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { parseQuestion } from './weatherIntelligence';
 import { buildMetBriefing, assemblePrioritizedBriefing } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
+import { validateWeatherAnswer } from './weatherAnswerSchema';
 
 interface WeatherRequest {
   question: string;
@@ -278,14 +279,22 @@ export const askWeather = createServerFn({ method: 'POST' })
     const claudeData = await claudeRes.json();
     const responseText = claudeData.content?.[0]?.text?.trim() ?? '';
 
-    let answer: any;
+    let rawAnswer: unknown;
     try {
-      answer = JSON.parse(responseText);
+      rawAnswer = JSON.parse(responseText);
     } catch {
       const match = responseText.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('Invalid JSON from Claude');
-      answer = JSON.parse(match[0]);
+      try {
+        rawAnswer = match ? JSON.parse(match[0]) : null;
+      } catch {
+        rawAnswer = null;
+      }
     }
 
-    return { ...answer, mode } as ExtendedWeatherAnswer;
+    const validated = validateWeatherAnswer(rawAnswer);
+    if (!validated.ok) {
+      console.warn('[askWeather] schema validation failed:', validated.issues);
+    }
+
+    return { ...validated.data, mode } as ExtendedWeatherAnswer;
   });
