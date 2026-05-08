@@ -49,6 +49,13 @@ const DECISION_STYLES: Record<string, { bg: string; text: string; labelKey: stri
   UNKNOWN:    { bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.verdict_unknown' },
 };
 
+const VERDICT_STYLES: Record<string, { bg: string; text: string }> = {
+  'GO':      { bg: '#15803d', text: '#faf7f0' },
+  'CAUTION': { bg: '#f59e0b', text: '#0b1018' },
+  'NO-GO':   { bg: '#b91c1c', text: '#faf7f0' },
+  'UNKNOWN': { bg: '#6b7280', text: '#faf7f0' },
+};
+
 // Fallback if model didn't return `decision` — derive from verdict + percentage
 function deriveDecision(verdict: string, percentage: number, confidence: string): string {
   if (verdict === 'UNKNOWN') return 'UNKNOWN';
