@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import "../i18n";
 import { AuthProvider } from "../lib/auth";
 import { AddressProvider } from "../lib/addressContext";
+import { PreferencesProvider } from "../lib/preferencesContext";
 
 function NotFoundComponent() {
   return (
@@ -130,9 +131,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AddressProvider>
-        <AuthProvider>
-          <Outlet />
-        </AuthProvider>
+        <PreferencesProvider>
+          <AuthProvider>
+            <Outlet />
+          </AuthProvider>
+        </PreferencesProvider>
       </AddressProvider>
     </QueryClientProvider>
   );
