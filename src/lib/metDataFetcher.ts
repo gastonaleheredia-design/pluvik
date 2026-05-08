@@ -21,6 +21,13 @@ export interface MetBriefing {
   satellite: string;
   airQuality: string;
   fireWeather: string;
+  spcDay2: string;
+  spcDay3: string;
+  spcDay48: string;
+  wpcEro: string;
+  fireOutlook: string;
+  droughtMonitor: string;
+  glmLightning: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
