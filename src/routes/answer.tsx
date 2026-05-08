@@ -401,6 +401,152 @@ function AnswerPage() {
       : []),
   ];
 
+  const verdictWord = (answer as { verdict_word?: 'YES' | 'NO' | 'MAYBE' }).verdict_word
+    ?? (answer.verdict === 'GO' ? 'YES' : answer.verdict === 'NO-GO' ? 'NO' : 'MAYBE');
+  const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
+    ?? answer.summary;
+  const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
+  const topicTag = answer.mode === 'severe' ? 'SEVERE'
+    : answer.mode === 'hurricane' ? 'STORM'
+    : 'RAIN';
+  const contextLine = `${address.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
+
+  if (!showWhy) {
+    return (
+      <>
+        <div
+          style={{
+            minHeight: '100vh',
+            backgroundColor: PAGE_BG,
+            color: INK,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '52px 28px 32px',
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {/* top row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <button
+              onClick={() => navigate({ to: '/' })}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED,
+              }}
+            >
+              ← {t('answer.back', { defaultValue: 'BACK' })}
+            </button>
+            <span
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+              }}
+            >
+              {topicTag}
+            </span>
+          </div>
+
+          {/* context line */}
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED, marginBottom: '24px',
+            }}
+          >
+            {contextLine}
+          </div>
+
+          {/* big verdict word */}
+          <div
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontWeight: 400,
+              fontSize: 'clamp(5rem, 24vw, 9rem)',
+              lineHeight: 0.92,
+              letterSpacing: '-0.03em',
+              marginBottom: '20px',
+            }}
+          >
+            {verdictWord}
+          </div>
+
+          {/* sentence */}
+          <div
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              fontSize: 'clamp(1.05rem, 4.5vw, 1.35rem)',
+              lineHeight: 1.35,
+              maxWidth: '480px',
+              marginBottom: headlineNumber ? '40px' : '32px',
+            }}
+          >
+            {verdictSentence}
+          </div>
+
+          {/* headline number */}
+          {headlineNumber && (
+            <div style={{ marginBottom: '32px' }}>
+              <div
+                style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: 'clamp(2.4rem, 10vw, 3.5rem)',
+                  lineHeight: 1,
+                }}
+              >
+                {headlineNumber.value}
+              </div>
+              <div
+                style={{
+                  marginTop: '6px',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+                }}
+              >
+                {headlineNumber.label}
+              </div>
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Why? + Save */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowWhy(true)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.75rem', letterSpacing: '0.1em', color: ACCENT,
+              }}
+            >
+              {t('answer.why', { defaultValue: 'Why?' })} →
+            </button>
+            <button
+              onClick={handleSaveTrack}
+              disabled={saving}
+              style={{
+                background: 'none', border: 'none', cursor: saving ? 'default' : 'pointer', padding: 0,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.65rem', letterSpacing: '0.18em',
+                color: saving ? MUTED : INK,
+              }}
+            >
+              {saving ? '…' : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase()}
+            </button>
+          </div>
+        </div>
+        {showAuthModal && (
+          <AuthModal
+            onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
+            onClose={() => setShowAuthModal(false)}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <BriefingScreen
@@ -412,7 +558,7 @@ function AnswerPage() {
         verdict={verdict}
         action={answer.action ?? t('answer.error_message')}
         confidence={answer.confidence}
-        onBack={() => navigate({ to: '/' })}
+        onBack={() => setShowWhy(false)}
         onSaveTrack={handleSaveTrack}
         saving={saving}
       />
