@@ -301,6 +301,8 @@ export const translations = {
         impact_caption: 'Qué tan probable es que el clima afecte este plan específico — no solo la lluvia.',
         time_context_for: 'Para',
         main_concern_label: 'Preocupación principal',
+        decision_window_label: 'Ventana',
+        action_label: 'Haz esto',
         decision_good_to_go: 'ADELANTE',
         decision_watch_it: 'PENDIENTE',
         decision_backup: 'TEN UN PLAN B',
