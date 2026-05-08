@@ -74,7 +74,6 @@ export const translations = {
         main_concern_label: 'Main concern',
         decision_window_label: 'Window',
         action_label: 'Do this',
-        verdict_unknown: 'UNKNOWN',
         decision_good_to_go: 'GOOD TO GO',
         decision_watch_it: 'WATCH IT',
         decision_backup: 'HAVE A BACKUP',
