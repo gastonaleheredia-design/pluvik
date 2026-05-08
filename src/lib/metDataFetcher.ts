@@ -848,7 +848,7 @@ export async function buildMetBriefing(
   fetches.push(fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }));
   fetches.push(fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }));
   fetches.push(fetchSPCOutlook().then(v => { result.spcOutlook = v; }));
-  fetches.push(fetchMesoscaleDiscussion().then(v => { result.mesoscaleDiscussion = v; }));
+  fetches.push(fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }));
   fetches.push(fetchMarine(lat, lon).then(v => { result.marine = v; }));
   fetches.push(fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }));
   fetches.push(fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }));
