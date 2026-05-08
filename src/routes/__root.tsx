@@ -118,14 +118,20 @@ function RootComponent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    import("react-onesignal").then(({ default: OneSignal }) => {
-      OneSignal.init({
-        appId: "5f6c103c-d301-44dd-8e5c-e4d11212f1b6",
-        allowLocalhostAsSecureOrigin: true,
-      }).catch(() => {
-        // OneSignal init failed silently — notifications unavailable
+    if (window.location.pathname.startsWith("/onboarding")) return;
+
+    const timeoutId = window.setTimeout(() => {
+      import("react-onesignal").then(({ default: OneSignal }) => {
+        OneSignal.init({
+          appId: "5f6c103c-d301-44dd-8e5c-e4d11212f1b6",
+          allowLocalhostAsSecureOrigin: true,
+        }).catch(() => {
+          // OneSignal init failed silently — notifications unavailable
+        });
       });
-    });
+    }, 2500);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   return (
