@@ -2,6 +2,63 @@ import type { ParsedQuestion } from './weatherIntelligence';
 import { calculateStormIntercept } from './stormIntercept';
 import type { ScenarioProfile } from './classifyScenario';
 import { getSourcePriority } from './sourcePriority';
+import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
+
+/**
+ * Extract the peak/most-relevant numeric atmospheric values from the
+ * already-fetched briefing strings and run them through interpretAtmosphere.
+ * Returns a plain-language summary block, or '' if we can't extract enough.
+ */
+function deriveAtmosphericState(b: MetBriefing): string {
+  // Peak CAPE from HRRR flag lines (e.g. "[CAPE:1850 ...]")
+  const capeMatches = [...b.hourlyForecast.matchAll(/CAPE:(\d+)/g)];
+  const peakCape = capeMatches.length
+    ? Math.max(...capeMatches.map(m => parseInt(m[1], 10)))
+    : 0;
+
+  // CIN: HRRR doesn't print it directly; presence of "CAP WEAK" implies cin > -50
+  const cin = /CAP WEAK/.test(b.hourlyForecast) ? -25 : (peakCape > 0 ? -100 : 0);
+
+  // Lifted index from "[LI:-4.2 ...]"
+  const liMatch = b.hourlyForecast.match(/LI:(-?\d+(?:\.\d+)?)/);
+  const li = liMatch ? parseFloat(liMatch[1]) : 0;
+
+  // TPW from satellite block (e.g. 'TPW): 1.85"')
+  const tpwMatch = b.satellite.match(/TPW\)?:?\s*([\d.]+)"/i);
+  const tpw = tpwMatch ? parseFloat(tpwMatch[1]) : 0;
+
+  // Surface dewpoint and temp-dewpoint spread
+  const dewMatch = b.surfaceObs.match(/Dewpoint:\s*(-?\d+)°F/);
+  const dewpoint = dewMatch ? parseInt(dewMatch[1], 10) : 0;
+  const spreadMatch = b.surfaceObs.match(/Temp-Dewpoint spread:\s*(-?\d+)°F/);
+  const tempDewSpread = spreadMatch ? parseInt(spreadMatch[1], 10) : 99;
+
+  // Storm motion: pull the slowest active cell speed from radar block
+  const motionMatches = [...b.radarCells.matchAll(/at (\d+)mph/g)];
+  const stormMotionMph = motionMatches.length
+    ? Math.min(...motionMatches.map(m => parseInt(m[1], 10)))
+    : null;
+
+  // Bail out if we have basically nothing to interpret
+  if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0) {
+    return '';
+  }
+
+  const state: AtmosphericState = interpretAtmosphere(
+    peakCape, cin, li, tpw, dewpoint, tempDewSpread,
+    null, null, // shear data not currently fetched
+    b.wpcEro,
+    stormMotionMph,
+  );
+
+  return [
+    'ATMOSPHERIC STATE (derived):',
+    `Instability: ${state.instabilityLevel} | Cap: ${state.capStrength} | Moisture: ${state.moistureLevel}`,
+    `Storm mode: ${state.stormMode} | Shear env: ${state.shearEnvironment}`,
+    `Fog risk: ${state.fogRisk} | Flash flood risk: ${state.flashFloodRisk}`,
+    `Plain summary: ${state.plainSummary}`,
+  ].join('\n');
+}
 
 const NWS = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', Accept: 'application/geo+json' };
 const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
@@ -31,6 +88,7 @@ export interface MetBriefing {
   fireOutlook: string;
   droughtMonitor: string;
   glmLightning: string;
+  atmosphericState: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -486,6 +544,7 @@ export async function buildMetBriefing(
     fireOutlook: '',
     droughtMonitor: '',
     glmLightning: '',
+    atmosphericState: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -514,6 +573,10 @@ export async function buildMetBriefing(
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
 
   await Promise.all(fetches);
+
+  // Derive plain-language atmospheric state from the assembled numeric data.
+  result.atmosphericState = deriveAtmosphericState(result);
+
   return result;
 }
 
@@ -530,6 +593,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.droughtMonitor,
     briefing.glmLightning,
     briefing.surfaceObs,
+    briefing.atmosphericState,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
