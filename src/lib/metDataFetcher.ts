@@ -39,14 +39,20 @@ function deriveAtmosphericState(b: MetBriefing): string {
     ? Math.min(...motionMatches.map(m => parseInt(m[1], 10)))
     : null;
 
+  // Shear (knots) parsed from the shearProfile block
+  const sh06Match = b.shearProfile.match(/0-6km bulk shear:\s*(\d+)\s*kt/i);
+  const sh01Match = b.shearProfile.match(/0-1km shear:\s*(\d+)\s*kt/i);
+  const shear06 = sh06Match ? parseInt(sh06Match[1], 10) : null;
+  const shear01 = sh01Match ? parseInt(sh01Match[1], 10) : null;
+
   // Bail out if we have basically nothing to interpret
-  if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0) {
+  if (peakCape === 0 && tpw === 0 && tempDewSpread === 99 && motionMatches.length === 0 && shear06 === null) {
     return '';
   }
 
   const state: AtmosphericState = interpretAtmosphere(
     peakCape, cin, li, tpw, dewpoint, tempDewSpread,
-    null, null, // shear data not currently fetched
+    shear06, shear01,
     b.wpcEro,
     stormMotionMph,
   );
