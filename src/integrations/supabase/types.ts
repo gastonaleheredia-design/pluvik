@@ -71,6 +71,7 @@ export type Database = {
           id: string
           language: string | null
           notification_sensitivity: string | null
+          onboarding_completed_at: string | null
           quiet_hours_end: number | null
           quiet_hours_start: number | null
         }
@@ -79,6 +80,7 @@ export type Database = {
           id: string
           language?: string | null
           notification_sensitivity?: string | null
+          onboarding_completed_at?: string | null
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
         }
@@ -87,6 +89,7 @@ export type Database = {
           id?: string
           language?: string | null
           notification_sensitivity?: string | null
+          onboarding_completed_at?: string | null
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
         }

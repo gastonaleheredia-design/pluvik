@@ -1,82 +1,41 @@
-## The principle
+No, no debería mandarte al onboarding cada vez si ya lo completaste en el mismo navegador/dispositivo.
 
-Every screen passes the **3-second test**: glance, get the answer, look away. One big word, one supporting line, at most one number. Everything else lives behind a tap.
+Lo que encontré:
 
-The mockups already shown are the visual target. This plan turns them into the real app.
+1. **El onboarding no está ligado a tu cuenta.**
+   Ahora se guarda solo en `localStorage` con la clave `pluvik-onboarding-complete`. Eso significa que si el preview cambia de dominio, el navegador limpia datos, usas otro dispositivo, modo privado, o el preview se recarga como entorno nuevo, la app “olvida” que ya viste el onboarding.
 
----
+2. **Tu cuenta no depende del onboarding.**
+   Crear/iniciar sesión usa el sistema de autenticación del backend. Tu cuenta no se borra porque aparezca el onboarding otra vez. El problema es más de experiencia/estado local, no de seguridad de la cuenta.
 
-## 1. Home screen (`src/routes/index.tsx`)
+3. **El “stuck” o texto que a veces no aparece sí parece un bug real.**
+   El onboarding usa varias clases visuales antiguas como `text-navy-deep`, `bg-navy-deep`, `text-parchment`, `bg-parchment`, pero el sistema de estilos actual define colores como `ink`, `paper`, `amber-brand`. Eso puede producir estados visuales inconsistentes, especialmente después de cambios recientes de diseño.
 
-**Remove:** greeting, date line, rotating italic placeholder, the three template pills ("Track a plan / Will it rain? / Check storm risk"), the large hero question card.
+4. **También hay una carrera posible con auth/preview.**
+   La app restaura la sesión de login de forma asíncrona. El home decide mostrar onboarding inmediatamente mirando solo `localStorage`, sin esperar a saber si hay usuario ni consultar un estado persistente del usuario.
 
-**Replace with**, top to bottom:
-- Tiny monospace address tag at the top (`7202 SHARPVIEW DR · HOUSTON`)
-- One huge serif **condition word** centered: `DRY` / `RAIN SOON` / `RAINING` / `STORMS` / `SNOW` / `CLOUDY`
-- One italic serif sentence under it (`Clear through Saturday evening.`)
-- One small monospace caption in accent color (`NEXT RAIN · TUE 4 PM` — or hidden if no rain in 7 days)
-- Massive empty space
-- Thin pill-shaped "Ask about a specific time…" input pinned near the bottom (above the tab bar)
+Plan para arreglarlo sin cambiar el concepto visual:
 
-The home screen is now **passive and useful before the user types anything**. The question box becomes a secondary input, not the hero.
+1. **Separar “primera vez en este navegador” de “usuario ya onboarded”.**
+   - Mantener `localStorage` como fallback rápido para usuarios anónimos.
+   - Para usuarios logueados, guardar/leer un campo de onboarding en el perfil del usuario, por ejemplo `onboarding_completed_at`.
+   - Así, si vuelves a entrar con tu cuenta, la app sabe que ya lo completaste aunque el preview/localStorage se haya limpiado.
 
-Data needed: a lightweight "current condition + next-rain ETA" call for the saved address. If none saved yet, show a single CTA to set one (no greeting, no decoration).
+2. **Evitar el redirect prematuro al onboarding.**
+   - En la home, esperar a que auth termine de restaurarse antes de decidir si mandar al onboarding.
+   - Si hay usuario y su onboarding está completo, ir directo al home.
+   - Si no hay usuario, usar el estado local como hasta ahora.
 
-## 2. Answer screen (`src/routes/answer.tsx` + `src/components/BriefingScreen.tsx`)
+3. **Hacer el onboarding visualmente estable.**
+   - Reemplazar las clases antiguas por tokens existentes (`bg-paper`, `text-ink`, `text-amber-brand`, etc.) o estilos explícitos consistentes.
+   - Mantener el diseño que te gusta, pero eliminar los casos donde el texto/botones pueden quedarse sin color correcto.
 
-**Default view becomes minimal:**
-- Tiny back arrow + topic tag (`RAIN` / `WIND` / `STORM`)
-- Small monospace context line (`SAT 3–8 PM · HOUSTON`)
-- One huge serif **action word**: `NO` / `MAYBE` / `YES` (chosen by the LLM based on the question's verdict)
-- One italic serif sentence ("No rain expected from 3 to 8 PM Saturday.")
-- One large serif number + monospace caption ("8%" / "CHANCE OF RAIN") — only when a single number is meaningful; omit otherwise
-- Subtle `Why? →` link at the bottom
+4. **Mejorar el flujo de login en preview.**
+   - El modal ahora abre por defecto en “Create account”; podemos cambiarlo para que si el usuario ya tiene cuenta sea menos confuso, por ejemplo abriendo “Sign in” desde tracking/settings o mostrando ambos de forma más clara.
 
-**Tap "Why?" → expands the existing rich briefing** (the four fact tiles, story sentence, action paragraph, check-back) inline below. Nothing is deleted — everything currently in `BriefingScreen.tsx` and `briefing/` becomes the expanded view. The hurricane and severe variants get the same treatment: minimal default, full screen behind "Why?".
-
-Server contract change: the briefing response needs three new top-level fields the LLM fills in alongside the existing payload — `verdict_word` ("YES" | "NO" | "MAYBE"), `verdict_sentence` (one short italic line), and optionally `headline_number` (`{ value: "8%", label: "CHANCE OF RAIN" }`). Existing fields stay untouched so the expanded "Why?" view keeps working with zero rewrites.
-
-## 3. Tracking cards (`src/routes/dashboard.tsx`)
-
-**Remove from each card:** the quote line, the "UPDATED 17 HRS AGO" stamp, the colored dot, the chips.
-
-**Each card becomes three lines:**
-- Event name (small, plain)
-- One **action word** verdict: `GO` / `WAIT` / `NO` (large serif)
-- One number that matters: `22%` rain, or `in 16h`, or `Sat 3 PM`
-
-Tap card → existing event detail screen (`event.$id.tsx`). Stale data is silently re-fetched on focus instead of labeled as old.
-
-Sort: soonest event first. No grouping in this pass.
-
-## 4. Vocabulary rules (locked in)
-
-- **Home screen** uses **condition words** (`DRY`, `RAIN SOON`, `RAINING`, `STORMS`, `SNOW`, `CLOUDY`) — describes the place the user lives at.
-- **Answer screen** uses **action words** (`YES`, `NO`, `MAYBE`) — answers a yes/no question the user asked.
-- **Tracking cards** use **action words** (`GO`, `WAIT`, `NO`) — answers "should this event happen."
-
-This mix is deliberate: condition words for places, action words for decisions.
-
-## 5. Out of scope for this pass
-
-- Settings page redesign (separate task)
-- Onboarding redesign
-- Auto-refresh / live countdown on tracking
-- Grouping/sorting controls on tracking
-- Color theming (current cream + ink + orange accent stays)
-
----
-
-## Technical notes
-
-**Files touched:**
-- `src/routes/index.tsx` — full rewrite of the page body, keep auth + layout shell
-- `src/routes/answer.tsx` — wrap default render in a new minimal component, keep rich briefing as expanded section
-- `src/components/BriefingScreen.tsx` — extract a new `BriefingMinimal` sub-component; existing component becomes the "expanded" body
-- `src/components/HurricaneAnswerScreen.tsx`, `SevereAnswerScreen.tsx` — same minimal/expanded split
-- `src/routes/dashboard.tsx` — simplify card markup
-- Server briefing function — add `verdict_word`, `verdict_sentence`, optional `headline_number` to the LLM JSON schema and the response type
-
-**No new dependencies, no schema/database migrations, no auth changes.** This is a presentation-layer refactor plus three new fields on the existing LLM response.
-
-**Risk:** the LLM occasionally returning a verdict word longer than 3–4 letters. Mitigation: enum-constrain the schema so only the allowed words are valid; reject + retry once if it returns anything else, fall back to deriving the word from the existing fields if the retry also fails.
+5. **Validación después del cambio.**
+   - Probar: usuario anónimo nuevo → onboarding aparece.
+   - Completar onboarding → no vuelve a aparecer en ese navegador.
+   - Iniciar sesión → onboarding queda asociado a la cuenta.
+   - Limpiar storage o entrar en otro preview → usuario logueado no vuelve a onboarding si ya lo completó.
+   - Revisar mobile 430px para confirmar que textos y botones no desaparecen ni se superponen.
