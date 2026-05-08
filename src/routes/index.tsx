@@ -4,93 +4,61 @@ import { useEffect, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
+import { getHomeBriefing, type HomeBriefing } from '../lib/homeBriefing.functions';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
+
+const PAGE_BG = '#faf7f0';
+const INK = '#0b1018';
+const ACCENT = '#c2410c';
+const MUTED = '#6b6357';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
 });
 
-function getGreeting(t: (key: string) => string): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return t('home.greeting_morning');
-  if (hour < 18) return t('home.greeting_afternoon');
-  return t('home.greeting_evening');
-}
-
 function HomePage() {
-  const { t, i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const navigate = useNavigate();
+  const { address: selectedAddress } = useAddress();
+  const [showPicker, setShowPicker] = useState(false);
+  const [questionText, setQuestionText] = useState('');
+  const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
 
-  // Hydration-safe: compute time-dependent strings only after mount
-  // to avoid SSR/client timezone mismatches (React error #418).
-  const [mounted, setMounted] = useState(false);
+  // Redirect to onboarding if not completed.
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Redirect to onboarding if not completed
-  useEffect(() => {
+    if (typeof window === 'undefined') return;
     const onboardingDone = localStorage.getItem(ONBOARDING_KEY);
-    if (!onboardingDone) {
-      navigate({ to: '/onboarding' });
-    }
+    if (!onboardingDone) navigate({ to: '/onboarding' });
   }, [navigate]);
 
+  // Fetch the home briefing for the saved address.
   useEffect(() => {
-    // Re-render when language changes
-  }, [i18n.language]);
-
-  // Rotating placeholder
-  const placeholders = [
-    t('home.question_placeholder_1'),
-    t('home.question_placeholder_2'),
-    t('home.question_placeholder_3'),
-    t('home.question_placeholder_4'),
-    t('home.question_placeholder_5'),
-  ];
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [questionText, setQuestionText] = useState('');
-  const { address: selectedAddress, setAddress } = useAddress();
-  const [showPicker, setShowPicker] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPlaceholderIndex((prev) => (prev + 1) % placeholders.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [placeholders.length]);
-
-  const mockAddress = selectedAddress.label;
-  const mockAddressMeta = selectedAddress.meta;
-
-  // Template pills — prefill a useful starter question
-  const handleTemplate = (prefillKey: string) => {
-    setQuestionText(t(prefillKey));
-  };
+    if (selectedAddress.lat == null || selectedAddress.lon == null) {
+      setBriefingLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBriefingLoading(true);
+    getHomeBriefing({
+      data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language },
+    })
+      .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
+      .catch(() => { if (!cancelled) setBriefingLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedAddress.lat, selectedAddress.lon, i18n.language]);
 
   const handleSubmit = () => {
-    if (questionText.trim()) {
-      navigate({
-        to: '/answer',
-        search: {
-          q: questionText.trim(),
-          address: selectedAddress.label,
-        },
-      });
-    }
+    if (!questionText.trim()) return;
+    navigate({
+      to: '/answer',
+      search: { q: questionText.trim(), address: selectedAddress.label },
+    });
   };
 
-  const greeting = mounted ? getGreeting(t) : '';
-  const dateLabel = mounted
-    ? new Date()
-        .toLocaleDateString(undefined, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-        })
-        .toUpperCase()
+  const addressLine = selectedAddress.label
+    ? `${selectedAddress.label}${selectedAddress.meta ? ' · ' + selectedAddress.meta : ''}`.toUpperCase()
     : '';
 
   return (
@@ -98,276 +66,173 @@ function HomePage() {
       key={i18n.language}
       style={{
         minHeight: '100vh',
-        backgroundColor: '#faf7f0',
-        color: '#0b1018',
+        backgroundColor: PAGE_BG,
+        color: INK,
+        display: 'flex',
+        flexDirection: 'column',
         paddingBottom: '96px',
       }}
     >
-      {/* TOP SAFE AREA */}
-      <div style={{ padding: '56px 20px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* GREETING */}
-        <div
-          style={{
-            fontFamily: 'Fraunces, serif',
-            fontSize: '1.8rem',
-            lineHeight: 1.15,
-            fontWeight: 400,
-          }}
-        >
-          {greeting}
-        </div>
-        <div
-          style={{
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.7rem',
-            letterSpacing: '0.08em',
-            opacity: 0.55,
-            marginTop: '-12px',
-          }}
-        >
-          {dateLabel}
-        </div>
+      {/* Tiny address tag, top */}
+      <button
+        type="button"
+        onClick={() => setShowPicker(true)}
+        style={{
+          alignSelf: 'center',
+          margin: '52px 24px 0',
+          padding: '6px 4px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.6rem',
+          letterSpacing: '0.18em',
+          color: MUTED,
+          maxWidth: '90vw',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+        aria-label={t('home.address_change', { defaultValue: 'Change address' })}
+      >
+        {addressLine || '＋ ADD ADDRESS'}
+      </button>
 
-        {/* ADDRESS ROW */}
-        <button
-          type="button"
-          onClick={() => setShowPicker(true)}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: '#fff',
-            border: '1px solid rgba(11,16,24,0.06)',
-            borderRadius: '14px',
-            padding: '12px 14px',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
-            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-              <span
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-                title={mockAddress}
-              >
-                {mockAddress}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.62rem',
-                  letterSpacing: '0.08em',
-                  opacity: 0.55,
-                }}
-              >
-                {mockAddressMeta}
-              </span>
-            </div>
-          </div>
-          <span
-            style={{
-              background: 'none',
-              border: 'none',
-              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.65rem',
-              letterSpacing: '0.08em',
-              color: '#c2410c',
-              flexShrink: 0,
-            }}
-          >
-            {t('home.address_change')}
-          </span>
-        </button>
-
-        {/* QUESTION BOX */}
-        <div
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid rgba(11,16,24,0.06)',
-            borderRadius: '18px',
-            padding: '14px',
-          }}
-        >
-          {/* Rotating placeholder indicator */}
+      {/* HERO — verdict word + sentence + next-rain caption */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          padding: '14vh 24px 0',
+          textAlign: 'center',
+        }}
+      >
+        {briefingLoading ? (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginBottom: '10px',
-              minHeight: '8px',
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: ACCENT,
+              animation: 'homePulse 1.4s ease-in-out infinite',
+            }}
+          />
+        ) : briefing ? (
+          <>
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontWeight: 400,
+                fontSize: 'clamp(4rem, 18vw, 7rem)',
+                lineHeight: 0.95,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {briefing.word}
+            </div>
+            <div
+              style={{
+                marginTop: '20px',
+                fontFamily: 'Fraunces, serif',
+                fontStyle: 'italic',
+                fontWeight: 400,
+                fontSize: 'clamp(1rem, 4.5vw, 1.35rem)',
+                lineHeight: 1.35,
+                maxWidth: '420px',
+                color: INK,
+              }}
+            >
+              {briefing.sentence}
+            </div>
+            {briefing.next_rain_caption && (
+              <div
+                style={{
+                  marginTop: '18px',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.18em',
+                  color: ACCENT,
+                }}
+              >
+                {briefing.next_rain_caption}
+              </div>
+            )}
+          </>
+        ) : (
+          <div
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              color: MUTED,
+              fontSize: '1rem',
             }}
           >
-            {placeholders.map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  width: '5px',
-                  height: '5px',
-                  borderRadius: '50%',
-                  backgroundColor: i === placeholderIndex ? '#c2410c' : 'rgba(11,16,24,0.15)',
-                  transition: 'background-color 0.3s',
-                }}
-              />
-            ))}
+            {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
+        )}
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}`}</style>
+      </div>
 
-          {/* Text area */}
-          <textarea
+      {/* Thin question input pinned near bottom */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+        style={{
+          padding: '0 20px 20px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#fff',
+            border: '1px solid rgba(11,16,24,0.08)',
+            borderRadius: '100px',
+            padding: '6px 6px 6px 18px',
+          }}
+        >
+          <input
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
-            placeholder={placeholders[placeholderIndex]}
-            rows={3}
+            placeholder={t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })}
             style={{
-              width: '100%',
-              background: 'none',
+              flex: 1,
               border: 'none',
               outline: 'none',
-              resize: 'none',
+              background: 'transparent',
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
               fontSize: '0.95rem',
-              lineHeight: 1.45,
-              color: questionText ? '#0b1018' : '#9ca3af',
-              marginBottom: '12px',
+              color: INK,
+              minWidth: 0,
             }}
           />
-
-          {/* Actions row */}
-          <div
+          <button
+            type="submit"
+            disabled={!questionText.trim()}
+            aria-label="Ask"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              paddingTop: '12px',
-              borderTop: '1px solid rgba(11,16,24,0.06)',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              border: 'none',
+              backgroundColor: questionText.trim() ? ACCENT : '#e5e7eb',
+              color: questionText.trim() ? PAGE_BG : '#9ca3af',
+              cursor: questionText.trim() ? 'pointer' : 'default',
+              fontSize: '1rem',
+              flexShrink: 0,
             }}
           >
-            {/* Mic button */}
-            <button
-              onClick={() => {
-                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                  alert(t('home.mic_unsupported'));
-                  return;
-                }
-                const SpeechRecognition =
-                  (window as any).SpeechRecognition ||
-                  (window as any).webkitSpeechRecognition;
-                const recognition = new SpeechRecognition();
-                recognition.lang = i18n.language === 'es' ? 'es-US' : 'en-US';
-                recognition.interimResults = true;
-                recognition.maxAlternatives = 1;
-                recognition.onstart = () => setIsListening(true);
-                recognition.onresult = (event: any) => {
-                  let transcript = '';
-                  for (let i = 0; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
-                  }
-                  setQuestionText(transcript);
-                };
-                recognition.onerror = () => setIsListening(false);
-                recognition.onend = () => setIsListening(false);
-                recognition.start();
-              }}
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                backgroundColor: isListening ? '#c2410c' : '#faf7f0',
-                border: isListening ? '1px solid #c2410c' : '1px solid rgba(11,16,24,0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                flexShrink: 0,
-                fontSize: '1rem',
-                color: isListening ? '#faf7f0' : '#0b1018',
-                transition: 'background-color 0.2s, color 0.2s',
-              }}
-              aria-label={isListening ? t('home.mic_listening') : 'Voice input'}
-            >
-              🎙
-            </button>
-
-            {/* Submit button */}
-            <button
-              onClick={handleSubmit}
-              disabled={!questionText.trim()}
-              style={{
-                flex: 1,
-                padding: '11px',
-                backgroundColor: questionText.trim() ? '#c2410c' : '#e5e7eb',
-                color: questionText.trim() ? '#faf7f0' : '#9ca3af',
-                borderRadius: '100px',
-                border: 'none',
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                cursor: questionText.trim() ? 'pointer' : 'default',
-                transition: 'background-color 0.2s, color 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-            >
-              {t('home.submit_button')} →
-            </button>
-          </div>
+            →
+          </button>
         </div>
-
-        {/* QUICK TEMPLATE PILLS */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '6px',
-            overflowX: 'auto',
-            paddingBottom: '4px',
-          }}
-        >
-          {[
-            { emoji: '📅', label: t('home.template_track'), prefill: 'home.template_track_prefill' },
-            { emoji: '🌧️', label: t('home.template_rain'), prefill: 'home.template_rain_prefill' },
-            { emoji: '🌪️', label: t('home.template_storm'), prefill: 'home.template_storm_prefill' },
-          ].map((pill) => (
-            <button
-              key={pill.label}
-              onClick={() => handleTemplate(pill.prefill)}
-              style={{
-                backgroundColor: '#faf7f0',
-                border: '1px solid rgba(11,16,24,0.08)',
-                padding: '8px 12px',
-                borderRadius: '100px',
-                color: '#0b1018',
-                fontSize: '0.7rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-                cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              {pill.emoji} {pill.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      </form>
 
       <BottomNav />
-      {showPicker && (
-        <AddressPicker onClose={() => setShowPicker(false)} />
-      )}
+      {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
     </div>
   );
 }
