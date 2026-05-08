@@ -660,6 +660,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.glmLightning,
     briefing.surfaceObs,
     briefing.atmosphericState,
+    briefing.shearProfile,
     briefing.hourlyForecast,
     briefing.modelComparison,
     briefing.radarCells,
@@ -725,7 +726,8 @@ export function assemblePrioritizedBriefing(
   const allFields: (keyof MetBriefing)[] = [
     'alerts', 'spcOutlook', 'spcDay2', 'spcDay3', 'spcDay48', 'mesoscaleDiscussion',
     'wpcEro', 'fireOutlook', 'droughtMonitor', 'glmLightning', 'surfaceObs',
-    'hourlyForecast', 'modelComparison', 'radarCells', 'sounding', 'satellite',
+    'atmosphericState', 'shearProfile', 'hourlyForecast', 'modelComparison',
+    'radarCells', 'sounding', 'satellite',
     'marine', 'airQuality', 'fireWeather', 'ensemble', 'afd',
   ];
 
