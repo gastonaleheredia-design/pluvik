@@ -227,6 +227,16 @@ export const askWeather = createServerFn({ method: 'POST' })
     const profile = classifyScenario(briefing, parsed);
     const briefingText = assemblePrioritizedBriefing(briefing, profile);
 
+    const { calculateConfidence } = await import('./confidenceCalculator');
+    const { deriveModelSpread, deriveAfdConfidenceHint, hasActiveCells } = await import('./confidenceSignals');
+    const confidence = calculateConfidence(
+      profile.horizon,
+      profile.scenario,
+      deriveModelSpread(briefing),
+      deriveAfdConfidenceHint(briefing),
+      hasActiveCells(briefing),
+    );
+
     const mode = await detectMode(lat, lon, briefing.alerts);
 
     const systemPrompt =
@@ -240,6 +250,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Activity type detected: ${parsed.activityType}\n` +
       `Time window: ${parsed.timeWindow}\n` +
       `Detected scenario: ${profile.scenario} (${profile.horizon}, base confidence ${profile.confidenceBase})\n` +
+      `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
       `METEOROLOGICAL BRIEFING (sections tagged [PRIMARY] are most relevant; [SECONDARY] support; [CONTEXT] background; ignored sources removed):\n${briefingText}`;
 
