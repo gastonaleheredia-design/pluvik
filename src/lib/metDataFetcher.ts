@@ -5,6 +5,12 @@ import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
+import { classifyCell, cellTypeLabel } from './cellClassifier';
+
+const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+function compass(deg: number): string {
+  return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
+}
 
 // Module-scoped briefing cache. Lives for the duration of a Worker isolate
 // (typically minutes). 60-second TTL covers retry storms and identical
