@@ -22,18 +22,11 @@ export const Route = createFileRoute('/dashboard')({
   component: DashboardPage,
 });
 
-function timeAgo(dateStr: string): string {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 3600) return `${Math.floor(diff / 60)} MIN AGO`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} HRS AGO`;
-  return `${Math.floor(diff / 86400)} DAYS AGO`;
-}
-
-const VERDICT_COLORS: Record<string, string> = {
-  GO: '#15803d',
-  CAUTION: '#f59e0b',
-  'NO-GO': '#b91c1c',
-  UNKNOWN: '#6b7280',
+const VERDICT_WORD: Record<string, string> = {
+  GO: 'GO',
+  CAUTION: 'WAIT',
+  'NO-GO': 'NO',
+  UNKNOWN: '—',
 };
 
 const PAGE_BG = '#faf7f0';
