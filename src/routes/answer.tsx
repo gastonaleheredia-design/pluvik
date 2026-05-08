@@ -370,6 +370,20 @@ function AnswerPage() {
           </span>
         </div>
 
+        {/* Decision window — between verdict tag and big percentage */}
+        {answer.decision_window && (
+          <div style={{
+            fontFamily: 'Fraunces, serif',
+            fontStyle: 'italic',
+            fontSize: '1.1rem',
+            color: '#0b1018',
+            marginBottom: '8px',
+            marginTop: '4px',
+          }}>
+            {answer.decision_window}
+          </div>
+        )}
+
         {/* Big percentage */}
         <div
           style={{
@@ -437,77 +451,36 @@ function AnswerPage() {
           &ldquo;{answer.summary}&rdquo;
         </div>
 
-        {/* Main concern */}
         {answer.main_concern && (
-          <div
-            style={{
-              fontSize: '0.9rem',
-              color: INK,
-              marginBottom: '20px',
-            }}
-          >
-            <span
-              style={{
-                fontSize: '0.65rem',
-                letterSpacing: '0.1em',
-                color: MUTED,
-                marginRight: '8px',
-              }}
-            >
-              {t('answer.main_concern_label').toUpperCase()}
-            </span>
-            {answer.main_concern}
-          </div>
-        )}
-
-        {/* Decision window */}
-        {answer.decision_window && (
-          <div
-            style={{
-              fontSize: '0.9rem',
-              color: INK,
-              marginBottom: '14px',
-            }}
-          >
-            <span
-              style={{
-                fontSize: '0.65rem',
-                letterSpacing: '0.1em',
-                color: MUTED,
-                marginRight: '8px',
-              }}
-            >
-              {t('answer.decision_window_label').toUpperCase()}
-            </span>
-            {answer.decision_window}
-          </div>
-        )}
-
-        {/* Recommended action */}
-        {answer.action && (
-          <div
-            style={{
-              fontSize: '0.95rem',
-              color: INK,
-              marginBottom: '20px',
-              padding: '12px 14px',
-              background: '#f0ebde',
-              borderRadius: '12px',
-              borderLeft: `3px solid ${ACCENT}`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: '0.6rem',
-                letterSpacing: '0.12em',
-                color: ACCENT,
-                marginBottom: '4px',
-                fontWeight: 600,
-              }}
-            >
-              {t('answer.action_label').toUpperCase()}
+          <div style={{
+            backgroundColor: '#f0ebde',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            marginBottom: '8px',
+            borderLeft: '3px solid #c2410c',
+          }}>
+            <div className="mono-label" style={{ fontSize: '0.52rem', color: '#c2410c', marginBottom: '4px' }}>
+              MAIN CONCERN
             </div>
-            {answer.action}
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: '#0b1018' }}>
+              {answer.main_concern}
+            </div>
+          </div>
+        )}
+
+        {answer.action && (
+          <div style={{
+            backgroundColor: '#0b1018',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            marginBottom: '12px',
+          }}>
+            <div className="mono-label" style={{ fontSize: '0.52rem', color: '#f59e0b', marginBottom: '4px' }}>
+              RECOMMENDATION
+            </div>
+            <div style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#faf7f0' }}>
+              {answer.action}
+            </div>
           </div>
         )}
 
