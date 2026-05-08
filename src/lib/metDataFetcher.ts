@@ -620,6 +620,14 @@ export async function buildMetBriefing(
   lon: number,
   parsed: ParsedQuestion
 ): Promise<MetBriefing> {
+  // 60-second in-memory cache keyed by rounded coords + question time window.
+  // Workers reuse the same isolate for short bursts, so back-to-back identical
+  // questions skip the 21-source fan-out and the Claude bill.
+  const cacheKey = `${lat.toFixed(2)}|${lon.toFixed(2)}|${parsed.timeWindow ?? ''}|${parsed.activityType ?? ''}`;
+  const now = Date.now();
+  const cached = briefingCache.get(cacheKey);
+  if (cached && now - cached.t < 60_000) return cached.v;
+
   const fetches: Promise<void>[] = [];
   const result: MetBriefing = {
     surfaceObs: '',
