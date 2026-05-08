@@ -6,6 +6,22 @@ export interface StormInterceptResult {
   impactDuration: number | null;  // estimated minutes of impact
   threatLevel: 'core' | 'moderate' | 'peripheral' | 'none';
   plainLanguage: string;
+  /** Compass bearing FROM user TO cell (e.g. "NW") — useful for the answer sentence. */
+  bearingFromUser?: string;
+  /** Straight-line distance user→cell, miles. */
+  distanceMiles?: number;
+  /** Cell radar reflectivity, dBZ. */
+  dbz?: number;
+  /** Plain-English intensity word from dBZ. */
+  intensityWord?: 'light' | 'moderate' | 'heavy' | 'intense' | 'extreme';
+  /** Storm-mode classification (e.g. "discrete supercell", "multicell line"). */
+  cellTypeLabel?: string;
+  /** Primary threat phrase (e.g. "large hail and damaging wind"). */
+  primaryThreat?: string;
+  /** Direction storm is moving toward, compass label (e.g. "ESE"). */
+  motionDirLabel?: string;
+  /** Storm motion speed, mph. */
+  motionSpeedMph?: number;
 }
 
 export function calculateStormIntercept(
