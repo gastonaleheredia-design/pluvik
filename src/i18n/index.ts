@@ -19,9 +19,7 @@ i18n.use(initReactI18next).init({
   returnNull: false,
 });
 
-if (typeof window !== 'undefined') {
-  // eslint-disable-next-line no-console
-  console.log('[i18n] initialized?', i18n.isInitialized, 'lang:', i18n.language, 'sample:', i18n.t('answer.error_title'));
-}
+// eslint-disable-next-line no-console
+console.log('[i18n] module loaded, init?', i18n.isInitialized, 'sample:', i18n.t('answer.error_title'));
 
 export default i18n;
