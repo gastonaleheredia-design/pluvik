@@ -264,11 +264,24 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(
       `https://mesonet.agron.iastate.edu/json/nexrad_attr.py?lat=${lat}&lon=${lon}&radius=150`,
-      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' } }
+      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' }, redirect: 'follow' }
     );
-    if (!res.ok) return '';
-    const data = await res.json();
-    if (!data.attrs?.length) return 'RADAR: No tracked storm cells within 150 miles.';
+    if (!res.ok) {
+      console.warn('[radar] IEM endpoint failed', res.status, '— falling back to grid sample');
+      return await fetchRadarCellsFromGrid(lat, lon);
+    }
+    let data: any = null;
+    try { data = await res.json(); } catch {
+      console.warn('[radar] IEM returned non-JSON — falling back to grid sample');
+      return await fetchRadarCellsFromGrid(lat, lon);
+    }
+    if (!data?.attrs?.length) {
+      // IEM said no tracked cells — verify against grid sample. If grid finds
+      // active heavy precip, prefer that signal.
+      const gridText = await fetchRadarCellsFromGrid(lat, lon);
+      if (gridText && !gridText.includes('No active')) return gridText;
+      return 'RADAR: No tracked storm cells within 150 miles.';
+    }
 
     const cells = data.attrs.slice(0, 5).map((c: any) => {
       const dLat = c.lat - lat;
@@ -292,7 +305,106 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
     });
 
     return `NEXRAD TRACKED CELLS:\n${cells.join('\n')}`;
-  } catch {
+  } catch (e) {
+    console.warn('[radar] IEM threw, falling back to grid sample', e);
+    try { return await fetchRadarCellsFromGrid(lat, lon); } catch { return 'RADAR: Cell data unavailable.'; }
+  }
+}
+
+/**
+ * Fallback radar source: sample Open-Meteo nowcast precipitation on a 5x5
+ * grid (~10 mi spacing) around the user, treat each cell with heavy precip
+ * as a pseudo storm cell, and use 700 hPa wind as the storm-motion vector.
+ * Produces the same line format as fetchRadarCells so downstream
+ * parseAndComputeIntercepts() works unchanged.
+ */
+async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
+  try {
+    const STEP_DEG = 0.145; // ~10 mi at mid-latitudes
+    const N = 2;            // -2..+2 → 5x5 = 25 points
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+    for (let i = -N; i <= N; i++) {
+      for (let j = -N; j <= N; j++) {
+        lats.push(+(lat + i * STEP_DEG).toFixed(4));
+        lons.push(+(lon + (j * STEP_DEG) / cosLat).toFixed(4));
+      }
+    }
+
+    // Storm motion: 700 hPa wind for steering layer
+    const motionRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2&wind_speed_unit=mph&timezone=auto`
+    );
+    let stormDirDeg: number | null = null;
+    let stormSpeedMph: number | null = null;
+    if (motionRes.ok) {
+      const md = await motionRes.json();
+      const fromDeg = md.hourly?.wind_direction_700hPa?.[0];
+      const sp = md.hourly?.wind_speed_700hPa?.[0];
+      if (fromDeg != null) stormDirDeg = (fromDeg + 180) % 360; // toward
+      if (sp != null) stormSpeedMph = Math.round(sp);
+    }
+
+    // Precipitation grid
+    const gridRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+      `&minutely_15=precipitation&forecast_minutely_15=8&timezone=auto&precipitation_unit=inch`
+    );
+    if (!gridRes.ok) return 'RADAR: Cell data unavailable (grid fetch failed).';
+    const gridJson = await gridRes.json();
+    const arr: any[] = Array.isArray(gridJson) ? gridJson : [gridJson];
+
+    type GridCell = { lat: number; lon: number; dbz: number; precip: number };
+    const candidates: GridCell[] = [];
+    for (const point of arr) {
+      const precip: number[] = point.minutely_15?.precipitation ?? [];
+      const max15 = precip.length ? Math.max(...precip) : 0;
+      if (max15 < 0.04) continue;                         // ~0.16"/hr — light-moderate floor
+      const mmPerHr = max15 * 4 * 25.4;                    // 15-min in → in/hr → mm/hr
+      // Marshall-Palmer: Z = 200 R^1.6  →  dBZ = 10*log10(Z)
+      const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
+      candidates.push({ lat: point.latitude, lon: point.longitude, dbz, precip: max15 });
+    }
+    if (candidates.length === 0) {
+      return 'RADAR: No active precipitation cells within ~50 miles (grid sample).';
+    }
+
+    // Dedupe close points: sort by dbz, keep cells >12mi apart
+    candidates.sort((a, b) => b.dbz - a.dbz);
+    const kept: GridCell[] = [];
+    for (const c of candidates) {
+      const tooClose = kept.some(k => {
+        const dy = (c.lat - k.lat) * 69;
+        const dx = (c.lon - k.lon) * 69 * cosLat;
+        return Math.sqrt(dx * dx + dy * dy) < 12;
+      });
+      if (!tooClose) kept.push(c);
+      if (kept.length >= 5) break;
+    }
+
+    const lines = kept.map(c => {
+      const dLat = c.lat - lat;
+      const dLon = c.lon - lon;
+      const distMiles = Math.round(Math.sqrt(dLat * dLat * 69 * 69 + dLon * dLon * 69 * 69 * cosLat * cosLat));
+      const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(bearingDeg / 45) % 8];
+
+      let interceptLine = '';
+      if (stormDirDeg != null && stormSpeedMph != null && stormSpeedMph > 0) {
+        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, stormDirDeg, stormSpeedMph, c.dbz);
+        const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
+        const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
+        interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
+      }
+      const motionTxt = stormDirDeg != null ? `${stormDirDeg}° at ${stormSpeedMph}mph` : '? mph';
+      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}${interceptLine}`;
+    });
+
+    return `NEXRAD TRACKED CELLS (grid-sampled fallback, 700hPa motion):\n${lines.join('\n')}`;
+  } catch (e) {
+    console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
   }
 }
@@ -416,22 +528,81 @@ async function fetchSPCOutlook(): Promise<string> {
 }
 
 // SPC Mesoscale Discussions — issued when severe weather is imminent (next 1-6h)
-async function fetchMesoscaleDiscussion(): Promise<string> {
+// Geo-filtered: only returns MDs whose state-zone list (e.g. OKZ000-, TXZ000-)
+// contains the user's state, so an OK user never sees a Florida MD.
+async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<string> {
   try {
+    // 1. Resolve the user's state via NWS points (free, fast, cached).
+    let userState: string | null = null;
+    try {
+      const ptRes = await fetch(
+        `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+        { headers: NWS }
+      );
+      if (ptRes.ok) {
+        const pt = await ptRes.json();
+        userState = pt.properties?.relativeLocation?.properties?.state ?? null;
+      }
+    } catch { /* ignore */ }
+
+    // 2. Pull the active MD index.
     const res = await fetch('https://www.spc.noaa.gov/products/md/', { headers: UA });
     if (!res.ok) return '';
     const html = await res.text();
-    // Look for active MD numbers in the page
-    const mdMatch = html.match(/md(\d{4})\.html/);
-    if (!mdMatch) return 'SPC MESOSCALE DISCUSSIONS: None active.';
-    const mdNum = mdMatch[1];
-    const mdRes = await fetch(`https://www.spc.noaa.gov/products/md/md${mdNum}.txt`, { headers: UA });
-    if (!mdRes.ok) return `SPC MD #${mdNum} active (text unavailable).`;
-    const mdText = await mdRes.text();
-    return `SPC MESOSCALE DISCUSSION #${mdNum}:\n${mdText.slice(0, 1500)}`;
+    const mdNums = Array.from(new Set(
+      Array.from(html.matchAll(/md(\d{4})\.html/g)).map(m => m[1])
+    )).slice(0, 8);
+    if (mdNums.length === 0) return 'SPC MESOSCALE DISCUSSIONS: None active.';
+
+    // 3. Fetch each MD and keep ones that match the user's state.
+    const matches: { num: string; text: string }[] = [];
+    for (const num of mdNums) {
+      try {
+        const r = await fetch(`https://www.spc.noaa.gov/products/md/md${num}.txt`, { headers: UA });
+        if (!r.ok) continue;
+        const text = await r.text();
+        if (!userState) {
+          // Without state, fall back to the very first one only.
+          matches.push({ num, text });
+          break;
+        }
+        // State zones appear as lines like "OKZ000-082200-" or "TXZ001-002-".
+        const stateZoneRe = new RegExp(`\\b${userState}Z\\d`, 'i');
+        // Or "Areas affected...parts of central Oklahoma".
+        const stateNameRe = new RegExp(`\\b${stateAbbrToName(userState)}\\b`, 'i');
+        if (stateZoneRe.test(text) || stateNameRe.test(text)) {
+          matches.push({ num, text });
+        }
+        if (matches.length >= 2) break;
+      } catch { /* skip this MD */ }
+    }
+
+    if (matches.length === 0) {
+      return `SPC MESOSCALE DISCUSSIONS: ${mdNums.length} active nationwide, none currently affect ${userState ?? 'this area'}.`;
+    }
+    return matches.map(m =>
+      `SPC MESOSCALE DISCUSSION #${m.num} (matches ${userState}):\n${m.text.slice(0, 1500)}`
+    ).join('\n\n');
   } catch {
     return '';
   }
+}
+
+// US state abbreviation → full name lookup for MD body matching.
+function stateAbbrToName(abbr: string): string {
+  const map: Record<string, string> = {
+    AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
+    CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',
+    IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',
+    ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',
+    MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',
+    NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',
+    NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',
+    PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',
+    TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',
+    WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Columbia',
+  };
+  return map[abbr.toUpperCase()] ?? abbr;
 }
 
 // Marine conditions: wave height, period, swell, SST (Open-Meteo Marine API)
@@ -677,7 +848,7 @@ export async function buildMetBriefing(
   fetches.push(fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }));
   fetches.push(fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }));
   fetches.push(fetchSPCOutlook().then(v => { result.spcOutlook = v; }));
-  fetches.push(fetchMesoscaleDiscussion().then(v => { result.mesoscaleDiscussion = v; }));
+  fetches.push(fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }));
   fetches.push(fetchMarine(lat, lon).then(v => { result.marine = v; }));
   fetches.push(fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }));
   fetches.push(fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }));

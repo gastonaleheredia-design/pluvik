@@ -347,6 +347,27 @@ export const askWeather = createServerFn({ method: 'POST' })
       console.warn('[askWeather] schema validation failed:', validated.issues);
     }
 
+    // Hard-floor: if a storm cell is on an intercept track within 2 hours,
+    // override whatever the LLM said. This makes the answer match radar
+    // reality even when the prompt is ignored or the model hedges.
+    const imminent = stormIntercepts
+      .filter(s => s.willIntercept && s.etaMinutes != null && s.etaMinutes <= 120)
+      .sort((a, b) => (a.etaMinutes ?? 999) - (b.etaMinutes ?? 999))[0];
+    if (imminent) {
+      const eta = imminent.etaMinutes!;
+      const dur = imminent.impactDuration ?? 20;
+      validated.data.verdict = 'NO-GO';
+      validated.data.verdict_word = 'NO';
+      validated.data.headline_number = { value: `~${eta} MIN`, label: 'TO IMPACT' };
+      // Only rewrite the sentence if the model didn't reference timing itself.
+      const sentence = String(validated.data.verdict_sentence ?? '');
+      if (!/min|hour|impact|arrive|shelter/i.test(sentence)) {
+        validated.data.verdict_sentence =
+          `Storm core arrives in ~${eta} min, lasting ~${dur} min — take shelter.`;
+      }
+      validated.data.intercept_eta_minutes = eta;
+    }
+
     return {
       ...validated.data,
       mode,
