@@ -79,6 +79,9 @@ export const translations = {
         decision_backup: 'HAVE A BACKUP',
         decision_move_it: 'MOVE IT',
         decision_check_again: 'CHECK AGAIN LATER',
+        coverage_title: "That spot's outside our coverage",
+        coverage_message: "Pluvik currently only covers the United States. We rely on US-only NEXRAD radar and NWS data — using lower-quality global models would mean dishonest forecasts. International coverage is on the roadmap.",
+        coverage_change_address: 'Change address',
       },
       // Dashboard
       dashboard: {
@@ -308,6 +311,9 @@ export const translations = {
         decision_backup: 'TEN UN PLAN B',
         decision_move_it: 'MUÉVELO',
         decision_check_again: 'REVISA MÁS TARDE',
+        coverage_title: 'Esa ubicación está fuera de nuestra cobertura',
+        coverage_message: 'Pluvik actualmente solo cubre Estados Unidos. Dependemos del radar NEXRAD y datos del NWS — usar modelos globales de menor calidad significaría pronósticos poco honestos. La cobertura internacional está en el roadmap.',
+        coverage_change_address: 'Cambiar dirección',
       },
       // Dashboard
       dashboard: {
