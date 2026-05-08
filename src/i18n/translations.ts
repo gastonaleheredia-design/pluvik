@@ -96,6 +96,8 @@ export const translations = {
         ago_hours: '{{n}} HRS AGO',
         tracking_active: 'TRACKING',
         add_event: '+ New question',
+        delete_event: 'Delete',
+        delete_confirm: 'Delete this tracked plan? This cannot be undone.',
       },
       // Event detail
       event: {
@@ -106,6 +108,15 @@ export const translations = {
         started_tracking: 'Started tracking. I\'ll watch this for you.',
         no_change: 'Checked. No change.',
         now_label: 'NOW',
+        action_edit: 'Edit question',
+        action_complete: 'Mark complete',
+        action_delete: 'Delete',
+        edit_modal_title: 'Edit your question',
+        edit_modal_save: 'Save',
+        edit_modal_cancel: 'Cancel',
+        complete_confirm: 'Mark this plan as complete? It will be removed from your tracked list.',
+        delete_confirm: 'Delete this tracked plan? This cannot be undone.',
+        completed_badge: 'COMPLETED',
       },
       // Settings
       settings: {
@@ -301,6 +312,8 @@ export const translations = {
         ago_hours: 'HACE {{n}} HRS',
         tracking_active: 'ACTIVO',
         add_event: '+ Nueva pregunta',
+        delete_event: 'Eliminar',
+        delete_confirm: '¿Eliminar este plan? No se puede deshacer.',
       },
       // Event detail
       event: {
@@ -311,6 +324,15 @@ export const translations = {
         started_tracking: 'Empecé a seguirlo. Voy a vigilar el cielo por ti.',
         no_change: 'Revisado. Sin cambios.',
         now_label: 'AHORA',
+        action_edit: 'Editar pregunta',
+        action_complete: 'Marcar como completo',
+        action_delete: 'Eliminar',
+        edit_modal_title: 'Edita tu pregunta',
+        edit_modal_save: 'Guardar',
+        edit_modal_cancel: 'Cancelar',
+        complete_confirm: '¿Marcar este plan como completo? Se quitará de tu lista.',
+        delete_confirm: '¿Eliminar este plan? No se puede deshacer.',
+        completed_badge: 'COMPLETADO',
       },
       // Settings
       settings: {
