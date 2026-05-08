@@ -250,10 +250,8 @@ function DashboardPage() {
         )}
 
         {/* Event cards */}
-        <style>{`@keyframes trackPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}`}</style>
         {events.map((event) => {
-          const verdictColor =
-            VERDICT_COLORS[event.current_verdict] ?? VERDICT_COLORS.UNKNOWN;
+          const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
           return (
             <Link
               key={event.id}
@@ -266,103 +264,70 @@ function DashboardPage() {
                   backgroundColor: '#fff',
                   border: `1px solid ${INK}14`,
                   borderRadius: '16px',
-                  padding: '18px',
+                  padding: '20px 22px',
                   marginBottom: '14px',
                   position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
                 }}
               >
-                {/* Top-right: pulsing dot + delete */}
-                <div
+                {/* Delete button */}
+                <button
+                  onClick={(e) => handleDelete(e, event.id)}
+                  aria-label={t('dashboard.delete_event')}
                   style={{
                     position: 'absolute',
-                    top: '14px',
-                    right: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
+                    top: '12px',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    color: MUTED,
+                    fontSize: '1.1rem',
+                    lineHeight: 1,
                   }}
                 >
-                  <div
-                    style={{
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '50%',
-                      backgroundColor: ACCENT,
-                      animation: 'trackPulse 1.4s ease-in-out infinite',
-                    }}
-                  />
-                  <button
-                    onClick={(e) => handleDelete(e, event.id)}
-                    aria-label={t('dashboard.delete_event')}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '4px 6px',
-                      borderRadius: '6px',
-                      color: MUTED,
-                      fontSize: '1.1rem',
-                      lineHeight: 1,
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
+                  ×
+                </button>
 
-                {/* Question */}
+                {/* Event name */}
                 <div
                   style={{
-                    fontFamily: 'Fraunces, serif',
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                    paddingRight: '60px',
-                    marginBottom: '4px',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '0.85rem',
+                    color: INK,
+                    paddingRight: '32px',
                   }}
                 >
                   {event.question}
                 </div>
 
-                {/* Meta */}
+                {/* Verdict word */}
                 <div
                   style={{
-                    fontSize: '0.78rem',
-                    color: MUTED,
-                    marginBottom: '12px',
-                  }}
-                >
-                  {event.address}
-                </div>
-
-                {/* Summary */}
-                <div
-                  style={{
-                    fontSize: '0.92rem',
-                    fontStyle: 'italic',
+                    fontFamily: 'Fraunces, serif',
+                    fontWeight: 400,
+                    fontSize: 'clamp(2.2rem, 9vw, 3rem)',
+                    lineHeight: 0.95,
+                    letterSpacing: '-0.02em',
                     color: INK,
-                    lineHeight: 1.4,
-                    marginBottom: '14px',
                   }}
                 >
-                  &ldquo;{event.current_summary}&rdquo;
+                  {word}
                 </div>
 
-                {/* Footer */}
+                {/* One number */}
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                     fontSize: '0.7rem',
-                    letterSpacing: '0.08em',
-                    color: MUTED,
+                    letterSpacing: '0.12em',
+                    color: ACCENT,
                   }}
                 >
-                  <span>
-                    ● {t('dashboard.updated')} {timeAgo(event.last_checked_at)}
-                  </span>
-                  <span style={{ color: verdictColor, fontWeight: 700 }}>
-                    {event.current_percentage}% · {event.current_verdict}
-                  </span>
+                  {event.current_percentage}% · {event.current_verdict}
                 </div>
               </div>
             </Link>
