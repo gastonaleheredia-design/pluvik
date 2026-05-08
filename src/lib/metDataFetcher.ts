@@ -698,6 +698,13 @@ export async function buildMetBriefing(
   // Derive plain-language atmospheric state from the assembled numeric data.
   result.atmosphericState = deriveAtmosphericState(result);
 
+  briefingCache.set(cacheKey, { t: now, v: result });
+  // Opportunistic eviction so the map doesn't grow unbounded.
+  if (briefingCache.size > 200) {
+    for (const [k, e] of briefingCache) {
+      if (now - e.t > 60_000) briefingCache.delete(k);
+    }
+  }
   return result;
 }
 
