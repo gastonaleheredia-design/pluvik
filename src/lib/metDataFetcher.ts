@@ -5,6 +5,35 @@ import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 
 /**
+ * Robustly extract a bulk shear value (in knots) for a given layer
+ * (e.g. 0-6 km, 0-1 km) from a free-form shear-profile text block.
+ * Tolerates label/unit/format variations.
+ */
+function extractShearKt(text: string, lo: number, hi: number): number | null {
+  if (!text) return null;
+  // Hyphen variants: ASCII -, en/em dash, "to", "thru". Spacing flexible.
+  const sep = `\\s*(?:-|–|—|to|thru|through)\\s*`;
+  // Optional "km" after either bound.
+  const layer = `${lo}(?:\\s*km)?${sep}${hi}\\s*km`;
+  // Optional descriptors between layer and number ("bulk", "deep-layer",
+  // "low-level", "wind", "shear", separators, language words).
+  const middle = `[^\\d\\n\\r]{0,40}?`;
+  // Number: integer or decimal, optional sign.
+  // Unit: kt|kts|knot|knots|kn (case-insensitive). Sometimes m/s — convert.
+  const re = new RegExp(
+    `${layer}${middle}(-?\\d+(?:\\.\\d+)?)\\s*(kts?|knots?|kn|m\\/s|mps)?`,
+    'i'
+  );
+  const m = text.match(re);
+  if (!m) return null;
+  let val = parseFloat(m[1]);
+  if (!isFinite(val)) return null;
+  const unit = (m[2] || 'kt').toLowerCase();
+  if (unit === 'm/s' || unit === 'mps') val *= 1.94384; // m/s → kt
+  return Math.round(val);
+}
+
+/**
  * Extract the peak/most-relevant numeric atmospheric values from the
  * already-fetched briefing strings and run them through interpretAtmosphere.
  * Returns a plain-language summary block, or '' if we can't extract enough.
