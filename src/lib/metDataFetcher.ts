@@ -514,8 +514,6 @@ async function fetchFireWeather(lat: number, lon: number): Promise<string> {
   }
 }
 
-export async function buildMetBriefing(
-
 // 0-6 km bulk shear (10m vs 500 hPa) and 0-1 km shear (10m vs 925 hPa).
 // Free Open-Meteo pressure-level winds. Returns a short text block plus
 // numeric values that deriveAtmosphericState parses out via regex.
@@ -573,8 +571,7 @@ async function fetchShearProfile(lat: number, lon: number): Promise<string> {
   }
 }
 
-// (placeholder — buildMetBriefing continues below)
-export async function buildMetBriefingDuplicate(
+export async function buildMetBriefing(
   lat: number,
   lon: number,
   parsed: ParsedQuestion
