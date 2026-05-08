@@ -1,6 +1,7 @@
 import type { ParsedQuestion } from './weatherIntelligence';
 
 const NWS = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', Accept: 'application/geo+json' };
+const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
 
 export interface MetBriefing {
   surfaceObs: string;
@@ -13,6 +14,13 @@ export interface MetBriefing {
   lightning: string;
   instability: string;
   alerts: string;
+  modelComparison: string;
+  spcOutlook: string;
+  mesoscaleDiscussion: string;
+  marine: string;
+  satellite: string;
+  airQuality: string;
+  fireWeather: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -250,22 +258,32 @@ export async function buildMetBriefing(
     lightning: '',
     instability: '',
     alerts: '',
+    modelComparison: '',
+    spcOutlook: '',
+    mesoscaleDiscussion: '',
+    marine: '',
+    satellite: '',
+    airQuality: '',
+    fireWeather: '',
   };
 
+  // Fetch EVERYTHING on every request — full meteorologist briefing.
+  // Each fetch has its own try/catch and short timeout so a single slow source
+  // never blocks the briefing.
   fetches.push(fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }));
   fetches.push(fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }));
   fetches.push(fetchAFD(lat, lon).then(v => { result.afd = v; }));
   fetches.push(fetchAlerts(lat, lon).then(v => { result.alerts = v; }));
-
-  if (parsed.needsSounding) {
-    fetches.push(fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }));
-  }
-  if (parsed.needsRadar) {
-    fetches.push(fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }));
-  }
-  if (parsed.needsEnsemble) {
-    fetches.push(fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }));
-  }
+  fetches.push(fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }));
+  fetches.push(fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }));
+  fetches.push(fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }));
+  fetches.push(fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }));
+  fetches.push(fetchSPCOutlook().then(v => { result.spcOutlook = v; }));
+  fetches.push(fetchMesoscaleDiscussion().then(v => { result.mesoscaleDiscussion = v; }));
+  fetches.push(fetchMarine(lat, lon).then(v => { result.marine = v; }));
+  fetches.push(fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }));
+  fetches.push(fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }));
+  fetches.push(fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }));
 
   await Promise.all(fetches);
   return result;
@@ -274,10 +292,17 @@ export async function buildMetBriefing(
 export function assembleBriefingText(briefing: MetBriefing): string {
   return [
     briefing.alerts,
+    briefing.spcOutlook,
+    briefing.mesoscaleDiscussion,
     briefing.surfaceObs,
     briefing.hourlyForecast,
+    briefing.modelComparison,
     briefing.radarCells,
     briefing.sounding,
+    briefing.satellite,
+    briefing.marine,
+    briefing.airQuality,
+    briefing.fireWeather,
     briefing.ensemble,
     briefing.afd,
   ].filter(Boolean).join('\n\n');
