@@ -366,20 +366,26 @@ async function fetchSatelliteContext(lat: number, lon: number): Promise<string> 
   try {
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high&timezone=auto`
+      `&current=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high` +
+      `&hourly=cloud_cover,total_column_integrated_water_vapour&forecast_days=1&timezone=auto`
     );
     if (!res.ok) return '';
     const data = await res.json();
     const c = data.current;
     if (!c) return '';
+    // Pull current TPW (total precipitable water) — GOES-derived moisture proxy
+    const tpwArr = data.hourly?.total_column_integrated_water_vapour;
+    const tpwNow = Array.isArray(tpwArr) ? tpwArr[0] : null;
+    const tpwInches = tpwNow != null ? (tpwNow / 25.4).toFixed(2) : null;
     return [
-      'SATELLITE-DERIVED CLOUD STRUCTURE (proxy for GOES-16 imagery):',
+      'SATELLITE-DERIVED PRODUCTS (GOES-16 proxy, text/numeric only — no image processing):',
       `Total cloud cover: ${c.cloud_cover ?? '?'}%`,
       `Low (boundary layer / fog / cumulus): ${c.cloud_cover_low ?? '?'}%`,
       `Mid (altocumulus / weather systems): ${c.cloud_cover_mid ?? '?'}%`,
       `High (cirrus / anvils / outflow): ${c.cloud_cover_high ?? '?'}%`,
+      tpwInches ? `Total Precipitable Water (TPW): ${tpwInches}" (>1.5" = juicy atmosphere, >2" = tropical / heavy rain potential)` : '',
       'Note: high cloud + low cloud combo with rising mid = developing convection signature.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   } catch {
     return '';
   }
