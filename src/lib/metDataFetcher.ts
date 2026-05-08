@@ -264,11 +264,24 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(
       `https://mesonet.agron.iastate.edu/json/nexrad_attr.py?lat=${lat}&lon=${lon}&radius=150`,
-      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' } }
+      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' }, redirect: 'follow' }
     );
-    if (!res.ok) return '';
-    const data = await res.json();
-    if (!data.attrs?.length) return 'RADAR: No tracked storm cells within 150 miles.';
+    if (!res.ok) {
+      console.warn('[radar] IEM endpoint failed', res.status, '— falling back to grid sample');
+      return await fetchRadarCellsFromGrid(lat, lon);
+    }
+    let data: any = null;
+    try { data = await res.json(); } catch {
+      console.warn('[radar] IEM returned non-JSON — falling back to grid sample');
+      return await fetchRadarCellsFromGrid(lat, lon);
+    }
+    if (!data?.attrs?.length) {
+      // IEM said no tracked cells — verify against grid sample. If grid finds
+      // active heavy precip, prefer that signal.
+      const gridText = await fetchRadarCellsFromGrid(lat, lon);
+      if (gridText && !gridText.includes('No active')) return gridText;
+      return 'RADAR: No tracked storm cells within 150 miles.';
+    }
 
     const cells = data.attrs.slice(0, 5).map((c: any) => {
       const dLat = c.lat - lat;
@@ -292,7 +305,106 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
     });
 
     return `NEXRAD TRACKED CELLS:\n${cells.join('\n')}`;
-  } catch {
+  } catch (e) {
+    console.warn('[radar] IEM threw, falling back to grid sample', e);
+    try { return await fetchRadarCellsFromGrid(lat, lon); } catch { return 'RADAR: Cell data unavailable.'; }
+  }
+}
+
+/**
+ * Fallback radar source: sample Open-Meteo nowcast precipitation on a 5x5
+ * grid (~10 mi spacing) around the user, treat each cell with heavy precip
+ * as a pseudo storm cell, and use 700 hPa wind as the storm-motion vector.
+ * Produces the same line format as fetchRadarCells so downstream
+ * parseAndComputeIntercepts() works unchanged.
+ */
+async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
+  try {
+    const STEP_DEG = 0.145; // ~10 mi at mid-latitudes
+    const N = 2;            // -2..+2 → 5x5 = 25 points
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+    for (let i = -N; i <= N; i++) {
+      for (let j = -N; j <= N; j++) {
+        lats.push(+(lat + i * STEP_DEG).toFixed(4));
+        lons.push(+(lon + (j * STEP_DEG) / cosLat).toFixed(4));
+      }
+    }
+
+    // Storm motion: 700 hPa wind for steering layer
+    const motionRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2&wind_speed_unit=mph&timezone=auto`
+    );
+    let stormDirDeg: number | null = null;
+    let stormSpeedMph: number | null = null;
+    if (motionRes.ok) {
+      const md = await motionRes.json();
+      const fromDeg = md.hourly?.wind_direction_700hPa?.[0];
+      const sp = md.hourly?.wind_speed_700hPa?.[0];
+      if (fromDeg != null) stormDirDeg = (fromDeg + 180) % 360; // toward
+      if (sp != null) stormSpeedMph = Math.round(sp);
+    }
+
+    // Precipitation grid
+    const gridRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+      `&minutely_15=precipitation&forecast_minutely_15=8&timezone=auto&precipitation_unit=inch`
+    );
+    if (!gridRes.ok) return 'RADAR: Cell data unavailable (grid fetch failed).';
+    const gridJson = await gridRes.json();
+    const arr: any[] = Array.isArray(gridJson) ? gridJson : [gridJson];
+
+    type GridCell = { lat: number; lon: number; dbz: number; precip: number };
+    const candidates: GridCell[] = [];
+    for (const point of arr) {
+      const precip: number[] = point.minutely_15?.precipitation ?? [];
+      const max15 = precip.length ? Math.max(...precip) : 0;
+      if (max15 < 0.04) continue;                         // ~0.16"/hr — light-moderate floor
+      const mmPerHr = max15 * 4 * 25.4;                    // 15-min in → in/hr → mm/hr
+      // Marshall-Palmer: Z = 200 R^1.6  →  dBZ = 10*log10(Z)
+      const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
+      candidates.push({ lat: point.latitude, lon: point.longitude, dbz, precip: max15 });
+    }
+    if (candidates.length === 0) {
+      return 'RADAR: No active precipitation cells within ~50 miles (grid sample).';
+    }
+
+    // Dedupe close points: sort by dbz, keep cells >12mi apart
+    candidates.sort((a, b) => b.dbz - a.dbz);
+    const kept: GridCell[] = [];
+    for (const c of candidates) {
+      const tooClose = kept.some(k => {
+        const dy = (c.lat - k.lat) * 69;
+        const dx = (c.lon - k.lon) * 69 * cosLat;
+        return Math.sqrt(dx * dx + dy * dy) < 12;
+      });
+      if (!tooClose) kept.push(c);
+      if (kept.length >= 5) break;
+    }
+
+    const lines = kept.map(c => {
+      const dLat = c.lat - lat;
+      const dLon = c.lon - lon;
+      const distMiles = Math.round(Math.sqrt(dLat * dLat * 69 * 69 + dLon * dLon * 69 * 69 * cosLat * cosLat));
+      const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(bearingDeg / 45) % 8];
+
+      let interceptLine = '';
+      if (stormDirDeg != null && stormSpeedMph != null && stormSpeedMph > 0) {
+        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, stormDirDeg, stormSpeedMph, c.dbz);
+        const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
+        const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
+        interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
+      }
+      const motionTxt = stormDirDeg != null ? `${stormDirDeg}° at ${stormSpeedMph}mph` : '? mph';
+      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}${interceptLine}`;
+    });
+
+    return `NEXRAD TRACKED CELLS (grid-sampled fallback, 700hPa motion):\n${lines.join('\n')}`;
+  } catch (e) {
+    console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
   }
 }
