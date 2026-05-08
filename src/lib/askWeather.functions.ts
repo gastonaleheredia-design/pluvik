@@ -215,42 +215,35 @@ async function getNWSData(lat: number, lon: number): Promise<string> {
     const pointsData = await pointsRes.json();
     const { forecastHourly, cwa } = pointsData.properties;
 
-    let forecastText = '';
-    try {
-      const hourlyRes = await fetch(forecastHourly, { headers: NWS_HEADERS });
-      if (hourlyRes.ok) {
-        const hourlyData = await hourlyRes.json();
-        forecastText = hourlyData.properties.periods
-          .slice(0, 24)
-          .map(
-            (p: any) =>
-              `${p.startTime.slice(0, 16)}: ${p.temperature}°${p.temperatureUnit}, ${p.shortForecast}, Wind: ${p.windSpeed} ${p.windDirection}, PoP: ${p.probabilityOfPrecipitation?.value ?? 0}%`
-          )
-          .join('\n');
-      }
-    } catch {
-      forecastText = 'Hourly forecast unavailable.';
-    }
+    const [forecastText, afdText] = await Promise.all([
+      fetch(forecastHourly, { headers: NWS_HEADERS })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) =>
+          data
+            ? data.properties.periods
+                .slice(0, 24)
+                .map(
+                  (p: any) =>
+                    `${p.startTime.slice(0, 16)}: ${p.temperature}°${p.temperatureUnit}, ${p.shortForecast}, Wind: ${p.windSpeed} ${p.windDirection}, PoP: ${p.probabilityOfPrecipitation?.value ?? 0}%`
+                )
+                .join('\n')
+            : 'Hourly forecast unavailable.'
+        )
+        .catch(() => 'Hourly forecast unavailable.'),
 
-    let afdText = '';
-    try {
-      const afdListRes = await fetch(
-        `https://api.weather.gov/products?type=AFD&location=${cwa}&limit=1`,
-        { headers: NWS_HEADERS }
-      );
-      if (afdListRes.ok) {
-        const afdList = await afdListRes.json();
-        if (afdList['@graph']?.length > 0) {
-          const afdRes = await fetch(afdList['@graph'][0]['@id'], { headers: NWS_HEADERS });
-          if (afdRes.ok) {
-            const afdData = await afdRes.json();
-            afdText = afdData.productText?.slice(0, 1500) ?? '';
-          }
-        }
-      }
-    } catch {
-      // AFD unavailable
-    }
+      fetch(`https://api.weather.gov/products?type=AFD&location=${cwa}&limit=1`, {
+        headers: NWS_HEADERS,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then(async (list) => {
+          if (!list?.['@graph']?.length) return '';
+          const r = await fetch(list['@graph'][0]['@id'], { headers: NWS_HEADERS });
+          if (!r.ok) return '';
+          const d = await r.json();
+          return d.productText?.slice(0, 1000) ?? '';
+        })
+        .catch(() => ''),
+    ]);
 
     return `HOURLY FORECAST:\n${forecastText}\n\nAREA FORECAST DISCUSSION:\n${afdText || 'Not available.'}`;
   } catch {
@@ -283,8 +276,12 @@ User question: ${question}
 
 ${weatherContext}${alertsSummary ? `\n\nACTIVE NWS ALERTS:\n${alertsSummary}` : ''}${stormInfo ? `\n\nNHC STORM DATA:\n${stormInfo}` : ''}`;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
@@ -296,7 +293,7 @@ ${weatherContext}${alertsSummary ? `\n\nACTIVE NWS ALERTS:\n${alertsSummary}` : 
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }),
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
 
