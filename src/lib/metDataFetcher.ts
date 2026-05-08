@@ -994,7 +994,6 @@ export async function buildMetBriefing(
     () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }),
     () => fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; }),
   ];
-  void fetches;
   await runWithConcurrency(tasks, 6);
 
   // Derive plain-language atmospheric state from the assembled numeric data.
