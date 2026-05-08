@@ -22,6 +22,13 @@ function HomePage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
 
+  // Hydration-safe: compute time-dependent strings only after mount
+  // to avoid SSR/client timezone mismatches (React error #418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Redirect to onboarding if not completed
   useEffect(() => {
     const onboardingDone = localStorage.getItem(ONBOARDING_KEY);
@@ -75,7 +82,16 @@ function HomePage() {
     }
   };
 
-  const greeting = getGreeting(t);
+  const greeting = mounted ? getGreeting(t) : '';
+  const dateLabel = mounted
+    ? new Date()
+        .toLocaleDateString(undefined, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })
+        .toUpperCase()
+    : '';
 
   return (
     <div
@@ -109,13 +125,7 @@ function HomePage() {
             marginTop: '-12px',
           }}
         >
-          {new Date()
-            .toLocaleDateString(undefined, {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-            })
-            .toUpperCase()}
+          {dateLabel}
         </div>
 
         {/* ADDRESS ROW */}
