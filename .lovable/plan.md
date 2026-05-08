@@ -1,74 +1,100 @@
 
-# Why the Piedmont answer was wrong
+## Diagnosis (validated against the user's radar capture)
 
-Your test exposed a real bug, not a styling issue. The "MAYBE — storms expected this afternoon" answer is what the model produced because two of our three current-situation data sources are broken:
+For Piedmont at 5:15–5:19 PM, the actual radar shows: a multicell line with a 55+ dBZ core 10–12 mi W/NW, active CG lightning, motion E/ESE, plus a second discrete cell forming SW, all under an SPC Slight Risk.
 
-1. **Radar cells endpoint is dead.** `mesonet.agron.iastate.edu/json/nexrad_attr.py` returns HTTP 301 with an empty body. `fetchRadarCells()` catches the JSON error and returns "RADAR: Cell data unavailable." Because there are no cells, `calculateStormIntercept()` never runs. The most important signal for "is a storm hitting me in the next hour" is silently dark.
-2. **SPC Mesoscale Discussions are not geo-filtered.** We grab the first MD link on the index page no matter which state it covers. Right now we're feeding a Florida MD into a Piedmont, OK briefing.
-3. **HRRR point forecast misses sub-grid convection.** For Piedmont's exact lat/lon HRRR shows POP 3%, CAPE 190, LI +0.3 for the next three hours — but a clearly defined squall line is 18 mi west on radar with lightning. Single-point HRRR is the wrong tool for nowcast.
+Our app said `NO / ~21 MIN TO IMPACT` — geometry roughly right, meteorology absent. Reasons:
 
-The result: the LLM got a Severe TS Watch + Slight Risk outlook + a "nothing here" HRRR point and correctly hedged. No `headline_number`, no ETA, no urgency.
+- **Home screen ("DRY")** uses `homeBriefing.functions.ts`, which only checks Open-Meteo's current weather code + hourly POP at the user's exact point. No radar, no SPC, no nearby cells. A storm 12 mi W is invisible.
+- **Ask "intercept"** uses `fetchRadarCellsFromGrid`, which samples Open-Meteo *forecast precip* on a 5×5 grid and converts mm/hr to a *pseudo-dBZ* via Marshall–Palmer. It's not real NEXRAD reflectivity. It also applies one steering wind (700 hPa at the user's point) to every cell.
+- **No cell classification.** Nothing tells us multicell vs supercell vs squall line vs pulse vs MCS. `atmosphericState.stormMode` describes environment potential, not what's painted on radar.
+- **The "21 MIN / take shelter" sentence is a template** written by our hard-floor override after the LLM. The LLM was never asked to identify or describe the actual cell, so the wording is generic.
+- **GLM lightning is fetched but not promoted.** Active CG strikes never get into `verdict_sentence`.
+- **Secondary cells are dropped.** We sort by dBZ and keep one "imminent" — the SW cell never gets mentioned.
 
-# What we will build
+## Plan — make Ask + Home reason like a meteorologist
 
-## 1. Replace the dead radar source (highest priority)
+### Step 1. Real radar (replace the precip-derived pseudo-dBZ)
 
-Fix `fetchRadarCells()` in `src/lib/metDataFetcher.ts`:
+Add `src/lib/fetchers/realRadar.ts` with stacked sources, fail-over:
 
-- Try Iowa Mesonet with `redirect: 'follow'` and the `https://` host they redirected to. If still empty, fall back to a second source.
-- Add a fallback: NWS NEXRAD Level 3 storm-attribute table via the RIDGE/products endpoint, OR use Open-Meteo radar precipitation grid sampled at ~5 mi resolution to detect strong reflectivity cores.
-- Log a clear error to `console.warn` when both fail so we don't fail silently.
-- When we do get cells, push them through the existing `calculateStormIntercept()` (already in `src/lib/stormIntercept.ts`).
+- **Primary:** RainViewer public API (`api.rainviewer.com/public/weather-maps.json`) — free, no key, returns recent + forecast composite reflectivity tiles. Sample dBZ at user point + ring of points out to ~50 mi.
+- **Secondary:** Iowa Mesonet `nexrad_attr` JSON with `redirect: 'follow'` (the 301 we hit before — just follow it).
+- **Tertiary:** keep the current Open-Meteo grid as labelled `precip-derived` so downstream code knows confidence is lower.
 
-## 2. Add a "radar halo" check around the user
+Output `Cell <DIR> at <MI> | dBZ:<N>` so `parseAndComputeIntercepts()` keeps working. Keep up to **3** cells, not 1, so SW + W cells both flow through.
 
-In `metDataFetcher.ts`, sample HRRR/Open-Meteo at the user's point AND at 8 grid points in a ~10 mi ring. If any surrounding point shows POP > 60% or CAPE > 1500 within the next 2 hours while the center point shows nothing, flag `nearby_convection: true` and surface it in the briefing text.
+### Step 2. Per-cell storm motion + Bunkers right-mover
 
-## 3. Geo-filter SPC Mesoscale Discussions
+Inside the new fetcher:
+- Pull 700 hPa wind at **each cell's** lat/lon (Open-Meteo accepts batched points), not the user's.
+- If `CAPE > 1500` AND `0–6 km bulk shear > 35 kt`: rotate motion 30° right and reduce speed to ~75% of mean wind (Bunkers right-mover approximation). Inputs already exist in `briefing.shearProfile` and HRRR CAPE.
 
-In `fetchMesoscaleDiscussion()`:
-- Pull the index page, extract every active MD link.
-- Fetch each MD's text (cap at 5).
-- Parse the "Areas affected" line and the state abbreviation list at the top (e.g. `OKZ000-` or `FLZ000-`).
-- Keep only MDs whose state list contains the user's state, or whose "Areas affected" mentions a county/region within ~150 mi of the user.
+### Step 3. Classify the cell
 
-## 4. Promote intercept data to the top of the prompt
+New file `src/lib/cellClassifier.ts` exporting `classifyCell({ dbz, environment, neighborhood }) → { type, severity, descriptors[] }`. Operational thresholds, no ML:
 
-In `src/lib/systemPrompt.ts` and the `SEVERE_PROMPT` in `src/lib/askWeather.functions.ts`:
+- **Discrete supercell:** dBZ ≥ 55, shear ≥ 35 kt, CAPE ≥ 1500 → primary threats: large hail, tornado if SRH ≥ 150.
+- **Multicell line / QLCS / bow:** ≥ 3 cells aligned within 25 mi OR SPC MD/AFD mentions "line/QLCS/bow" in user's state → primary threat: damaging wind.
+- **Pulse storm:** dBZ ≥ 50, shear < 25 kt → brief gusty, hail possible at peak.
+- **Training showers:** dBZ 30–45, TPW ≥ 1.75" → flash flood.
+- Default: **convective cell**.
 
-- When `stormIntercepts` contains any cell with `willIntercept === true` AND `etaMinutes <= 120`, prepend an `IMMINENT INTERCEPT` block to the system prompt: cell distance, direction, dBZ, ETA, impact zone, duration.
-- Add an instruction: *"If an IMMINENT INTERCEPT block is present, the verdict_word MUST be NO and the headline_number MUST be the ETA in minutes (e.g. `~45 MIN`, label `TO IMPACT`). Do not lead with regional outlook language."*
-- Update the `SEVERE_PROMPT` JSON example to show ETA-as-headline.
+Severity bucket: `marginal | moderate | significant | extreme` from dBZ × environment.
 
-## 5. Hard-floor the verdict when intercept is imminent
+### Step 4. Promote GLM lightning + SPC outlook to the verdict
 
-In `validateWeatherAnswer()` (`src/lib/weatherAnswerSchema.ts`), accept an optional `intercept` context passed in from `askWeather.functions.ts`. If `intercept.willIntercept && intercept.etaMinutes <= 120`:
-- Force `verdict` to `NO-GO` and `verdict_word` to `NO`.
-- If the model omitted `headline_number`, synthesize `{ value: "~${eta} MIN", label: "TO IMPACT" }`.
-- Override even if the model returned `MAYBE`.
+In `pipelineAdapters.ts` and `systemPrompt.ts`, expose two pre-computed flags to the prompt:
+- `lightning_active` (GLM ≥ 5 flashes / 60 min within 25 mi of user OR within the imminent cell).
+- `spc_day_risk` (MRGL / SLGT / ENH / MDT / HIGH for today).
 
-## 6. Visually escalate the answer screen for severe + intercept
+`verdict_sentence` MUST mention them when present.
 
-In `src/components/SevereAnswerScreen.tsx` and the minimal view in `src/routes/answer.tsx`:
-- When `mode === 'severe'` AND an intercept ETA exists, render the verdict word in red (`#b91c1c`) instead of ink.
-- Render the ETA as a large secondary number under the verdict sentence.
-- Keep "Why? →" and "SAVE & TRACK" exactly as they are.
+### Step 5. Rewrite `stormIntercept.plainLanguage` + system prompt STEP 3
 
-## Validation
+Target sentence shape the LLM must produce:
 
-1. Re-run the same Piedmont question. Expect: `NO`, red, sentence references the storm 18 mi west, `~30-45 MIN TO IMPACT` as the hero number.
-2. Run a calm-weather question (e.g. clear day in San Diego). Expect: unchanged behavior — still `YES`, percentage as headline, no red.
-3. Run a generic "tomorrow afternoon" question with no active cells. Expect: unchanged regular-mode answer.
-4. Verify the SPC MD pulled into the Piedmont briefing is an Oklahoma/Texas MD, not Florida.
+```
+Multicell line 12 mi W moving ESE at 35 mph — heavy rain, frequent
+lightning, leading edge over Piedmont in ~21 min. Second cell SW
+may follow.
+```
 
-## Out of scope for this pass
+Loosen the hard-floor override in `askWeather.functions.ts`: only synthesize the template sentence if the LLM omitted any storm reference. Otherwise let the richer LLM sentence stand. Always force `verdict_word=NO` + ETA headline when intercept is imminent.
 
-- Reworking the LLM provider, model, or full prompt structure.
-- Changes to onboarding, dashboard cards, or home screen.
-- Adding new data sources beyond a radar fallback.
+### Step 6. Fix the home/Ask contradiction
 
-## Technical notes
+In `homeBriefing.functions.ts`, after the Open-Meteo lookup also call the new radar fetcher (cached, ~3 min TTL, shared with Ask). If any cell has `willIntercept && etaMinutes ≤ 90`:
+- `word` → `STORMS`
+- `sentence` → e.g. `"Storms approaching from the W — ~21 min to impact."`
 
-- `mesonet.agron.iastate.edu` is moving to HTTPS-only with strict redirects. Workers' `fetch` does follow 301 by default, but the empty body suggests the path itself is gone. We will test the new path (`/json/nexrad/attr.py`) and fall back to Open-Meteo's `radar` model if needed.
-- `calculateStormIntercept()` in `src/lib/stormIntercept.ts` is already correct — it just needs cells fed into it.
-- Don't add a CHECK constraint or DB migration; this is all server-fn + prompt + UI work.
+### Step 7. Speed up Ask perceptibly
+
+`buildMetBriefing` already runs all 22 fetches via `Promise.all`. Real wins:
+- **Share radar between Home and Ask** via the existing `briefingCache` keyed on `lat,lon` rounded to 0.05° + 3 min TTL. Home preloads, Ask reuses.
+- **Drop Claude `max_tokens` 1024 → 512** (output JSON is ~250 tokens).
+- **Parallelize** the `detectMode` NHC call with the briefing fetch instead of serial.
+
+### Step 8. Validate against this exact Piedmont scenario
+
+Re-run `"Are we expecting storm right now?"`:
+
+- **Home:** `STORMS` with sentence referencing W approach (not `DRY`).
+- **Ask answer:** `NO / ~21 MIN`, but `verdict_sentence` reads like:
+  *"Multicell line 12 mi W moving ESE at 35 mph — heavy rain and frequent lightning, leading edge in ~21 min."*
+- **Why?** expansion shows: storm type, bearing, intensity, motion, lightning activity, SPC Slight Risk context, secondary SW cell.
+
+### Out of scope this round
+- Visual escalation (red type for severe) — UI pass.
+- Storing per-cell time-series for growth/decay — needs DB work.
+- Tornado/hail probabilities — needs SPC HREF or ML.
+
+### Files touched
+- `src/lib/fetchers/realRadar.ts` — new.
+- `src/lib/cellClassifier.ts` — new.
+- `src/lib/metDataFetcher.ts` — wire new radar + per-cell motion + 3-cell output.
+- `src/lib/stormIntercept.ts` — richer `plainLanguage`.
+- `src/lib/systemPrompt.ts` — STEP 3 rewrite + lightning/SPC fields.
+- `src/lib/pipelineAdapters.ts` — expose `lightning_active`, `spc_day_risk`.
+- `src/lib/askWeather.functions.ts` — softer hard-floor, `max_tokens=512`, parallel `detectMode`.
+- `src/lib/homeBriefing.functions.ts` — radar-aware override.
