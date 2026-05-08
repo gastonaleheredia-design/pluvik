@@ -24,6 +24,14 @@ export const WeatherAnswerSchema = z.object({
   action: z.string().optional(),
   check_back_minutes: z.number().nullable().optional(),
 
+  // Minimal-view fields (3-second test layer).
+  verdict_word: z.enum(['YES', 'NO', 'MAYBE']).optional(),
+  verdict_sentence: z.string().optional(),
+  headline_number: z.object({
+    value: z.string(),
+    label: z.string(),
+  }).nullable().optional(),
+
   // Severe / hurricane fields — pass through untouched.
   risk_level: z.string().optional(),
   risk_level_num: z.number().optional(),
@@ -73,6 +81,18 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
     if (!d.why_this_risk && typeof d.mechanism === 'string') {
       d.why_this_risk = d.mechanism;
     }
+    // Derive minimal-view fields if the model didn't return them.
+    if (!d.verdict_word) {
+      const v = d.verdict;
+      d.verdict_word = v === 'GO' ? 'YES' : v === 'NO-GO' ? 'NO' : v === 'CAUTION' ? 'MAYBE' : 'MAYBE';
+    }
+    if (!d.verdict_sentence && typeof d.summary === 'string') {
+      d.verdict_sentence = d.summary;
+    }
+    if (d.headline_number === undefined) {
+      const pct = typeof d.percentage === 'number' ? d.percentage : (typeof d.impact_percent === 'number' ? d.impact_percent : null);
+      d.headline_number = pct != null ? { value: `${pct}%`, label: 'CHANCE OF RAIN' } : null;
+    }
     return { ok: true, data: d };
   }
   const issues = parsed.error.issues.map(i => `${i.path.join('.') || '<root>'}: ${i.message}`);
@@ -92,6 +112,9 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       confidence_reason: 'Model response failed schema validation.',
       main_concern: 'Data unavailable',
       action: 'Try again in a minute or rephrase your question.',
+      verdict_word: 'MAYBE',
+      verdict_sentence: summary,
+      headline_number: null,
     },
   };
 }
