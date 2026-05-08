@@ -131,6 +131,7 @@ export interface MetBriefing {
   glmLightning: string;
   atmosphericState: string;
   shearProfile: string;
+  radarTrend: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
