@@ -380,7 +380,9 @@ function AnswerPage() {
   const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
     ?? answer.summary;
   const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
-  const topicTag = 'RAIN';
+  const topicTag = answer.mode === 'severe' ? 'SEVERE'
+    : answer.mode === 'hurricane' ? 'STORM'
+    : 'RAIN';
   const contextLine = `${address.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
 
   if (!showWhy) {
@@ -519,21 +521,42 @@ function AnswerPage() {
     );
   }
 
+  // Expanded "Why?" view — the original rich screen for the mode.
   return (
     <>
-      <BriefingScreen
-        scenario="rain"
-        contextLabel={address.split(',').slice(0, 2).join(',').trim()}
-        directAnswer={directAnswer}
-        facts={facts}
-        story={answer.summary}
-        verdict={verdict}
-        action={answer.action ?? t('answer.error_message')}
-        confidence={answer.confidence}
-        onBack={() => setShowWhy(false)}
-        onSaveTrack={handleSaveTrack}
-        saving={saving}
-      />
+      {answer.mode === 'severe' ? (
+        <SevereAnswerScreen
+          answer={answer}
+          question={question}
+          address={address}
+          onBack={() => setShowWhy(false)}
+          onSaveTrack={handleSaveTrack}
+          saving={saving}
+        />
+      ) : answer.mode === 'hurricane' ? (
+        <HurricaneAnswerScreen
+          answer={answer}
+          question={question}
+          address={address}
+          onBack={() => setShowWhy(false)}
+          onSaveTrack={handleSaveTrack}
+          saving={saving}
+        />
+      ) : (
+        <BriefingScreen
+          scenario="rain"
+          contextLabel={address.split(',').slice(0, 2).join(',').trim()}
+          directAnswer={directAnswer}
+          facts={facts}
+          story={answer.summary}
+          verdict={verdict}
+          action={answer.action ?? t('answer.error_message')}
+          confidence={answer.confidence}
+          onBack={() => setShowWhy(false)}
+          onSaveTrack={handleSaveTrack}
+          saving={saving}
+        />
+      )}
       {showAuthModal && (
         <AuthModal
           onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
