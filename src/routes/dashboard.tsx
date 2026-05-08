@@ -64,6 +64,14 @@ function DashboardPage() {
       });
   }, [user]);
 
+  const handleDelete = async (e: React.MouseEvent, eventId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(t('dashboard.delete_confirm'))) return;
+    setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+    await supabase.from('tracked_events').delete().eq('id', eventId);
+  };
+
   if (loading) {
     return (
       <div
@@ -270,19 +278,43 @@ function DashboardPage() {
                   position: 'relative',
                 }}
               >
-                {/* Pulsing tracking dot */}
+                {/* Top-right: pulsing dot + delete */}
                 <div
                   style={{
                     position: 'absolute',
-                    top: '18px',
-                    right: '18px',
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    backgroundColor: ACCENT,
-                    animation: 'trackPulse 1.4s ease-in-out infinite',
+                    top: '14px',
+                    right: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      backgroundColor: ACCENT,
+                      animation: 'trackPulse 1.4s ease-in-out infinite',
+                    }}
+                  />
+                  <button
+                    onClick={(e) => handleDelete(e, event.id)}
+                    aria-label={t('dashboard.delete_event')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                      borderRadius: '6px',
+                      color: MUTED,
+                      fontSize: '1.1rem',
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
 
                 {/* Question */}
                 <div
@@ -290,7 +322,7 @@ function DashboardPage() {
                     fontFamily: 'Fraunces, serif',
                     fontSize: '1.1rem',
                     fontWeight: 500,
-                    paddingRight: '24px',
+                    paddingRight: '60px',
                     marginBottom: '4px',
                   }}
                 >

@@ -68,6 +68,9 @@ function EventPage() {
   const [event, setEvent] = useState<TrackedEvent | null>(null);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -90,6 +93,43 @@ function EventPage() {
       setLoading(false);
     });
   }, [user, id]);
+
+  const handleSaveEdit = async () => {
+    if (!event || !editText.trim() || editText.trim() === event.question) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    const newQuestion = editText.trim();
+    const { error } = await supabase
+      .from('tracked_events')
+      .update({ question: newQuestion })
+      .eq('id', event.id);
+    setBusy(false);
+    if (!error) {
+      setEvent({ ...event, question: newQuestion });
+      setEditing(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!event) return;
+    if (!confirm(t('event.complete_confirm'))) return;
+    setBusy(true);
+    await supabase
+      .from('tracked_events')
+      .update({ is_active: false })
+      .eq('id', event.id);
+    navigate({ to: '/dashboard' });
+  };
+
+  const handleDelete = async () => {
+    if (!event) return;
+    if (!confirm(t('event.delete_confirm'))) return;
+    setBusy(true);
+    await supabase.from('tracked_events').delete().eq('id', event.id);
+    navigate({ to: '/dashboard' });
+  };
 
   if (loading) {
     return (
@@ -182,17 +222,77 @@ function EventPage() {
         </button>
 
         {/* Event question */}
-        <div
-          style={{
-            fontFamily: 'Fraunces, serif',
-            fontSize: '1.6rem',
-            fontWeight: 500,
-            lineHeight: 1.2,
-            marginBottom: '6px',
-          }}
-        >
-          {event.question}
-        </div>
+        {editing ? (
+          <div style={{ marginBottom: '14px' }}>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              autoFocus
+              rows={3}
+              style={{
+                width: '100%',
+                fontFamily: 'Fraunces, serif',
+                fontSize: '1.2rem',
+                lineHeight: 1.3,
+                padding: '12px',
+                border: `1px solid ${INK}33`,
+                borderRadius: '12px',
+                background: '#fff',
+                color: INK,
+                resize: 'vertical',
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <button
+                onClick={handleSaveEdit}
+                disabled={busy}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: INK,
+                  color: PAGE_BG,
+                  border: 'none',
+                  borderRadius: '100px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {t('event.edit_modal_save')}
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: 'transparent',
+                  color: MUTED,
+                  border: `1px solid ${INK}1a`,
+                  borderRadius: '100px',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {t('event.edit_modal_cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: '1.6rem',
+              fontWeight: 500,
+              lineHeight: 1.2,
+              marginBottom: '6px',
+            }}
+          >
+            {event.question}
+          </div>
+        )}
         <div
           style={{
             fontSize: '0.82rem',
@@ -266,6 +366,69 @@ function EventPage() {
           >
             &ldquo;{event.current_summary}&rdquo;
           </div>
+        </div>
+
+        {/* Actions */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            marginBottom: '32px',
+          }}
+        >
+          <button
+            onClick={() => {
+              setEditText(event.question);
+              setEditing(true);
+            }}
+            disabled={editing || busy}
+            style={{
+              padding: '12px',
+              background: 'transparent',
+              color: INK,
+              border: `1px solid ${INK}1a`,
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              cursor: editing ? 'default' : 'pointer',
+              fontFamily: 'inherit',
+              opacity: editing ? 0.5 : 1,
+            }}
+          >
+            {t('event.action_edit')}
+          </button>
+          <button
+            onClick={handleComplete}
+            disabled={busy}
+            style={{
+              padding: '12px',
+              background: 'transparent',
+              color: '#15803d',
+              border: `1px solid #15803d33`,
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            ✓ {t('event.action_complete')}
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={busy}
+            style={{
+              padding: '12px',
+              background: 'transparent',
+              color: '#b91c1c',
+              border: `1px solid #b91c1c33`,
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {t('event.action_delete')}
+          </button>
         </div>
 
         {/* Tracking journal */}
