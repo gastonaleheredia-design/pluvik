@@ -182,7 +182,7 @@ function SettingsPage() {
         <p className="mono-label text-neutral-gray mb-3">{t('settings.language')}</p>
         <Segmented
           value={i18n.language?.startsWith('es') ? 'es' : 'en'}
-          onChange={changeLanguage}
+          onChange={(v) => changeLanguage(v)}
           options={[
             { value: 'en', label: t('settings.language_english') },
             { value: 'es', label: t('settings.language_spanish') },
