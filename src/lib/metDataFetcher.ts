@@ -468,6 +468,13 @@ export async function buildMetBriefing(
     satellite: '',
     airQuality: '',
     fireWeather: '',
+    spcDay2: '',
+    spcDay3: '',
+    spcDay48: '',
+    wpcEro: '',
+    fireOutlook: '',
+    droughtMonitor: '',
+    glmLightning: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -487,6 +494,13 @@ export async function buildMetBriefing(
   fetches.push(fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }));
   fetches.push(fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }));
   fetches.push(fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }));
+  fetches.push(fetchSPCDayN(2).then(v => { result.spcDay2 = v; }));
+  fetches.push(fetchSPCDayN(3).then(v => { result.spcDay3 = v; }));
+  fetches.push(fetchSPCDay48().then(v => { result.spcDay48 = v; }));
+  fetches.push(fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }));
+  fetches.push(fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }));
+  fetches.push(fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }));
+  fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
 
   await Promise.all(fetches);
   return result;
@@ -496,7 +510,14 @@ export function assembleBriefingText(briefing: MetBriefing): string {
   return [
     briefing.alerts,
     briefing.spcOutlook,
+    briefing.spcDay2,
+    briefing.spcDay3,
+    briefing.spcDay48,
     briefing.mesoscaleDiscussion,
+    briefing.wpcEro,
+    briefing.fireOutlook,
+    briefing.droughtMonitor,
+    briefing.glmLightning,
     briefing.surfaceObs,
     briefing.hourlyForecast,
     briefing.modelComparison,
@@ -509,4 +530,128 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.ensemble,
     briefing.afd,
   ].filter(Boolean).join('\n\n');
+}
+
+// SPC Day 2/3 Convective Outlooks (text product)
+async function fetchSPCDayN(day: 2 | 3): Promise<string> {
+  try {
+    const res = await fetch(`https://www.spc.noaa.gov/products/outlook/day${day}otlk.txt`, { headers: UA });
+    if (!res.ok) return '';
+    const text = await res.text();
+    return `SPC DAY ${day} CONVECTIVE OUTLOOK:\n${text.slice(0, 1200)}`;
+  } catch {
+    return '';
+  }
+}
+
+// SPC Day 4-8 Extended Convective Outlook (one combined product, lower resolution)
+async function fetchSPCDay48(): Promise<string> {
+  try {
+    const res = await fetch('https://www.spc.noaa.gov/products/exper/day4-8/day4-8.txt', { headers: UA });
+    if (!res.ok) return '';
+    const text = await res.text();
+    return `SPC DAY 4-8 EXTENDED OUTLOOK:\n${text.slice(0, 1200)}`;
+  } catch {
+    return '';
+  }
+}
+
+// WPC Excessive Rainfall Outlook — categorical flash flood risk Day 1/2/3
+async function fetchWPCExcessiveRainfall(): Promise<string> {
+  const days = [1, 2, 3];
+  const parts: string[] = [];
+  for (const d of days) {
+    try {
+      const res = await fetch(`https://www.wpc.ncep.noaa.gov/qpf/RFDdiscussion_latest.shtml?ero=${d}`, { headers: UA });
+      if (res.ok) {
+        // The discussion text endpoint also exists at a stable URL; try the text product instead
+      }
+      // Stable text-product URL for ERO discussion:
+      const txtRes = await fetch(`https://www.wpc.ncep.noaa.gov/qpf/ero_discussion/ero_disc_day${d}.txt`, { headers: UA });
+      if (txtRes.ok) {
+        const text = await txtRes.text();
+        parts.push(`WPC EXCESSIVE RAINFALL OUTLOOK DAY ${d}:\n${text.slice(0, 800)}`);
+      }
+    } catch {
+      // skip
+    }
+  }
+  return parts.join('\n\n');
+}
+
+// SPC Fire Weather Outlook — Critical / Extremely Critical fire risk
+async function fetchSPCFireOutlook(): Promise<string> {
+  const parts: string[] = [];
+  for (const d of [1, 2]) {
+    try {
+      const res = await fetch(`https://www.spc.noaa.gov/products/fire_wx/fwdy${d}.txt`, { headers: UA });
+      if (!res.ok) continue;
+      const text = await res.text();
+      parts.push(`SPC FIRE WEATHER OUTLOOK DAY ${d}:\n${text.slice(0, 1000)}`);
+    } catch {
+      // skip
+    }
+  }
+  try {
+    const res = await fetch('https://www.spc.noaa.gov/products/exper/fire_wx/fwdy3.txt', { headers: UA });
+    if (res.ok) {
+      const text = await res.text();
+      parts.push(`SPC FIRE WEATHER OUTLOOK DAY 3-8:\n${text.slice(0, 1000)}`);
+    }
+  } catch {
+    // skip
+  }
+  return parts.join('\n\n');
+}
+
+// US Drought Monitor — current weekly drought category at point (D0-D4)
+async function fetchDroughtMonitor(lat: number, lon: number): Promise<string> {
+  try {
+    // USDM exposes a point query via their ArcGIS REST service
+    const url = `https://services1.arcgis.com/cIvZbnYvGT9ZkUm0/ArcGIS/rest/services/USDM_current/FeatureServer/0/query` +
+      `?geometry=${lon},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects` +
+      `&outFields=DM,Date&returnGeometry=false&f=json`;
+    const res = await fetch(url, { headers: UA });
+    if (!res.ok) return '';
+    const data = await res.json();
+    const features = data.features ?? [];
+    if (!features.length) return 'US DROUGHT MONITOR: No drought (location outside any current drought category).';
+    // Take the highest DM value present at the point (DM 0-4)
+    const dm = Math.max(...features.map((f: any) => f.attributes?.DM ?? -1));
+    const cats = ['D0 Abnormally Dry', 'D1 Moderate Drought', 'D2 Severe Drought', 'D3 Extreme Drought', 'D4 Exceptional Drought'];
+    const label = dm >= 0 && dm <= 4 ? cats[dm] : 'Unknown';
+    return `US DROUGHT MONITOR (latest weekly): ${label}`;
+  } catch {
+    return '';
+  }
+}
+
+// GOES GLM Lightning — free satellite-based total lightning via Iowa State Mesonet aggregator
+// Returns flash counts within a radius for the past hour.
+async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
+  try {
+    const end = new Date();
+    const start = new Date(end.getTime() - 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 19).replace('T', '%20');
+    // Iowa State Mesonet GLM JSON endpoint — flashes in a bbox
+    const dLat = 25 / 69; // ~25 mile radius in degrees
+    const dLon = 25 / (69 * Math.cos(lat * Math.PI / 180));
+    const url = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
+      `?north=${(lat + dLat).toFixed(4)}&south=${(lat - dLat).toFixed(4)}` +
+      `&east=${(lon + dLon).toFixed(4)}&west=${(lon - dLon).toFixed(4)}` +
+      `&sts=${fmt(start)}&ets=${fmt(end)}`;
+    const res = await fetch(url, { headers: UA });
+    if (!res.ok) return 'GOES GLM LIGHTNING: Data unavailable.';
+    const data = await res.json();
+    const flashes = data.flashes ?? data.count ?? (Array.isArray(data.events) ? data.events.length : null);
+    if (flashes == null) {
+      return 'GOES GLM LIGHTNING (past 60 min within 25mi): no data returned.';
+    }
+    if (flashes === 0) {
+      return 'GOES GLM LIGHTNING (past 60 min within 25mi): 0 flashes — no recent lightning activity.';
+    }
+    return `GOES GLM LIGHTNING (past 60 min within 25mi): ${flashes} flashes detected — active lightning in area.`;
+  } catch {
+    return '';
+  }
 }
