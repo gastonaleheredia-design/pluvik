@@ -75,6 +75,7 @@ function AnswerPage() {
   const [loadingIndex, setLoadingIndex] = useState(0);
   const { user } = useAuth();
   const { address: selectedAddress } = useAddress();
+  const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
@@ -119,6 +120,9 @@ function AnswerPage() {
             lon: coords.lon,
             language: i18n.language,
             address,
+            tempUnit,
+            windUnit,
+            timeFormat,
           },
         });
 
