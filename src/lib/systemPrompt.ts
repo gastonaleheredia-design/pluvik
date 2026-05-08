@@ -22,8 +22,25 @@ export function buildSystemPrompt(
     ? stormIntercepts.map(s => s.plainLanguage).join('\n')
     : 'No active storm cells within intercept range.';
 
+  const imminent = stormIntercepts
+    .filter(s => s.willIntercept && s.etaMinutes != null && s.etaMinutes <= 120)
+    .sort((a, b) => (a.etaMinutes ?? 999) - (b.etaMinutes ?? 999))[0];
+
+  const imminentBanner = imminent ? `
+## ⚠ IMMINENT STORM INTERCEPT — OVERRIDES NORMAL OUTPUT RULES
+A storm cell is on a ${imminent.impactZone.toUpperCase()} track to the user's exact location.
+ETA: ~${imminent.etaMinutes} minutes. Estimated impact duration: ~${imminent.impactDuration ?? 20} minutes. Threat: ${imminent.threatLevel}.
+
+You MUST:
+- Set verdict to "NO-GO" and verdict_word to "NO".
+- verdict_sentence must reference the approaching cell, e.g. "Storm core arrives in ~${imminent.etaMinutes} min — take shelter."
+- headline_number MUST be { "value": "~${imminent.etaMinutes} MIN", "label": "TO IMPACT" }. Do NOT use chance-of-rain percent.
+- Do NOT lead the summary with watch/outlook language. Lead with the actual approaching storm.
+` : '';
+
   return `
 You are a professional operational meteorologist providing a personalized forecast for a specific geopoint.
+${imminentBanner}
 
 ## YOUR ROLE
 You are not summarizing weather data. You are diagnosing the atmosphere and generating an impact forecast for a specific person at a specific location and time.
