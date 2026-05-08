@@ -319,7 +319,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
+        max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }),

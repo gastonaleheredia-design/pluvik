@@ -66,7 +66,7 @@ ${sensitivityProfile}
 ## REASONING PROTOCOL — FOLLOW IN ORDER
 STEP 1 — CURRENT STATE: Use surface obs, radar, GLM, satellite. Not models.
 STEP 2 — MECHANISM: Explain the synoptic/mesoscale setup in plain language. Translate jargon — do NOT mention CAPE, CIN, LI, hodograph, shear, or TPW values to the user.
-STEP 3 — STORM TRACKING: Use the pre-computed intercept analysis above. If cells approach, state ETA, impact zone, expected duration. Otherwise skip.
+STEP 3 — STORM TRACKING: Use the radar block AND the pre-computed intercept analysis. Each cell line carries TYPE (e.g. "multicell line", "discrete supercell", "pulse thunderstorm"), INTENSITY (light/moderate/heavy/intense/extreme), THREAT (e.g. "damaging wind and heavy rain"), bearing FROM the user, distance, and per-cell motion direction. When cells are approaching, the verdict_sentence MUST include: storm TYPE, bearing/distance, motion direction, ETA, and primary THREAT — in that order, plain English. Mention any second cell if it has its own ETA. If GLM lightning shows ≥5 flashes/hr nearby, say "frequent lightning". If SPC Day-1 Outlook lists MRGL/SLGT/ENH/MDT/HIGH for the user's area, name the risk level. Otherwise skip this step.
 STEP 4 — FORECAST FOR THIS HORIZON: ${horizonGuidance}
 STEP 5 — IMPACT TRANSLATION: Apply the activity sensitivity profile. State whether the impact threshold will be crossed, when, and with what certainty.
 STEP 6 — CONFIDENCE STATEMENT: Confidence has been pre-calculated as ${confidence}. Briefly explain WHY in plain language.

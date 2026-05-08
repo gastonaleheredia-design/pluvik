@@ -5,6 +5,12 @@ import { getSourcePriority } from './sourcePriority';
 import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpreter';
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
+import { classifyCell, cellTypeLabel } from './cellClassifier';
+
+const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+function compass(deg: number): string {
+  return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
+}
 
 // Module-scoped briefing cache. Lives for the duration of a Worker isolate
 // (typically minutes). 60-second TTL covers retry storms and identical
@@ -312,16 +318,18 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
 }
 
 /**
- * Fallback radar source: sample Open-Meteo nowcast precipitation on a 5x5
- * grid (~10 mi spacing) around the user, treat each cell with heavy precip
- * as a pseudo storm cell, and use 700 hPa wind as the storm-motion vector.
- * Produces the same line format as fetchRadarCells so downstream
- * parseAndComputeIntercepts() works unchanged.
+ * Fallback radar source: sample HRRR nowcast precipitation on a 7x7
+ * grid (~12 mi spacing → ~36 mi radius) around the user, treat each cell
+ * with heavy precip as a pseudo storm cell, and use PER-CELL 700 hPa wind
+ * as the storm-motion vector. Emits a richer line format that includes the
+ * cell's classification (multicell line / pulse / supercell / etc.) and
+ * primary threat. parseAndComputeIntercepts() reads the legacy INTERCEPT
+ * block; the new TYPE / INTENSITY / THREAT fields flow to the LLM verbatim.
  */
 async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
   try {
-    const STEP_DEG = 0.145; // ~10 mi at mid-latitudes
-    const N = 2;            // -2..+2 → 5x5 = 25 points
+    const STEP_DEG = 0.175; // ~12 mi at mid-latitudes
+    const N = 3;            // -3..+3 → 7x7 = 49 points (~36 mi radius)
     const lats: number[] = [];
     const lons: number[] = [];
     const cosLat = Math.cos(lat * Math.PI / 180) || 1;
@@ -332,31 +340,25 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       }
     }
 
-    // Storm motion: 700 hPa wind for steering layer
-    const motionRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
-      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2&wind_speed_unit=mph&timezone=auto`
-    );
-    let stormDirDeg: number | null = null;
-    let stormSpeedMph: number | null = null;
-    if (motionRes.ok) {
-      const md = await motionRes.json();
-      const fromDeg = md.hourly?.wind_direction_700hPa?.[0];
-      const sp = md.hourly?.wind_speed_700hPa?.[0];
-      if (fromDeg != null) stormDirDeg = (fromDeg + 180) % 360; // toward
-      if (sp != null) stormSpeedMph = Math.round(sp);
-    }
-
-    // Precipitation grid
+    // PER-CELL motion + precip in one batched HRRR request. Each grid
+    // point gets its own 700 hPa wind so a cell 30 mi west isn't steered
+    // by the wind at the user's exact point. HRRR is requested explicitly
+    // (`models=gfs_hrrr`) — it resolves convection far better than the
+    // GFS-seamless default used in the previous version.
     const gridRes = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
-      `&minutely_15=precipitation&forecast_minutely_15=8&timezone=auto&precipitation_unit=inch`
+      `&minutely_15=precipitation&forecast_minutely_15=8` +
+      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2` +
+      `&models=gfs_hrrr&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
     );
     if (!gridRes.ok) return 'RADAR: Cell data unavailable (grid fetch failed).';
     const gridJson = await gridRes.json();
     const arr: any[] = Array.isArray(gridJson) ? gridJson : [gridJson];
 
-    type GridCell = { lat: number; lon: number; dbz: number; precip: number };
+    type GridCell = {
+      lat: number; lon: number; dbz: number; precip: number;
+      motionDirDeg: number | null; motionSpeedMph: number | null;
+    };
     const candidates: GridCell[] = [];
     for (const point of arr) {
       const precip: number[] = point.minutely_15?.precipitation ?? [];
@@ -365,13 +367,22 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       const mmPerHr = max15 * 4 * 25.4;                    // 15-min in → in/hr → mm/hr
       // Marshall-Palmer: Z = 200 R^1.6  →  dBZ = 10*log10(Z)
       const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
-      candidates.push({ lat: point.latitude, lon: point.longitude, dbz, precip: max15 });
+      const fromDeg = point.hourly?.wind_direction_700hPa?.[0];
+      const sp = point.hourly?.wind_speed_700hPa?.[0];
+      candidates.push({
+        lat: point.latitude,
+        lon: point.longitude,
+        dbz,
+        precip: max15,
+        motionDirDeg: fromDeg != null ? (fromDeg + 180) % 360 : null,
+        motionSpeedMph: sp != null ? Math.round(sp) : null,
+      });
     }
     if (candidates.length === 0) {
       return 'RADAR: No active precipitation cells within ~50 miles (grid sample).';
     }
 
-    // Dedupe close points: sort by dbz, keep cells >12mi apart
+    // Dedupe close points: sort by dbz, keep cells >12mi apart, keep up to 3.
     candidates.sort((a, b) => b.dbz - a.dbz);
     const kept: GridCell[] = [];
     for (const c of candidates) {
@@ -381,7 +392,20 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
         return Math.sqrt(dx * dx + dy * dy) < 12;
       });
       if (!tooClose) kept.push(c);
-      if (kept.length >= 5) break;
+      if (kept.length >= 3) break;
+    }
+
+    // Detect a roughly-aligned line of cells (≥3 cells whose pairwise
+    // bearings from the user differ by <60°) — used for line-mode classification.
+    let alignedLine = false;
+    if (candidates.length >= 3) {
+      const bearings = candidates.slice(0, 6).map(c => {
+        const dy = (c.lat - lat) * 69;
+        const dx = (c.lon - lon) * 69 * cosLat;
+        return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+      });
+      const sorted = [...bearings].sort((a, b) => a - b);
+      alignedLine = (sorted[sorted.length - 1] - sorted[0]) <= 60;
     }
 
     const lines = kept.map(c => {
@@ -389,20 +413,43 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       const dLon = c.lon - lon;
       const distMiles = Math.round(Math.sqrt(dLat * dLat * 69 * 69 + dLon * dLon * 69 * 69 * cosLat * cosLat));
       const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
-      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(bearingDeg / 45) % 8];
+      const compassDir = compass(bearingDeg);
+      const cellMotionDir = c.motionDirDeg;
+      const cellMotionSpd = c.motionSpeedMph;
+      const motionDirLabel = cellMotionDir != null ? compass(cellMotionDir) : '?';
 
       let interceptLine = '';
-      if (stormDirDeg != null && stormSpeedMph != null && stormSpeedMph > 0) {
-        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, stormDirDeg, stormSpeedMph, c.dbz);
+      if (cellMotionDir != null && cellMotionSpd != null && cellMotionSpd > 0) {
+        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, cellMotionDir, cellMotionSpd, c.dbz);
         const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
         const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
         interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
       }
-      const motionTxt = stormDirDeg != null ? `${stormDirDeg}° at ${stormSpeedMph}mph` : '? mph';
-      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}${interceptLine}`;
+
+      // Cell classification — env data unavailable here (radar fetcher runs
+      // in parallel with HRRR/shear/MD fetchers), so neighborhood + dBZ alone
+      // drive this call. The LLM refines further from the env block.
+      const klass = classifyCell(
+        c.dbz,
+        {},
+        { nearbyCount: kept.length, alignedLine },
+      );
+
+      const motionTxt = cellMotionDir != null
+        ? `${cellMotionDir}°(toward ${motionDirLabel}) at ${cellMotionSpd}mph`
+        : '? mph';
+
+      return (
+        `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}` +
+        ` | TYPE:${cellTypeLabel(klass.type)} | INTENSITY:${klass.intensityWord}` +
+        ` | THREAT:${klass.primaryThreat}${interceptLine}`
+      );
     });
 
-    return `NEXRAD TRACKED CELLS (grid-sampled fallback, 700hPa motion):\n${lines.join('\n')}`;
+    const headerNote = alignedLine
+      ? 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion, line structure detected):'
+      : 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion):';
+    return `${headerNote}\n${lines.join('\n')}`;
   } catch (e) {
     console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
@@ -424,6 +471,63 @@ async function fetchAlerts(lat: number, lon: number): Promise<string> {
     ).join('\n');
   } catch {
     return '';
+  }
+}
+
+/**
+ * Lightweight radar probe used by the home-screen briefing. Returns a
+ * structured summary of the most threatening approaching cell, or
+ * `approaching:false` if nothing meaningful is inbound.
+ */
+export interface ImminentStormProbe {
+  approaching: boolean;
+  etaMinutes: number | null;
+  bearingFromUser: string | null;
+  intensityWord: 'light' | 'moderate' | 'heavy' | 'intense' | 'extreme' | null;
+  cellTypeLabel: string | null;
+  distanceMiles: number | null;
+}
+
+export async function probeImminentStorm(lat: number, lon: number): Promise<ImminentStormProbe> {
+  const empty: ImminentStormProbe = {
+    approaching: false, etaMinutes: null, bearingFromUser: null,
+    intensityWord: null, cellTypeLabel: null, distanceMiles: null,
+  };
+  try {
+    const text = await fetchRadarCellsFromGrid(lat, lon);
+    if (!text || /No active|unavailable/.test(text)) return empty;
+    const lines = text.split('\n').filter(l => l.startsWith('Cell '));
+    if (lines.length === 0) return empty;
+
+    const parsed = lines.map(l => {
+      const head = l.match(/^Cell\s+(\w+)\s+at\s+(\d+)mi/);
+      const eta = l.match(/ETA:(\d+)min/);
+      const intensity = l.match(/INTENSITY:(\w+)/);
+      const type = l.match(/TYPE:([^|]+?)\s*\|/);
+      const zone = l.match(/INTERCEPT:(DIRECT|EDGE|NEAR_MISS|MISS)/);
+      return {
+        bearing: head?.[1] ?? '?',
+        dist: head ? parseInt(head[2], 10) : 999,
+        eta: eta ? parseInt(eta[1], 10) : null,
+        intensity: (intensity?.[1] ?? null) as ImminentStormProbe['intensityWord'],
+        type: (type?.[1] ?? '').trim() || null,
+        approaching: zone ? (zone[1] === 'DIRECT' || zone[1] === 'EDGE') : false,
+      };
+    });
+    const hit = parsed
+      .filter(p => p.approaching && p.eta != null && p.eta <= 90)
+      .sort((a, b) => (a.eta ?? 999) - (b.eta ?? 999))[0];
+    if (!hit) return empty;
+    return {
+      approaching: true,
+      etaMinutes: hit.eta,
+      bearingFromUser: hit.bearing,
+      intensityWord: hit.intensity,
+      cellTypeLabel: hit.type,
+      distanceMiles: hit.dist,
+    };
+  } catch {
+    return empty;
   }
 }
 

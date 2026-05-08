@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
+import { probeImminentStorm } from './metDataFetcher';
 
 interface HomeBriefingRequest {
   lat: number;
@@ -91,12 +92,26 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       // If rain is starting in <2h, treat as "RAIN SOON"
     }
 
-    const word = pickWord({ rainingNow, thunderNow, snowNow, cloudCover, hoursUntilRain });
+    let word = pickWord({ rainingNow, thunderNow, snowNow, cloudCover, hoursUntilRain });
+
+    // Radar-aware override: if a real cell is approaching within 90 min,
+    // promote to STORMS so the home screen agrees with Ask. Best-effort —
+    // probe failures fall through to the point-only verdict.
+    let stormOverride: { eta: number; bearing: string | null } | null = null;
+    try {
+      const probe = await probeImminentStorm(lat, lon);
+      if (probe.approaching && probe.etaMinutes != null) {
+        word = 'STORMS';
+        stormOverride = { eta: probe.etaMinutes, bearing: probe.bearingFromUser };
+      }
+    } catch { /* keep point-only verdict */ }
 
     // One-line italic summary.
     let sentence: string;
     if (language.startsWith('es')) {
-      if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
+      if (word === 'STORMS' && stormOverride)
+        sentence = `Tormenta acercándose desde el ${stormOverride.bearing ?? 'oeste'} — ~${stormOverride.eta} min al impacto.`;
+      else if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
       else if (word === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
       else if (word === 'SNOW') sentence = 'Está nevando.';
       else if (word === 'RAIN SOON') sentence = `Lluvia esperada en aprox. ${hoursUntilRain} h.`;
@@ -105,7 +120,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (nextRainIdx < 0) sentence = 'Despejado por los próximos 7 días.';
       else sentence = 'Despejado por ahora.';
     } else {
-      if (word === 'STORMS') sentence = 'Thunderstorms in the area.';
+      if (word === 'STORMS' && stormOverride)
+        sentence = `Storms approaching from the ${stormOverride.bearing ?? 'west'} — ~${stormOverride.eta} min to impact.`;
+      else if (word === 'STORMS') sentence = 'Thunderstorms in the area.';
       else if (word === 'RAINING') sentence = 'Rain falling right now.';
       else if (word === 'SNOW') sentence = 'Snow falling.';
       else if (word === 'RAIN SOON') sentence = `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`;
