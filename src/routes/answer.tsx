@@ -329,32 +329,6 @@ function AnswerPage() {
 
   if (!answer) return null;
 
-  if (answer.mode === 'severe') {
-    return (
-      <SevereAnswerScreen
-        answer={answer}
-        question={question}
-        address={address}
-        onBack={() => navigate({ to: '/' })}
-        onSaveTrack={handleSaveTrack}
-        saving={saving}
-      />
-    );
-  }
-
-  if (answer.mode === 'hurricane') {
-    return (
-      <HurricaneAnswerScreen
-        answer={answer}
-        question={question}
-        address={address}
-        onBack={() => navigate({ to: '/' })}
-        onSaveTrack={handleSaveTrack}
-        saving={saving}
-      />
-    );
-  }
-
   // ── ANSWER STATE ───────────────────────────────
   // Build the 4-block briefing from the validated answer.
   const verdict: BriefingVerdict =
