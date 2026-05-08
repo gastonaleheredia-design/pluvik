@@ -39,12 +39,25 @@ async function geocodeAddress(
   }
 }
 
-const VERDICT_STYLES: Record<string, { bg: string; text: string }> = {
-  GO: { bg: '#15803d', text: '#faf7f0' },
-  CAUTION: { bg: '#f59e0b', text: '#0b1018' },
-  'NO-GO': { bg: '#b91c1c', text: '#faf7f0' },
-  UNKNOWN: { bg: '#6b7280', text: '#faf7f0' },
+const DECISION_STYLES: Record<string, { bg: string; text: string; labelKey: string }> = {
+  GOOD_TO_GO: { bg: '#15803d', text: '#faf7f0', labelKey: 'answer.decision_good_to_go' },
+  WATCH_IT:   { bg: '#f59e0b', text: '#0b1018', labelKey: 'answer.decision_watch_it' },
+  BACKUP:     { bg: '#ea580c', text: '#faf7f0', labelKey: 'answer.decision_backup' },
+  MOVE_IT:    { bg: '#b91c1c', text: '#faf7f0', labelKey: 'answer.decision_move_it' },
+  CHECK_AGAIN:{ bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.decision_check_again' },
+  UNKNOWN:    { bg: '#6b7280', text: '#faf7f0', labelKey: 'answer.verdict_unknown' },
 };
+
+// Fallback if model didn't return `decision` — derive from verdict + percentage
+function deriveDecision(verdict: string, percentage: number, confidence: string): string {
+  if (verdict === 'UNKNOWN') return 'UNKNOWN';
+  if (confidence === 'LOW') return 'CHECK_AGAIN';
+  if (verdict === 'GO') return 'GOOD_TO_GO';
+  if (verdict === 'NO-GO') return 'MOVE_IT';
+  // CAUTION
+  if (percentage >= 50) return 'BACKUP';
+  return 'WATCH_IT';
+}
 
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
@@ -64,6 +77,7 @@ function AnswerPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
 
   const loadingPhrases = [
     t('answer.loading_1'),
@@ -299,9 +313,10 @@ function AnswerPage() {
   }
 
   // ── ANSWER STATE ───────────────────────────────
-  const verdictKey = answer.verdict as string;
-  const colors = VERDICT_STYLES[verdictKey] ?? VERDICT_STYLES.UNKNOWN;
-  const verdictLabelKey = `answer.verdict_${verdictKey.toLowerCase().replace('-', '_')}`;
+  const decisionKey =
+    (answer.decision as string | undefined) ??
+    deriveDecision(answer.verdict, answer.percentage, answer.confidence);
+  const decisionStyle = DECISION_STYLES[decisionKey] ?? DECISION_STYLES.UNKNOWN;
 
   return (
     <div
@@ -332,13 +347,13 @@ function AnswerPage() {
           {t('answer.back')}
         </button>
 
-        {/* Verdict tag */}
+        {/* Decision tag */}
         <div style={{ marginBottom: '24px' }}>
           <span
             style={{
               display: 'inline-block',
-              backgroundColor: colors.bg,
-              color: colors.text,
+              backgroundColor: decisionStyle.bg,
+              color: decisionStyle.text,
               padding: '8px 16px',
               borderRadius: '100px',
               fontSize: '0.85rem',
@@ -346,7 +361,7 @@ function AnswerPage() {
               letterSpacing: '0.05em',
             }}
           >
-            {t(verdictLabelKey)}
+            {t(decisionStyle.labelKey)}
           </span>
         </div>
 
@@ -369,10 +384,39 @@ function AnswerPage() {
             fontSize: '0.75rem',
             letterSpacing: '0.1em',
             color: MUTED,
-            marginBottom: '24px',
+            marginBottom: '6px',
           }}
         >
           {t('answer.chance_label')}
+        </div>
+
+        {/* Time + plan context */}
+        {(answer.time_context || answer.plan_type) && (
+          <div
+            style={{
+              fontSize: '0.85rem',
+              color: INK,
+              marginBottom: '6px',
+              fontWeight: 500,
+            }}
+          >
+            {t('answer.time_context_for')}{' '}
+            <span style={{ color: INK }}>{answer.time_context ?? ''}</span>
+            {answer.plan_type ? ` · ${answer.plan_type}` : ''}
+          </div>
+        )}
+
+        {/* Impact caption */}
+        <div
+          style={{
+            fontSize: '0.75rem',
+            color: MUTED,
+            lineHeight: 1.4,
+            marginBottom: '20px',
+            fontStyle: 'italic',
+          }}
+        >
+          {t('answer.impact_caption')}
         </div>
 
         {/* Summary */}
@@ -380,7 +424,7 @@ function AnswerPage() {
           style={{
             fontSize: '1.15rem',
             lineHeight: 1.45,
-            marginBottom: '20px',
+            marginBottom: '16px',
             fontWeight: 500,
             fontStyle: 'italic',
           }}
@@ -388,12 +432,33 @@ function AnswerPage() {
           &ldquo;{answer.summary}&rdquo;
         </div>
 
+        {/* Main concern */}
+        {answer.main_concern && (
+          <div
+            style={{
+              fontSize: '0.9rem',
+              color: INK,
+              marginBottom: '20px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.65rem',
+                letterSpacing: '0.1em',
+                color: MUTED,
+                marginRight: '8px',
+              }}
+            >
+              {t('answer.main_concern_label').toUpperCase()}
+            </span>
+            {answer.main_concern}
+          </div>
+        )}
+
         {/* Confidence */}
         <div style={{ fontSize: '0.85rem', color: MUTED, marginBottom: '28px' }}>
           {t('answer.confidence_label')}:{' '}
           <span style={{ color: INK, fontWeight: 600 }}>{answer.confidence}</span>
-          {' · '}
-          {t('answer.your_call')}
         </div>
 
         {/* Now strip */}
@@ -430,44 +495,45 @@ function AnswerPage() {
           </div>
         </div>
 
-        {/* Layer rows */}
-        {[
-          { labelKey: 'answer.layer_hourly', pro: false },
-          { labelKey: 'answer.layer_radar', pro: false },
-          { labelKey: 'answer.layer_models', pro: true },
-          { labelKey: 'answer.layer_discussion', pro: false },
-        ].map((layer) => (
-          <div
-            key={layer.labelKey}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '14px 4px',
-              borderBottom: `1px solid ${INK}14`,
-              fontSize: '0.92rem',
-            }}
-          >
-            <span>{t(layer.labelKey)}</span>
-            {layer.pro ? (
-              <span
+        {/* Why this risk — single expandable explanation */}
+        {answer.why_this_risk && (
+          <div style={{ borderTop: `1px solid ${INK}14`, marginTop: '4px' }}>
+            <button
+              onClick={() => setShowWhy((s) => !s)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 4px',
+                background: 'none',
+                border: 'none',
+                borderBottom: `1px solid ${INK}14`,
+                fontSize: '0.92rem',
+                fontFamily: 'inherit',
+                color: INK,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span>{showWhy ? t('answer.why_hide') : t('answer.why_this_risk')}</span>
+              <span style={{ color: MUTED, fontSize: '1rem' }}>{showWhy ? '−' : '→'}</span>
+            </button>
+            {showWhy && (
+              <div
                 style={{
-                  fontSize: '0.65rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  backgroundColor: INK,
-                  color: PAGE_BG,
-                  padding: '3px 8px',
-                  borderRadius: '4px',
+                  padding: '14px 4px 18px',
+                  fontSize: '0.92rem',
+                  lineHeight: 1.55,
+                  color: INK,
+                  borderBottom: `1px solid ${INK}14`,
                 }}
               >
-                {t('answer.pro_label')}
-              </span>
-            ) : (
-              <span style={{ color: MUTED }}>→</span>
+                {answer.why_this_risk}
+              </div>
             )}
           </div>
-        ))}
+        )}
 
         {/* Save & track */}
         <button

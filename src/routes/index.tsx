@@ -39,11 +39,14 @@ function HomePage() {
     t('home.question_placeholder_1'),
     t('home.question_placeholder_2'),
     t('home.question_placeholder_3'),
+    t('home.question_placeholder_4'),
+    t('home.question_placeholder_5'),
   ];
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [questionText, setQuestionText] = useState('');
   const { address: selectedAddress, setAddress } = useAddress();
   const [showPicker, setShowPicker] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -55,9 +58,9 @@ function HomePage() {
   const mockAddress = selectedAddress.label;
   const mockAddressMeta = selectedAddress.meta;
 
-  // Template pills — fill question field on tap
-  const handleTemplate = (text: string) => {
-    setQuestionText(text);
+  // Template pills — prefill a useful starter question
+  const handleTemplate = (prefillKey: string) => {
+    setQuestionText(t(prefillKey));
   };
 
   const handleSubmit = () => {
@@ -177,6 +180,7 @@ function HomePage() {
               alignItems: 'center',
               gap: '6px',
               marginBottom: '10px',
+              minHeight: '8px',
             }}
           >
             {placeholders.map((_, i) => (
@@ -191,17 +195,6 @@ function HomePage() {
                 }}
               />
             ))}
-            <span
-              style={{
-                marginLeft: '6px',
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem',
-                letterSpacing: '0.08em',
-                opacity: 0.55,
-              }}
-            >
-              {t('home.question_example_label')} {placeholderIndex + 1} {t('home.question_of')} {placeholders.length}
-            </span>
           </div>
 
           {/* Text area */}
@@ -239,7 +232,7 @@ function HomePage() {
             <button
               onClick={() => {
                 if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                  alert('Voice input is not supported in this browser. Try Chrome or Safari.');
+                  alert(t('home.mic_unsupported'));
                   return;
                 }
                 const SpeechRecognition =
@@ -247,30 +240,36 @@ function HomePage() {
                   (window as any).webkitSpeechRecognition;
                 const recognition = new SpeechRecognition();
                 recognition.lang = i18n.language === 'es' ? 'es-US' : 'en-US';
-                recognition.interimResults = false;
+                recognition.interimResults = true;
                 recognition.maxAlternatives = 1;
+                recognition.onstart = () => setIsListening(true);
                 recognition.onresult = (event: any) => {
-                  const transcript = event.results[0][0].transcript;
+                  let transcript = '';
+                  for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                  }
                   setQuestionText(transcript);
                 };
-                recognition.onerror = () => {
-                  // Silently fail — user can type instead
-                };
+                recognition.onerror = () => setIsListening(false);
+                recognition.onend = () => setIsListening(false);
                 recognition.start();
               }}
               style={{
                 width: '36px',
                 height: '36px',
                 borderRadius: '50%',
-                backgroundColor: '#faf7f0',
-                border: '1px solid rgba(11,16,24,0.08)',
+                backgroundColor: isListening ? '#c2410c' : '#faf7f0',
+                border: isListening ? '1px solid #c2410c' : '1px solid rgba(11,16,24,0.08)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
                 flexShrink: 0,
                 fontSize: '1rem',
+                color: isListening ? '#faf7f0' : '#0b1018',
+                transition: 'background-color 0.2s, color 0.2s',
               }}
+              aria-label={isListening ? t('home.mic_listening') : 'Voice input'}
             >
               🎙
             </button>
@@ -312,13 +311,13 @@ function HomePage() {
           }}
         >
           {[
-            { emoji: '📅', label: t('home.template_track') },
-            { emoji: '🌧️', label: t('home.template_rain') },
-            { emoji: '🌪️', label: t('home.template_storm') },
+            { emoji: '📅', label: t('home.template_track'), prefill: 'home.template_track_prefill' },
+            { emoji: '🌧️', label: t('home.template_rain'), prefill: 'home.template_rain_prefill' },
+            { emoji: '🌪️', label: t('home.template_storm'), prefill: 'home.template_storm_prefill' },
           ].map((pill) => (
             <button
               key={pill.label}
-              onClick={() => handleTemplate(`${pill.label}`)}
+              onClick={() => handleTemplate(pill.prefill)}
               style={{
                 backgroundColor: '#faf7f0',
                 border: '1px solid rgba(11,16,24,0.08)',
