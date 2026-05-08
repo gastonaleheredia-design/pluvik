@@ -1,4 +1,5 @@
 import type { ParsedQuestion } from './weatherIntelligence';
+import { calculateStormIntercept } from './stormIntercept';
 
 const NWS = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', Accept: 'application/geo+json' };
 const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
@@ -169,13 +170,15 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
       const speedKts = c.drct != null && c.sknt != null ? c.sknt : null;
       const speedMph = speedKts ? Math.round(speedKts * 1.15078) : null;
 
-      let eta = '';
-      if (speedMph && distMiles > 0) {
-        const etaMin = Math.round(distMiles / speedMph * 60);
-        eta = ` → ETA: ${etaMin} min`;
+      let interceptLine = '';
+      if (c.lat != null && c.lon != null && c.drct != null && speedMph != null && c.dbz != null) {
+        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, c.drct, speedMph, c.dbz);
+        const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
+        const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
+        interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
       }
 
-      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz ?? '?'} | Motion:${c.drct ?? '?'}° at ${speedMph ?? '?'}mph${eta}`;
+      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz ?? '?'} | Motion:${c.drct ?? '?'}° at ${speedMph ?? '?'}mph${interceptLine}`;
     });
 
     return `NEXRAD TRACKED CELLS:\n${cells.join('\n')}`;
