@@ -18,6 +18,27 @@ function compass(deg: number): string {
 const briefingCache = new Map<string, { t: number; v: MetBriefing }>();
 
 /**
+ * Run a list of async tasks with a max concurrency. Cloudflare Workers
+ * cap concurrent in-flight subrequests at ~6; firing more triggers
+ * "stalled HTTP response was canceled to prevent deadlock" warnings and
+ * silently kills sibling requests. We pull tasks off a shared cursor so
+ * fast tasks don't block slow ones.
+ */
+async function runWithConcurrency(
+  tasks: Array<() => Promise<void>>,
+  limit: number,
+): Promise<void> {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (i < tasks.length) {
+      const idx = i++;
+      try { await tasks[idx](); } catch { /* per-task try/catch already inside */ }
+    }
+  });
+  await Promise.all(workers);
+}
+
+/**
  * Robustly extract a bulk shear value (in knots) for a given layer
  * (e.g. 0-6 km, 0-1 km) from a free-form shear-profile text block.
  * Tolerates label/unit/format variations.
