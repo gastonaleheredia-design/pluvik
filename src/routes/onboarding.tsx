@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import '../i18n';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
@@ -21,8 +22,46 @@ const USE_CASES = [
 
 function OnboardingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState<'welcome' | 'usecases'>('welcome');
+  const [checkingCompletion, setCheckingCompletion] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const localDone = localStorage.getItem(ONBOARDING_KEY) === 'true';
+    if (localDone) {
+      navigate({ to: '/', replace: true });
+      return;
+    }
+
+    if (authLoading) return;
+    if (!user) {
+      setCheckingCompletion(false);
+      return;
+    }
+
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('onboarding_completed_at')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.onboarding_completed_at) {
+          try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
+          navigate({ to: '/', replace: true });
+          return;
+        }
+        setCheckingCompletion(false);
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingCompletion(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [authLoading, user, navigate]);
 
   const handleWelcomeContinue = () => {
     setStep('usecases');
@@ -38,8 +77,12 @@ function OnboardingPage() {
         .eq('id', user.id)
         .then(() => {});
     }
-    navigate({ to: '/' });
+    navigate({ to: '/', replace: true });
   };
+
+  if (checkingCompletion) {
+    return null;
+  }
 
   if (step === 'usecases') {
     return <UseCasesScreen onContinue={handleFinish} />;
