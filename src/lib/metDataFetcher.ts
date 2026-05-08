@@ -382,7 +382,7 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       return 'RADAR: No active precipitation cells within ~50 miles (grid sample).';
     }
 
-    // Dedupe close points: sort by dbz, keep cells >12mi apart
+    // Dedupe close points: sort by dbz, keep cells >12mi apart, keep up to 3.
     candidates.sort((a, b) => b.dbz - a.dbz);
     const kept: GridCell[] = [];
     for (const c of candidates) {
@@ -392,7 +392,20 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
         return Math.sqrt(dx * dx + dy * dy) < 12;
       });
       if (!tooClose) kept.push(c);
-      if (kept.length >= 5) break;
+      if (kept.length >= 3) break;
+    }
+
+    // Detect a roughly-aligned line of cells (≥3 cells whose pairwise
+    // bearings from the user differ by <60°) — used for line-mode classification.
+    let alignedLine = false;
+    if (candidates.length >= 3) {
+      const bearings = candidates.slice(0, 6).map(c => {
+        const dy = (c.lat - lat) * 69;
+        const dx = (c.lon - lon) * 69 * cosLat;
+        return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+      });
+      const sorted = [...bearings].sort((a, b) => a - b);
+      alignedLine = (sorted[sorted.length - 1] - sorted[0]) <= 60;
     }
 
     const lines = kept.map(c => {
@@ -400,20 +413,43 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       const dLon = c.lon - lon;
       const distMiles = Math.round(Math.sqrt(dLat * dLat * 69 * 69 + dLon * dLon * 69 * 69 * cosLat * cosLat));
       const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
-      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(bearingDeg / 45) % 8];
+      const compassDir = compass(bearingDeg);
+      const cellMotionDir = c.motionDirDeg;
+      const cellMotionSpd = c.motionSpeedMph;
+      const motionDirLabel = cellMotionDir != null ? compass(cellMotionDir) : '?';
 
       let interceptLine = '';
-      if (stormDirDeg != null && stormSpeedMph != null && stormSpeedMph > 0) {
-        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, stormDirDeg, stormSpeedMph, c.dbz);
+      if (cellMotionDir != null && cellMotionSpd != null && cellMotionSpd > 0) {
+        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, cellMotionDir, cellMotionSpd, c.dbz);
         const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
         const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
         interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
       }
-      const motionTxt = stormDirDeg != null ? `${stormDirDeg}° at ${stormSpeedMph}mph` : '? mph';
-      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}${interceptLine}`;
+
+      // Cell classification — env data unavailable here (radar fetcher runs
+      // in parallel with HRRR/shear/MD fetchers), so neighborhood + dBZ alone
+      // drive this call. The LLM refines further from the env block.
+      const klass = classifyCell(
+        c.dbz,
+        {},
+        { nearbyCount: kept.length, alignedLine },
+      );
+
+      const motionTxt = cellMotionDir != null
+        ? `${cellMotionDir}°(toward ${motionDirLabel}) at ${cellMotionSpd}mph`
+        : '? mph';
+
+      return (
+        `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz} | Motion:${motionTxt}` +
+        ` | TYPE:${cellTypeLabel(klass.type)} | INTENSITY:${klass.intensityWord}` +
+        ` | THREAT:${klass.primaryThreat}${interceptLine}`
+      );
     });
 
-    return `NEXRAD TRACKED CELLS (grid-sampled fallback, 700hPa motion):\n${lines.join('\n')}`;
+    const headerNote = alignedLine
+      ? 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion, line structure detected):'
+      : 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion):';
+    return `${headerNote}\n${lines.join('\n')}`;
   } catch (e) {
     console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
