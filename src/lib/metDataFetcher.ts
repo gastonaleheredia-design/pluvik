@@ -18,6 +18,27 @@ function compass(deg: number): string {
 const briefingCache = new Map<string, { t: number; v: MetBriefing }>();
 
 /**
+ * Run a list of async tasks with a max concurrency. Cloudflare Workers
+ * cap concurrent in-flight subrequests at ~6; firing more triggers
+ * "stalled HTTP response was canceled to prevent deadlock" warnings and
+ * silently kills sibling requests. We pull tasks off a shared cursor so
+ * fast tasks don't block slow ones.
+ */
+async function runWithConcurrency(
+  tasks: Array<() => Promise<void>>,
+  limit: number,
+): Promise<void> {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (i < tasks.length) {
+      const idx = i++;
+      try { await tasks[idx](); } catch { /* per-task try/catch already inside */ }
+    }
+  });
+  await Promise.all(workers);
+}
+
+/**
  * Robustly extract a bulk shear value (in knots) for a given layer
  * (e.g. 0-6 km, 0-1 km) from a free-form shear-profile text block.
  * Tolerates label/unit/format variations.
@@ -908,7 +929,7 @@ export async function buildMetBriefing(
   const cached = briefingCache.get(cacheKey);
   if (cached && now - cached.t < 60_000) return cached.v;
 
-  const fetches: Promise<void>[] = [];
+  // Concurrency-limited fan-out below; no longer firing all promises at once.
   const result: MetBriefing = {
     surfaceObs: '',
     hourlyForecast: '',
@@ -943,32 +964,37 @@ export async function buildMetBriefing(
   // Fetch EVERYTHING on every request — full meteorologist briefing.
   // Each fetch has its own try/catch and short timeout so a single slow source
   // never blocks the briefing.
-  fetches.push(fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }));
-  fetches.push(fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }));
-  fetches.push(fetchAFD(lat, lon).then(v => { result.afd = v; }));
-  fetches.push(fetchAlerts(lat, lon).then(v => { result.alerts = v; }));
-  fetches.push(fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }));
-  fetches.push(fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }));
-  fetches.push(fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }));
-  fetches.push(fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }));
-  fetches.push(fetchSPCOutlook().then(v => { result.spcOutlook = v; }));
-  fetches.push(fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }));
-  fetches.push(fetchMarine(lat, lon).then(v => { result.marine = v; }));
-  fetches.push(fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }));
-  fetches.push(fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }));
-  fetches.push(fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }));
-  fetches.push(fetchSPCDayN(2).then(v => { result.spcDay2 = v; }));
-  fetches.push(fetchSPCDayN(3).then(v => { result.spcDay3 = v; }));
-  fetches.push(fetchSPCDay48().then(v => { result.spcDay48 = v; }));
-  fetches.push(fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }));
-  fetches.push(fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }));
-  fetches.push(fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }));
-  fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
-  fetches.push(fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }));
-  fetches.push(fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }));
-  fetches.push(fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; }));
-
-  await Promise.all(fetches);
+  // NOTE: Cloudflare Workers cap concurrent in-flight subrequests at ~6.
+  // Firing 24 fetches in parallel triggers "stalled HTTP response was
+  // canceled to prevent deadlock" and breaks the briefing. We run the
+  // fan-out through a small concurrency limiter instead.
+  const tasks: Array<() => Promise<void>> = [
+    () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }),
+    () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }),
+    () => fetchAFD(lat, lon).then(v => { result.afd = v; }),
+    () => fetchAlerts(lat, lon).then(v => { result.alerts = v; }),
+    () => fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }),
+    () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }),
+    () => fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }),
+    () => fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }),
+    () => fetchSPCOutlook().then(v => { result.spcOutlook = v; }),
+    () => fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }),
+    () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
+    () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
+    () => fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }),
+    () => fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }),
+    () => fetchSPCDayN(2).then(v => { result.spcDay2 = v; }),
+    () => fetchSPCDayN(3).then(v => { result.spcDay3 = v; }),
+    () => fetchSPCDay48().then(v => { result.spcDay48 = v; }),
+    () => fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }),
+    () => fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }),
+    () => fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }),
+    () => fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }),
+    () => fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }),
+    () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }),
+    () => fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; }),
+  ];
+  await runWithConcurrency(tasks, 6);
 
   // Derive plain-language atmospheric state from the assembled numeric data.
   result.atmosphericState = deriveAtmosphericState(result);
