@@ -55,8 +55,7 @@ function OnboardingPage() {
           return;
         }
         setCheckingCompletion(false);
-      })
-      .catch(() => {
+      }, () => {
         if (!cancelled) setCheckingCompletion(false);
       });
 
