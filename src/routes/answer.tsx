@@ -406,9 +406,7 @@ function AnswerPage() {
   const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
     ?? answer.summary;
   const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
-  const topicTag = answer.mode === 'severe' ? 'SEVERE'
-    : answer.mode === 'hurricane' ? 'STORM'
-    : 'RAIN';
+  const topicTag = 'RAIN';
   const contextLine = `${address.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
 
   if (!showWhy) {
