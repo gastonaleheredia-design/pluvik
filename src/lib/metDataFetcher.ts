@@ -89,6 +89,7 @@ export interface MetBriefing {
   droughtMonitor: string;
   glmLightning: string;
   atmosphericState: string;
+  shearProfile: string;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
@@ -545,6 +546,7 @@ export async function buildMetBriefing(
     droughtMonitor: '',
     glmLightning: '',
     atmosphericState: '',
+    shearProfile: '',
   };
 
   // Fetch EVERYTHING on every request — full meteorologist briefing.
@@ -571,6 +573,7 @@ export async function buildMetBriefing(
   fetches.push(fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }));
   fetches.push(fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }));
   fetches.push(fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }));
+  fetches.push(fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }));
 
   await Promise.all(fetches);
 
