@@ -460,6 +460,57 @@ function AnswerPage() {
           </div>
         )}
 
+        {/* Decision window */}
+        {answer.decision_window && (
+          <div
+            style={{
+              fontSize: '0.9rem',
+              color: INK,
+              marginBottom: '14px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.65rem',
+                letterSpacing: '0.1em',
+                color: MUTED,
+                marginRight: '8px',
+              }}
+            >
+              {t('answer.decision_window_label').toUpperCase()}
+            </span>
+            {answer.decision_window}
+          </div>
+        )}
+
+        {/* Recommended action */}
+        {answer.action && (
+          <div
+            style={{
+              fontSize: '0.95rem',
+              color: INK,
+              marginBottom: '20px',
+              padding: '12px 14px',
+              background: '#f0ebde',
+              borderRadius: '12px',
+              borderLeft: `3px solid ${ACCENT}`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.6rem',
+                letterSpacing: '0.12em',
+                color: ACCENT,
+                marginBottom: '4px',
+                fontWeight: 600,
+              }}
+            >
+              {t('answer.action_label').toUpperCase()}
+            </div>
+            {answer.action}
+          </div>
+        )}
+
         {/* Confidence */}
         <div style={{ fontSize: '0.85rem', color: MUTED, marginBottom: '28px' }}>
           {t('answer.confidence_label')}:{' '}
