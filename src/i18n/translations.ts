@@ -352,6 +352,17 @@ export const translations = {
         language: 'Idioma',
         language_english: 'English',
         language_spanish: 'Español',
+        units_section: 'Unidades',
+        temp_unit: 'Temperatura',
+        wind_unit: 'Velocidad del viento',
+        time_format: 'Formato de hora',
+        location_section: 'Ubicación por defecto',
+        location_change: 'Cambiar ubicación por defecto',
+        saved_places_section: 'Lugares guardados',
+        saved_places_empty: 'Aún no hay lugares guardados.',
+        saved_places_manage: 'Toca un lugar para eliminarlo.',
+        about_section: 'Acerca de',
+        version_label: 'Versión',
       },
       // Help
       help: {
