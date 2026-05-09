@@ -341,6 +341,39 @@ export const askWeather = createServerFn({ method: 'POST' })
     const filteredBriefing = filterBriefingBySources(briefing, stageGatedSources);
     const briefingText = assembleBriefingText(filteredBriefing);
 
+    // 8b. Plain-Language Translator (Phase 6). For climate/outlook stages,
+    // fetch the long-range signals and pre-digest them into human sentences
+    // BEFORE the LLM sees them. The model is then forbidden from re-introducing
+    // raw numbers or jargon (enforced by stagePrompt + this prompt block).
+    const needsLongRange =
+      stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
+    let plainLanguageBlock = '';
+    let plainLanguageOutro: string | null = null;
+    if (needsLongRange) {
+      const eventDate = new Date(
+        Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
+      );
+      const eventMonth = eventDate.getUTCMonth() + 1;
+      const [normals, outlooks] = await Promise.all([
+        fetchClimateNormals(lat, lon),
+        stageInfo.stage === 'outlook' ? fetchCpcOutlooks(lat, lon) : Promise.resolve(null),
+      ]);
+      const ctx = buildPlainLanguageContext({
+        stage: stageInfo.stage,
+        eventMonth,
+        normals,
+        outlooks,
+      });
+      plainLanguageBlock = ctx.promptBlock;
+      plainLanguageOutro = ctx.stageOutro;
+      console.log('[askWeather:diag] plain-language context', {
+        stage: stageInfo.stage,
+        sentenceCount: ctx.sentences.length,
+        hasNormals: !!normals,
+        hasOutlooks: !!outlooks,
+      });
+    }
+
     const systemPrompt =
       mode === 'severe' ? SEVERE_PROMPT + '\n' + stageRules :
       mode === 'hurricane' ? HURRICANE_PROMPT + '\n' + stageRules :
@@ -361,6 +394,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
+      (plainLanguageBlock ? `${plainLanguageBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}`;
 
     const controller = new AbortController();
