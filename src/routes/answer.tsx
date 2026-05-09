@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
+import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
@@ -159,6 +160,7 @@ function AnswerPage() {
           current_confidence: answer.confidence,
           current_verdict_word: verdictWord,
           current_verdict_sentence: verdictSentence,
+          event_at: a.event_at ?? null,
         })
         .select()
         .single();
@@ -179,6 +181,26 @@ function AnswerPage() {
         verdict_word: verdictWord,
         verdict_sentence: verdictSentence,
       });
+
+      // Phase 7: write the INITIAL forecast snapshot so the timeline,
+      // change tags, and lifecycle sweep have something to build on.
+      try {
+        await recordEventSnapshot({
+          data: {
+            eventId: eventData.id,
+            stage: a.forecast_stage ?? 'short_range',
+            decisionLabel: answer.verdict ?? null,
+            chanceOfImpact:
+              typeof answer.percentage === 'number' ? answer.percentage : null,
+            mainThreat: a.main_threat ?? null,
+            summary: answer.summary ?? null,
+            dataSources: a.data_sources ?? [],
+          },
+        });
+      } catch (snapErr) {
+        // Snapshot write is non-blocking — the event is already saved.
+        console.error('[answer] recordEventSnapshot failed', snapErr);
+      }
 
       navigate({ to: '/dashboard' });
     } catch {

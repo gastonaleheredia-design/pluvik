@@ -43,6 +43,10 @@ export interface ExtendedWeatherAnswer {
   recommended_action?: string;
   plain_english_summary?: string;
   stage_outro?: string;
+  /** ISO timestamp of when the user's plan happens (now + hoursAhead). */
+  event_at?: string;
+  /** Source families that fed this answer — used as snapshot dataSources. */
+  data_sources?: string[];
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
@@ -471,6 +475,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       mode,
       forecast_stage: stageInfo.stage,
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
+      event_at: new Date(
+        Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
+      ).toISOString(),
+      data_sources: stageGatedSources,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
     } as unknown as ExtendedWeatherAnswer;
