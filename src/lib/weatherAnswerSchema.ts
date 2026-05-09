@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import type { ForecastStage } from './forecastStage';
+
+/**
+ * Stages where GO/CAUTION/NO-GO verdicts are NOT allowed. The model must
+ * return a tendency-only answer in plain English, with verdict=null and
+ * chance_of_impact=null.
+ */
+const NON_VERDICT_STAGES: ForecastStage[] = ['climate', 'outlook'];
 
 /**
  * Schema for the meteorologist JSON answer returned by the model.
@@ -7,7 +15,20 @@ import { z } from 'zod';
  * response over a non-essential field.
  */
 export const WeatherAnswerSchema = z.object({
-  verdict: z.enum(['GO', 'CAUTION', 'NO-GO', 'UNKNOWN']),
+  verdict: z.enum(['GO', 'CAUTION', 'NO-GO', 'UNKNOWN']).nullable(),
+
+  // Forecast-maturity layer (Phase 2)
+  forecast_stage: z.enum(['climate', 'outlook', 'model_trend', 'short_range', 'live']).optional(),
+  decision_label: z.string().optional(),
+  chance_of_impact: z.number().min(0).max(100).nullable().optional(),
+  main_threat: z.string().optional(),
+  event_time: z.string().optional(),
+  event_location: z.string().optional(),
+  recommended_action: z.string().optional(),
+  plain_english_summary: z.string().optional(),
+  /** Closing line — e.g. "As your event gets closer, this will move into a real forecast." */
+  stage_outro: z.string().optional(),
+
   // Accept either `impact_percent` (new prompt) or `percentage` (legacy).
   impact_percent: z.number().min(0).max(100).optional(),
   percentage: z.number().min(0).max(100).optional(),
@@ -45,7 +66,11 @@ export const WeatherAnswerSchema = z.object({
   impacts: z.any().optional(),
   last_change: z.string().optional(),
 }).passthrough().refine(
-  (v) => typeof v.impact_percent === 'number' || typeof v.percentage === 'number',
+  (v) => {
+    // Climate/Outlook stages: numeric impact is allowed to be missing.
+    if (v.forecast_stage && NON_VERDICT_STAGES.includes(v.forecast_stage)) return true;
+    return typeof v.impact_percent === 'number' || typeof v.percentage === 'number';
+  },
   { message: 'Missing impact_percent/percentage' },
 );
 
