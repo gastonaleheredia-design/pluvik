@@ -14,6 +14,8 @@ interface TrackedEvent {
   current_confidence: string;
   last_checked_at: string;
   created_at: string;
+  current_verdict_word?: string | null;
+  current_verdict_sentence?: string | null;
 }
 
 interface JournalEntry {
@@ -24,6 +26,8 @@ interface JournalEntry {
   confidence: string;
   current_conditions: string;
   checked_at: string;
+  verdict_word?: string | null;
+  verdict_sentence?: string | null;
 }
 
 export const Route = createFileRoute('/event/$id')({
@@ -35,6 +39,9 @@ const VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
   CAUTION: { bg: '#f59e0b', text: '#0b1018' },
   'NO-GO': { bg: '#b91c1c', text: '#faf7f0' },
   UNKNOWN: { bg: '#6b7280', text: '#faf7f0' },
+  YES: { bg: '#15803d', text: '#faf7f0' },
+  MAYBE: { bg: '#f59e0b', text: '#0b1018' },
+  NO: { bg: '#b91c1c', text: '#faf7f0' },
 };
 
 const PAGE_BG = '#faf7f0';
@@ -183,8 +190,17 @@ function EventPage() {
     );
   }
 
+  const displayVerdict =
+    event.current_verdict_word ?? event.current_verdict ?? 'UNKNOWN';
+  const displaySentence =
+    event.current_verdict_sentence ?? event.current_summary;
   const colors =
-    VERDICT_COLORS[event.current_verdict] ?? VERDICT_COLORS.UNKNOWN;
+    VERDICT_COLORS[displayVerdict] ??
+    VERDICT_COLORS[event.current_verdict] ??
+    VERDICT_COLORS.UNKNOWN;
+  const showPercentage =
+    typeof event.current_percentage === 'number' &&
+    event.current_percentage > 0;
 
   return (
     <div
@@ -337,23 +353,25 @@ function EventPage() {
                 letterSpacing: '0.05em',
               }}
             >
-              {event.current_verdict}
+              {displayVerdict}
             </span>
           </div>
 
-          {/* Percentage */}
-          <div
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '3.5rem',
-              fontWeight: 400,
-              lineHeight: 1,
-              marginBottom: '10px',
-              color: '#faf7f0',
-            }}
-          >
-            {event.current_percentage}%
-          </div>
+          {/* Percentage — hidden when 0 / null (e.g. watch-only verdicts) */}
+          {showPercentage && (
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '3.5rem',
+                fontWeight: 400,
+                lineHeight: 1,
+                marginBottom: '10px',
+                color: '#faf7f0',
+              }}
+            >
+              {event.current_percentage}%
+            </div>
+          )}
 
           {/* Summary */}
           <div
@@ -364,7 +382,7 @@ function EventPage() {
               lineHeight: 1.45,
             }}
           >
-            &ldquo;{event.current_summary}&rdquo;
+            &ldquo;{displaySentence}&rdquo;
           </div>
         </div>
 
@@ -492,7 +510,7 @@ function EventPage() {
                   marginBottom: '4px',
                 }}
               >
-                &ldquo;{entry.summary}&rdquo;
+                &ldquo;{entry.verdict_sentence ?? entry.summary}&rdquo;
               </div>
 
               {/* Verdict + percentage */}
@@ -503,7 +521,10 @@ function EventPage() {
                   color: MUTED,
                 }}
               >
-                {entry.verdict} · {entry.percentage}%
+                {(entry.verdict_word ?? entry.verdict)}
+                {typeof entry.percentage === 'number' && entry.percentage > 0
+                  ? ` · ${entry.percentage}%`
+                  : ''}
               </div>
             </div>
           ))}

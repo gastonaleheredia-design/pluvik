@@ -137,6 +137,14 @@ function AnswerPage() {
     if (!answer) return;
     setSaving(true);
     try {
+      const a = answer as WeatherAnswer & {
+        verdict_word?: 'YES' | 'NO' | 'MAYBE';
+        verdict_sentence?: string;
+      };
+      const verdictWord =
+        a.verdict_word ??
+        (a.verdict === 'GO' ? 'YES' : a.verdict === 'NO-GO' ? 'NO' : 'MAYBE');
+      const verdictSentence = a.verdict_sentence ?? a.summary;
       const { data: eventData, error: eventError } = await supabase
         .from('tracked_events')
         .insert({
@@ -149,6 +157,8 @@ function AnswerPage() {
           current_percentage: answer.percentage,
           current_summary: answer.summary,
           current_confidence: answer.confidence,
+          current_verdict_word: verdictWord,
+          current_verdict_sentence: verdictSentence,
         })
         .select()
         .single();
@@ -166,6 +176,8 @@ function AnswerPage() {
         summary: answer.summary,
         confidence: answer.confidence,
         current_conditions: answer.current_conditions,
+        verdict_word: verdictWord,
+        verdict_sentence: verdictSentence,
       });
 
       navigate({ to: '/dashboard' });
