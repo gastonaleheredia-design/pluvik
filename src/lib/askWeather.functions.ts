@@ -43,6 +43,10 @@ export interface ExtendedWeatherAnswer {
   recommended_action?: string;
   plain_english_summary?: string;
   stage_outro?: string;
+  /** ISO timestamp of when the user's plan happens (now + hoursAhead). */
+  event_at?: string;
+  /** Source families that fed this answer — used as snapshot dataSources. */
+  data_sources?: string[];
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
