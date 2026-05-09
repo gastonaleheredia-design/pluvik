@@ -228,6 +228,30 @@ function DashboardPage() {
                   String(events.length)
                 )}
           </div>
+          {/* Active / Archived toggle */}
+          <div style={{ display: 'flex', gap: '6px', marginTop: '14px' }}>
+            {(['active', 'archived'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '100px',
+                  border: `1px solid ${view === v ? INK : INK + '1a'}`,
+                  backgroundColor: view === v ? INK : 'transparent',
+                  color: view === v ? PAGE_BG : MUTED,
+                  fontSize: '0.72rem',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Loading */}
