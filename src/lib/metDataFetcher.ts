@@ -6,6 +6,26 @@ import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpr
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
 import { classifyCell, cellTypeLabel } from './cellClassifier';
+import type { StormInterceptResult } from './stormIntercept';
+
+/**
+ * Module-scoped handoff: when the radar fetcher computes intercepts for
+ * each cell, it stashes the structured results here keyed by the same
+ * cache key used by buildMetBriefing. askWeather then reads them
+ * directly instead of regex-parsing the printed text block (which loses
+ * fidelity and silently zeroes intercepts on any format drift).
+ */
+const radarCellsByKey = new Map<string, StormInterceptResult[]>();
+export function getStructuredCellsForKey(key: string): StormInterceptResult[] {
+  return radarCellsByKey.get(key) ?? [];
+}
+function putStructuredCells(key: string, cells: StormInterceptResult[]) {
+  radarCellsByKey.set(key, cells);
+  if (radarCellsByKey.size > 200) {
+    const oldestKey = radarCellsByKey.keys().next().value;
+    if (oldestKey) radarCellsByKey.delete(oldestKey);
+  }
+}
 
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
