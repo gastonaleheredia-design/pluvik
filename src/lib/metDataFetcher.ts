@@ -303,12 +303,17 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
       return await fetchRadarCellsFromGrid(lat, lon);
     }
     if (!data?.attrs?.length) {
+      console.log('[radar:diag] IEM returned 0 attrs for', { lat, lon });
       // IEM said no tracked cells — verify against grid sample. If grid finds
       // active heavy precip, prefer that signal.
       const gridText = await fetchRadarCellsFromGrid(lat, lon);
       if (gridText && !gridText.includes('No active')) return gridText;
       return 'RADAR: No tracked storm cells within 150 miles.';
     }
+
+    console.log('[radar:diag] IEM cellCount=', data.attrs.length, 'maxDbz=',
+      Math.max(...data.attrs.map((c: any) => c.dbz ?? 0)),
+      'user=', { lat, lon });
 
     const cells = data.attrs.slice(0, 5).map((c: any) => {
       const dLat = c.lat - lat;
