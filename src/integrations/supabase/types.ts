@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      event_forecast_snapshots: {
+        Row: {
+          chance_of_impact: number | null
+          change_tag: Database["public"]["Enums"]["forecast_change_tag"]
+          created_at: string
+          data_sources: Json
+          decision_label: string | null
+          event_id: string
+          id: string
+          is_final: boolean
+          main_threat: string | null
+          previous_snapshot_id: string | null
+          stage: Database["public"]["Enums"]["forecast_stage"]
+          summary: string | null
+        }
+        Insert: {
+          chance_of_impact?: number | null
+          change_tag: Database["public"]["Enums"]["forecast_change_tag"]
+          created_at?: string
+          data_sources?: Json
+          decision_label?: string | null
+          event_id: string
+          id?: string
+          is_final?: boolean
+          main_threat?: string | null
+          previous_snapshot_id?: string | null
+          stage: Database["public"]["Enums"]["forecast_stage"]
+          summary?: string | null
+        }
+        Update: {
+          chance_of_impact?: number | null
+          change_tag?: Database["public"]["Enums"]["forecast_change_tag"]
+          created_at?: string
+          data_sources?: Json
+          decision_label?: string | null
+          event_id?: string
+          id?: string
+          is_final?: boolean
+          main_threat?: string | null
+          previous_snapshot_id?: string | null
+          stage?: Database["public"]["Enums"]["forecast_stage"]
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_forecast_snapshots_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tracked_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_forecast_snapshots_previous_snapshot_id_fkey"
+            columns: ["previous_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "event_forecast_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journal_entries: {
         Row: {
           checked_at: string | null
@@ -145,6 +205,7 @@ export type Database = {
       tracked_events: {
         Row: {
           address: string
+          archived_at: string | null
           created_at: string | null
           current_confidence: string | null
           current_percentage: number | null
@@ -152,6 +213,7 @@ export type Database = {
           current_verdict: string | null
           current_verdict_sentence: string | null
           current_verdict_word: string | null
+          event_at: string | null
           id: string
           is_active: boolean | null
           last_checked_at: string | null
@@ -162,6 +224,7 @@ export type Database = {
         }
         Insert: {
           address: string
+          archived_at?: string | null
           created_at?: string | null
           current_confidence?: string | null
           current_percentage?: number | null
@@ -169,6 +232,7 @@ export type Database = {
           current_verdict?: string | null
           current_verdict_sentence?: string | null
           current_verdict_word?: string | null
+          event_at?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
@@ -179,6 +243,7 @@ export type Database = {
         }
         Update: {
           address?: string
+          archived_at?: string | null
           created_at?: string | null
           current_confidence?: string | null
           current_percentage?: number | null
@@ -186,6 +251,7 @@ export type Database = {
           current_verdict?: string | null
           current_verdict_sentence?: string | null
           current_verdict_word?: string | null
+          event_at?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
@@ -212,7 +278,20 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      forecast_change_tag:
+        | "INITIAL"
+        | "STAGE_PROMOTED"
+        | "NEW_DATA_SOURCE"
+        | "SIGNIFICANT_CHANGE"
+        | "MINOR_REFRESH"
+        | "RESOLVED_BENIGN"
+        | "CONCLUDED"
+      forecast_stage:
+        | "climate"
+        | "outlook"
+        | "model_trend"
+        | "short_range"
+        | "live"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -339,6 +418,23 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      forecast_change_tag: [
+        "INITIAL",
+        "STAGE_PROMOTED",
+        "NEW_DATA_SOURCE",
+        "SIGNIFICANT_CHANGE",
+        "MINOR_REFRESH",
+        "RESOLVED_BENIGN",
+        "CONCLUDED",
+      ],
+      forecast_stage: [
+        "climate",
+        "outlook",
+        "model_trend",
+        "short_range",
+        "live",
+      ],
+    },
   },
 } as const
