@@ -475,6 +475,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       mode,
       forecast_stage: stageInfo.stage,
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
+      event_at: new Date(
+        Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
+      ).toISOString(),
+      data_sources: stageGatedSources,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
     } as unknown as ExtendedWeatherAnswer;
