@@ -328,6 +328,17 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
       let interceptLine = '';
       if (c.lat != null && c.lon != null && c.drct != null && speedMph != null && c.dbz != null) {
         const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, c.drct, speedMph, c.dbz);
+        console.log('[intercept:diag]', {
+          bearing: compassDir,
+          distMiles,
+          dbz: c.dbz,
+          motionDeg: c.drct,
+          speedMph,
+          lateralOffset: ix.lateralOffsetMiles,
+          impactZone: ix.impactZone,
+          willIntercept: ix.willIntercept,
+          etaMinutes: ix.etaMinutes,
+        });
         const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
         const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
         interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
