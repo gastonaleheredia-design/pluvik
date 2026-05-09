@@ -5,6 +5,8 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { EventTimeline, type TimelineSnapshot } from '../components/EventTimeline';
 import { LiveRadarMap } from '../components/LiveRadarMap';
+import { askWeather } from '../lib/askWeather.functions';
+import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 
 interface TrackedEvent {
   id: string;
@@ -73,7 +75,7 @@ function formatTime(dateStr: string): string {
 }
 
 function EventPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = Route.useParams();
@@ -85,6 +87,8 @@ function EventPage() {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -149,6 +153,96 @@ function EventPage() {
     setBusy(true);
     await supabase.from('tracked_events').delete().eq('id', event.id);
     navigate({ to: '/dashboard' });
+  };
+
+  const handleRefresh = async () => {
+    if (!event || refreshing) return;
+    if (typeof event.lat !== 'number' || typeof event.lon !== 'number') {
+      setRefreshError('Missing location for this event.');
+      return;
+    }
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      // Recompute hoursAhead from event_at so the stage classifier picks
+      // the right maturity (e.g. an outlook may have matured into a forecast).
+      const hoursAhead = event.event_at
+        ? Math.max(
+            0,
+            (new Date(event.event_at).getTime() - Date.now()) / 3_600_000,
+          )
+        : undefined;
+
+      const result = await askWeather({
+        data: {
+          question: event.question,
+          lat: event.lat,
+          lon: event.lon,
+          language: i18n.language,
+          address: event.address,
+          hoursAhead,
+        },
+      });
+
+      const a = result as typeof result & {
+        verdict_word?: 'YES' | 'NO' | 'MAYBE';
+        verdict_sentence?: string;
+      };
+      const verdictWord =
+        a.verdict_word ??
+        (a.verdict === 'GO' ? 'YES' : a.verdict === 'NO-GO' ? 'NO' : 'MAYBE');
+      const verdictSentence = a.verdict_sentence ?? a.summary;
+
+      // Mirror the new answer onto tracked_events so the dashboard card
+      // shows the latest verdict at a glance.
+      await supabase
+        .from('tracked_events')
+        .update({
+          current_verdict: a.verdict,
+          current_percentage: a.percentage ?? null,
+          current_summary: a.summary,
+          current_confidence: a.confidence,
+          current_verdict_word: verdictWord,
+          current_verdict_sentence: verdictSentence,
+          last_checked_at: new Date().toISOString(),
+          // Refresh event_at in case the question/time interpretation changed.
+          event_at: a.event_at ?? event.event_at ?? null,
+        })
+        .eq('id', event.id);
+
+      // Append a new snapshot — classifier picks STAGE_PROMOTED /
+      // SIGNIFICANT_CHANGE / MINOR_REFRESH automatically.
+      const snap = await recordEventSnapshot({
+        data: {
+          eventId: event.id,
+          stage: a.forecast_stage ?? 'short_range',
+          decisionLabel: a.verdict ?? null,
+          chanceOfImpact:
+            typeof a.percentage === 'number' ? a.percentage : null,
+          mainThreat: a.main_threat ?? null,
+          summary: a.summary ?? null,
+          dataSources: a.data_sources ?? [],
+        },
+      });
+
+      setEvent({
+        ...event,
+        current_verdict: a.verdict ?? event.current_verdict,
+        current_percentage: a.percentage ?? event.current_percentage,
+        current_summary: a.summary ?? event.current_summary,
+        current_confidence: a.confidence ?? event.current_confidence,
+        current_verdict_word: verdictWord,
+        current_verdict_sentence: verdictSentence,
+        last_checked_at: new Date().toISOString(),
+        event_at: a.event_at ?? event.event_at ?? null,
+      });
+      setSnapshots((prev) => [snap as unknown as TimelineSnapshot, ...prev]);
+    } catch (err) {
+      console.error('[event:refresh] failed', err);
+      setRefreshError('Could not refresh — please try again.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (loading) {
@@ -458,6 +552,36 @@ function EventPage() {
           >
             {t('event.action_edit')}
           </button>
+          {!event.archived_at && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || busy}
+              style={{
+                padding: '12px',
+                background: 'transparent',
+                color: ACCENT,
+                border: `1px solid ${ACCENT}33`,
+                borderRadius: '100px',
+                fontSize: '0.85rem',
+                cursor: refreshing || busy ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: refreshing || busy ? 0.6 : 1,
+              }}
+            >
+              {refreshing ? 'Refreshing forecast…' : '↻ Refresh forecast'}
+            </button>
+          )}
+          {refreshError && (
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: '#b91c1c',
+                textAlign: 'center',
+              }}
+            >
+              {refreshError}
+            </div>
+          )}
           <button
             onClick={handleComplete}
             disabled={busy}
