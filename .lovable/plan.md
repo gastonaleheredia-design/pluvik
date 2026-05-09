@@ -9,17 +9,17 @@ The app answers **"Will weather affect my plan?"** Every answer carries a **fore
 | # | Phase | Status | Ships |
 |---|---|---|---|
 | 1 | Forecast stage classifier + StageBadge | Done | `forecastStage.ts`, `StageBadge.tsx` |
-| 2 | Answer schema + system prompt rules per stage | Next | New schema fields, stage-aware prompt, Climate/Outlook verdict suppression |
-| 3 | Source router by stage | | `sourceRouter.ts` — picks data sources per stage + question type |
-| 4 | Climate Normals (NClimGrid 1991–2020) fetcher | | `fetchClimateNormals.ts` for `climate` stage |
-| 5 | CPC Outlooks fetcher (8–14d, monthly, seasonal) | | `fetchCpcOutlooks.ts` for `outlook` stage, trigger-driven |
-| 6 | **Plain-Language Translator layer** | | `plainLanguage.ts` + prompt rules: every CPC/climate signal becomes a human sentence ("Slightly warmer than usual for late May" — never "60% above normal") |
-| 7 | Forecast Timeline — snapshots + change tags | | `event_forecast_snapshots` table, snapshot writer, change classifier (`INITIAL` / `STAGE_PROMOTED` / `NEW_DATA_SOURCE` / `SIGNIFICANT_CHANGE` / `MINOR_REFRESH` / `RESOLVED_BENIGN` / `CONCLUDED`) |
-| 8 | **Event Lifecycle + Conclusion notice** | | 24h post-event "All clear / All done" state → auto-archive. Final `CONCLUDED` snapshot with plain message: "This plan is over — we're no longer tracking it." |
-| 9 | Tracked event card UI (timeline + lifecycle states) | | "Updated Xm ago · was [previous]", expandable history, calm resolved state, archived view |
-| 10 | Contextual MRMS radar (Live stage only) | | Mapbox + MRMS tile overlay on event detail when stage = `live` |
+| 2 | Answer schema + system prompt rules per stage | Done | schema fields, stage-aware prompt, Climate/Outlook verdict suppression |
+| 3 | Source router by stage | Done | `sourceRouter.ts` |
+| 4 | Climate Normals (NClimGrid 1991–2020) fetcher | Done | `fetchClimateNormals.ts` |
+| 5 | CPC Outlooks fetcher (8–14d, monthly, seasonal) | Done | `fetchCpcOutlooks.ts` |
+| 6 | Plain-Language Translator layer | Done | `plainLanguage.ts` wired into askWeather |
+| 7 | Forecast Timeline — snapshots + change tags | Done | `event_forecast_snapshots`, `snapshots.ts`, `eventSnapshots.functions.ts` |
+| 8 | Event Lifecycle + Conclusion notice | Done | `conclusionMessage.ts`, `/api/public/sweep-events`, pg_cron every 15 min |
+| 9 | Tracked event card UI (timeline + lifecycle states) | Done | `EventTimeline.tsx`, dashboard active/archived toggle |
+| 10 | Contextual MRMS radar (Live stage only) | Done | `LiveRadarMap.tsx` mounted on event detail when latest snapshot stage = `live` |
 
-Total: **10 phases** (1 done, 9 to go).
+Total: **10 phases — all complete.**
 
 ## Key decisions confirmed this round
 
