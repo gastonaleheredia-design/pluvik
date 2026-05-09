@@ -312,6 +312,15 @@ function DashboardPage() {
         {/* Event cards */}
         {events.map((event) => {
           const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
+          const eventSnaps = snapshots.filter((s) => s.event_id === event.id);
+          const latest = eventSnaps[0];
+          const previousVerdict = eventSnaps
+            .slice(1)
+            .find((s) => s.decision_label && s.decision_label !== latest?.decision_label)
+            ?.decision_label;
+          const finalSnap = eventSnaps.find((s) => s.is_final);
+          const isArchived = !!event.archived_at;
+          const allClear = isArchived && finalSnap?.change_tag === 'RESOLVED_BENIGN';
           return (
             <Link
               key={event.id}
@@ -330,6 +339,7 @@ function DashboardPage() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
+                  opacity: isArchived ? 0.85 : 1,
                 }}
               >
                 {/* Delete button */}
@@ -351,6 +361,26 @@ function DashboardPage() {
                 >
                   ×
                 </button>
+
+                {/* Lifecycle pill */}
+                {(allClear || isArchived) && (
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      alignSelf: 'flex-start',
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.1em',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      color: allClear ? '#15803d' : MUTED,
+                      backgroundColor: allClear ? '#15803d14' : INK + '0d',
+                      padding: '3px 10px',
+                      borderRadius: '100px',
+                    }}
+                  >
+                    {allClear ? 'All clear' : 'Tracking ended'}
+                  </div>
+                )}
 
                 {/* Event name */}
                 <div
@@ -389,6 +419,21 @@ function DashboardPage() {
                 >
                   {event.current_percentage}% · {event.current_verdict}
                 </div>
+
+                {/* Updated · was [previous] */}
+                {latest && (
+                  <div
+                    style={{
+                      fontSize: '0.7rem',
+                      letterSpacing: '0.06em',
+                      color: MUTED,
+                      marginTop: '2px',
+                    }}
+                  >
+                    Updated {relTime(latest.created_at)}
+                    {previousVerdict ? ` · was ${previousVerdict}` : ''}
+                  </div>
+                )}
               </div>
             </Link>
           );
