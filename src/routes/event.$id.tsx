@@ -7,7 +7,6 @@ import { EventTimeline, type TimelineSnapshot } from '../components/EventTimelin
 import { LiveRadarMap } from '../components/LiveRadarMap';
 import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
-import { useTranslation as _useTranslation } from 'react-i18next';
 
 interface TrackedEvent {
   id: string;
@@ -76,8 +75,7 @@ function formatTime(dateStr: string): string {
 }
 
 function EventPage() {
-  const { t } = useTranslation();
-  const { i18n } = _useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = Route.useParams();
