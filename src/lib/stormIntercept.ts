@@ -50,16 +50,27 @@ export function calculateStormIntercept(
 
   const isApproaching = alongTrack > 0;
 
-  // Storm "radius" by intensity (dBZ)
+  // Storm "radius" by intensity (dBZ). Bumped to better match real
+  // squall lines and supercell anvils — a 50 dBZ core that passes 7 mi
+  // away still drops hail/wind on the user.
   const stormRadiusMiles =
-    maxDbz >= 55 ? 8 :
-    maxDbz >= 45 ? 5 :
-    maxDbz >= 35 ? 3 : 2;
+    maxDbz >= 55 ? 12 :
+    maxDbz >= 45 ? 8 :
+    maxDbz >= 35 ? 5 : 3;
 
-  const impactZone: StormInterceptResult['impactZone'] =
+  let impactZone: StormInterceptResult['impactZone'] =
     lateralOffset <= stormRadiusMiles * 0.4 ? 'direct' :
     lateralOffset <= stormRadiusMiles ? 'edge' :
-    lateralOffset <= stormRadiusMiles * 1.8 ? 'near_miss' : 'miss';
+    lateralOffset <= stormRadiusMiles * 2.0 ? 'near_miss' : 'miss';
+
+  // Approaching-cell override: any strong cell (dBZ ≥ 45) whose track
+  // stays within ~10 mi of the user is treated as at least an edge hit,
+  // regardless of fixed-radius classification. Catches squall lines and
+  // bowing segments the strict radius math otherwise drops to MISS.
+  if (isApproaching && maxDbz >= 45 && lateralOffset <= 10 &&
+      (impactZone === 'miss' || impactZone === 'near_miss')) {
+    impactZone = 'edge';
+  }
 
   const willIntercept = isApproaching && impactZone !== 'miss';
 

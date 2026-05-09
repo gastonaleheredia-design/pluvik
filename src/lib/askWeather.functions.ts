@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start';
 import { parseQuestion } from './weatherIntelligence';
-import { buildMetBriefing, assembleBriefingText } from './metDataFetcher';
+import { buildMetBriefing, assembleBriefingText, getStructuredCellsForKey } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
 import { validateWeatherAnswer } from './weatherAnswerSchema';
 import {
@@ -254,7 +254,13 @@ export const askWeather = createServerFn({ method: 'POST' })
     const scenarioProfile = classifyScenario(briefing, parsed);
 
     // 4. Storm intercepts for all active cells (rehydrated from radar text)
-    const stormIntercepts = parseAndComputeIntercepts(briefing.radarCells, lat, lon);
+    // Prefer structured cells stashed by the radar fetcher (no regex
+    // round-trip, no fidelity loss). Fall back to text parsing only if
+    // the structured channel is empty (e.g. external test harness).
+    const structured = getStructuredCellsForKey(`${lat.toFixed(3)},${lon.toFixed(3)}`);
+    const stormIntercepts = structured.length
+      ? structured
+      : parseAndComputeIntercepts(briefing.radarCells, lat, lon);
     console.log('[askWeather:diag] stormIntercepts', {
       count: stormIntercepts.length,
       approaching: stormIntercepts.filter(s => s.willIntercept).length,

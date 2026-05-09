@@ -6,6 +6,26 @@ import { interpretAtmosphere, type AtmosphericState } from './atmosphericInterpr
 import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
 import { classifyCell, cellTypeLabel } from './cellClassifier';
+import type { StormInterceptResult } from './stormIntercept';
+
+/**
+ * Module-scoped handoff: when the radar fetcher computes intercepts for
+ * each cell, it stashes the structured results here keyed by the same
+ * cache key used by buildMetBriefing. askWeather then reads them
+ * directly instead of regex-parsing the printed text block (which loses
+ * fidelity and silently zeroes intercepts on any format drift).
+ */
+const radarCellsByKey = new Map<string, StormInterceptResult[]>();
+export function getStructuredCellsForKey(key: string): StormInterceptResult[] {
+  return radarCellsByKey.get(key) ?? [];
+}
+function putStructuredCells(key: string, cells: StormInterceptResult[]) {
+  radarCellsByKey.set(key, cells);
+  if (radarCellsByKey.size > 200) {
+    const oldestKey = radarCellsByKey.keys().next().value;
+    if (oldestKey) radarCellsByKey.delete(oldestKey);
+  }
+}
 
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
@@ -288,70 +308,13 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
-  try {
-    const res = await fetch(
-      `https://mesonet.agron.iastate.edu/json/nexrad_attr.py?lat=${lat}&lon=${lon}&radius=150`,
-      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' }, redirect: 'follow' }
-    );
-    if (!res.ok) {
-      console.warn('[radar] IEM endpoint failed', res.status, '— falling back to grid sample');
-      return await fetchRadarCellsFromGrid(lat, lon);
-    }
-    let data: any = null;
-    try { data = await res.json(); } catch {
-      console.warn('[radar] IEM returned non-JSON — falling back to grid sample');
-      return await fetchRadarCellsFromGrid(lat, lon);
-    }
-    if (!data?.attrs?.length) {
-      console.log('[radar:diag] IEM returned 0 attrs for', { lat, lon });
-      // IEM said no tracked cells — verify against grid sample. If grid finds
-      // active heavy precip, prefer that signal.
-      const gridText = await fetchRadarCellsFromGrid(lat, lon);
-      if (gridText && !gridText.includes('No active')) return gridText;
-      return 'RADAR: No tracked storm cells within 150 miles.';
-    }
-
-    console.log('[radar:diag] IEM cellCount=', data.attrs.length, 'maxDbz=',
-      Math.max(...data.attrs.map((c: any) => c.dbz ?? 0)),
-      'user=', { lat, lon });
-
-    const cells = data.attrs.slice(0, 5).map((c: any) => {
-      const dLat = c.lat - lat;
-      const dLon = c.lon - lon;
-      const distMiles = Math.round(Math.sqrt(dLat * dLat + dLon * dLon) * 69);
-      const bearing = Math.round(Math.atan2(dLon, dLat) * 180 / Math.PI);
-      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((bearing + 360) % 360) / 45) % 8];
-
-      const speedKts = c.drct != null && c.sknt != null ? c.sknt : null;
-      const speedMph = speedKts ? Math.round(speedKts * 1.15078) : null;
-
-      let interceptLine = '';
-      if (c.lat != null && c.lon != null && c.drct != null && speedMph != null && c.dbz != null) {
-        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, c.drct, speedMph, c.dbz);
-        console.log('[intercept:diag]', {
-          bearing: compassDir,
-          distMiles,
-          dbz: c.dbz,
-          motionDeg: c.drct,
-          speedMph,
-          lateralOffset: ix.lateralOffsetMiles,
-          impactZone: ix.impactZone,
-          willIntercept: ix.willIntercept,
-          etaMinutes: ix.etaMinutes,
-        });
-        const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
-        const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
-        interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
-      }
-
-      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz ?? '?'} | Motion:${c.drct ?? '?'}° at ${speedMph ?? '?'}mph${interceptLine}`;
-    });
-
-    return `NEXRAD TRACKED CELLS:\n${cells.join('\n')}`;
-  } catch (e) {
-    console.warn('[radar] IEM threw, falling back to grid sample', e);
-    try { return await fetchRadarCellsFromGrid(lat, lon); } catch { return 'RADAR: Cell data unavailable.'; }
-  }
+  // Note: the historical IEM `nexrad_attr.py` endpoint is dead (301 → HTML
+  // documentation). There is currently no free, real-time JSON source for
+  // raw NEXRAD reflectivity that runs inside a Cloudflare Worker, so we
+  // use the HRRR per-cell nowcast as our primary radar-equivalent feed.
+  // The header makes this explicit so the LLM doesn't claim "NEXRAD said
+  // there's nothing" when the truth is "no real radar was ingested".
+  return await fetchRadarCellsFromGrid(lat, lon);
 }
 
 /**
@@ -365,8 +328,11 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
  */
 async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
   try {
-    const STEP_DEG = 0.175; // ~12 mi at mid-latitudes
-    const N = 3;            // -3..+3 → 7x7 = 49 points (~36 mi radius)
+    // ~12 mi spacing × 13×13 grid = ~145 mi radius. open-meteo accepts
+    // up to 1000 locations per request, so 169 points stays well within
+    // the API budget while matching the 150 mi audit recommendation.
+    const STEP_DEG = 0.175;
+    const N = 6;
     const lats: number[] = [];
     const lons: number[] = [];
     const cosLat = Math.cos(lat * Math.PI / 180) || 1;
@@ -445,6 +411,15 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       alignedLine = (sorted[sorted.length - 1] - sorted[0]) <= 60;
     }
 
+    // Sort kept cells by ascending distance to the user — most relevant
+    // first for the LLM. (radar fetcher caller passes top-N to prompt.)
+    kept.sort((a, b) => {
+      const da = Math.hypot((a.lat - lat) * 69, (a.lon - lon) * 69 * cosLat);
+      const db = Math.hypot((b.lat - lat) * 69, (b.lon - lon) * 69 * cosLat);
+      return da - db;
+    });
+
+    const structured: StormInterceptResult[] = [];
     const lines = kept.map(c => {
       const dLat = c.lat - lat;
       const dLon = c.lon - lon;
@@ -458,6 +433,20 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       let interceptLine = '';
       if (cellMotionDir != null && cellMotionSpd != null && cellMotionSpd > 0) {
         const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, cellMotionDir, cellMotionSpd, c.dbz);
+        structured.push({
+          ...ix,
+          bearingFromUser: compassDir,
+          distanceMiles: distMiles,
+          dbz: c.dbz,
+          motionDirLabel,
+          motionSpeedMph: cellMotionSpd,
+        });
+        console.log('[intercept:diag]', {
+          bearing: compassDir, distMiles, dbz: c.dbz,
+          lateralOffset: ix.lateralOffsetMiles,
+          impactZone: ix.impactZone, willIntercept: ix.willIntercept,
+          etaMinutes: ix.etaMinutes,
+        });
         const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
         const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
         interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
@@ -483,10 +472,31 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       );
     });
 
+    putStructuredCells(`${lat.toFixed(3)},${lon.toFixed(3)}`, structured);
+
+    // Honest header: this is HRRR forecast precip converted to synthetic
+    // dBZ via Marshall-Palmer, NOT raw NEXRAD reflectivity. Calling it
+    // "NEXRAD TRACKED CELLS" was misleading the LLM into trusting it as
+    // ground truth.
     const headerNote = alignedLine
-      ? 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion, line structure detected):'
-      : 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion):';
-    return `${headerNote}\n${lines.join('\n')}`;
+      ? 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; line structure detected):'
+      : 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; ~145 mi radius):';
+
+    // "Radar reality check" line: the 3 strongest cells within 60 mi
+    // restated as a one-liner so the LLM cannot claim the radar is empty.
+    const realityCells = [...structured]
+      .filter(s => (s.distanceMiles ?? 999) <= 60 && (s.dbz ?? 0) >= 35)
+      .sort((a, b) => (b.dbz ?? 0) - (a.dbz ?? 0))
+      .slice(0, 3);
+    const realityLine = realityCells.length
+      ? '\nRADAR REALITY CHECK (top cells within 60 mi): ' +
+        realityCells.map(s =>
+          `${s.dbz}dBZ ${s.bearingFromUser} ${s.distanceMiles}mi moving ${s.motionDirLabel ?? '?'} @ ${s.motionSpeedMph ?? '?'}mph` +
+          (s.willIntercept && s.etaMinutes != null ? ` (ETA ${s.etaMinutes}min — INBOUND)` : '')
+        ).join('; ')
+      : '';
+
+    return `${headerNote}\n${lines.join('\n')}${realityLine}`;
   } catch (e) {
     console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
