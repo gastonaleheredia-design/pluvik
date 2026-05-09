@@ -255,6 +255,17 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     // 4. Storm intercepts for all active cells (rehydrated from radar text)
     const stormIntercepts = parseAndComputeIntercepts(briefing.radarCells, lat, lon);
+    console.log('[askWeather:diag] stormIntercepts', {
+      count: stormIntercepts.length,
+      approaching: stormIntercepts.filter(s => s.willIntercept).length,
+      top: stormIntercepts.slice(0, 3).map(s => ({
+        zone: s.impactZone,
+        eta: s.etaMinutes,
+        offset: s.lateralOffsetMiles,
+        threat: s.threatLevel,
+      })),
+      radarCellsRaw: (briefing.radarCells ?? '').slice(0, 400),
+    });
 
     // 5. Atmospheric state (object form for the prompt)
     const atmosphericState = extractAndInterpret(
@@ -346,6 +357,13 @@ export const askWeather = createServerFn({ method: 'POST' })
     if (!validated.ok) {
       console.warn('[askWeather] schema validation failed:', validated.issues);
     }
+    console.log('[askWeather:diag] LLM verdict', {
+      verdict: validated.data.verdict,
+      verdict_word: (validated.data as any).verdict_word,
+      percentage: validated.data.percentage,
+      mode,
+      scenario: scenarioProfile.scenario,
+    });
 
     // Hard-floor: if a storm cell is on an intercept track within 2 hours,
     // override whatever the LLM said. This makes the answer match radar
