@@ -470,6 +470,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       ...validated.data,
       mode,
       forecast_stage: stageInfo.stage,
+      stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
     } as unknown as ExtendedWeatherAnswer;
