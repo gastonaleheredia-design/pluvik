@@ -354,6 +354,14 @@ function EventPage() {
           </div>
         )}
 
+        {/* Live MRMS radar — only when current stage is `live` and we have coordinates. */}
+        {!event.archived_at &&
+          snapshots[0]?.stage === 'live' &&
+          typeof event.lat === 'number' &&
+          typeof event.lon === 'number' && (
+            <LiveRadarMap lat={event.lat} lon={event.lon} />
+          )}
+
         {/* Current forecast card */}
         <div
           style={{
