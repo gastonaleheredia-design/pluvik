@@ -308,14 +308,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       stormIntercepts.some(s => s.willIntercept),
     );
 
-    // 7. Filter briefing by source priority, then assemble plain text
-    const filteredBriefing = filterBriefingBySources(briefing, scenarioProfile.activeSources);
-    const briefingText = assembleBriefingText(filteredBriefing);
-
-    // 8. Mode detection (severe/hurricane override) + system prompt
+    // 7. Mode detection (severe/hurricane override) — needed for stage classification.
     const mode = await detectMode(lat, lon, briefing.alerts);
 
-    // 8b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
+    // 7b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
     const hasActiveWarnings = mode === 'severe' || mode === 'hurricane' ||
       /warning|tornado|flash flood/i.test(briefing.alerts ?? '');
     const stageInfo = resolveForecastStage({
@@ -323,6 +319,24 @@ export const askWeather = createServerFn({ method: 'POST' })
       hasActiveWarnings,
     });
     const stageRules = buildStageRules({ stage: stageInfo });
+    const stagePlan = getStageSourcePlan(stageInfo.stage);
+
+    // 7c. Gate the scenario-matrix sources by what the stage allows.
+    // e.g. at `outlook` stage, radar/HRRR keys are stripped before filtering
+    // the briefing, so the LLM never sees data it shouldn't reason from.
+    const stageGatedSources = filterSourceKeysByStage(
+      stageInfo.stage,
+      scenarioProfile.activeSources,
+    );
+    console.log('[askWeather:diag] stage routing', {
+      stage: stageInfo.stage,
+      allowed: stagePlan.allowedFamilies,
+      droppedSources: scenarioProfile.activeSources.filter(s => !stageGatedSources.includes(s)),
+    });
+
+    // 8. Filter briefing by stage-gated source priority, then assemble plain text.
+    const filteredBriefing = filterBriefingBySources(briefing, stageGatedSources);
+    const briefingText = assembleBriefingText(filteredBriefing);
 
     const systemPrompt =
       mode === 'severe' ? SEVERE_PROMPT + '\n' + stageRules :
