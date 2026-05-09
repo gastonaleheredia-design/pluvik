@@ -328,8 +328,11 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
  */
 async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string> {
   try {
-    const STEP_DEG = 0.175; // ~12 mi at mid-latitudes
-    const N = 3;            // -3..+3 → 7x7 = 49 points (~36 mi radius)
+    // ~12 mi spacing × 13×13 grid = ~145 mi radius. open-meteo accepts
+    // up to 1000 locations per request, so 169 points stays well within
+    // the API budget while matching the 150 mi audit recommendation.
+    const STEP_DEG = 0.175;
+    const N = 6;
     const lats: number[] = [];
     const lons: number[] = [];
     const cosLat = Math.cos(lat * Math.PI / 180) || 1;
@@ -408,6 +411,15 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       alignedLine = (sorted[sorted.length - 1] - sorted[0]) <= 60;
     }
 
+    // Sort kept cells by ascending distance to the user — most relevant
+    // first for the LLM. (radar fetcher caller passes top-N to prompt.)
+    kept.sort((a, b) => {
+      const da = Math.hypot((a.lat - lat) * 69, (a.lon - lon) * 69 * cosLat);
+      const db = Math.hypot((b.lat - lat) * 69, (b.lon - lon) * 69 * cosLat);
+      return da - db;
+    });
+
+    const structured: StormInterceptResult[] = [];
     const lines = kept.map(c => {
       const dLat = c.lat - lat;
       const dLon = c.lon - lon;
@@ -421,6 +433,20 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       let interceptLine = '';
       if (cellMotionDir != null && cellMotionSpd != null && cellMotionSpd > 0) {
         const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, cellMotionDir, cellMotionSpd, c.dbz);
+        structured.push({
+          ...ix,
+          bearingFromUser: compassDir,
+          distanceMiles: distMiles,
+          dbz: c.dbz,
+          motionDirLabel,
+          motionSpeedMph: cellMotionSpd,
+        });
+        console.log('[intercept:diag]', {
+          bearing: compassDir, distMiles, dbz: c.dbz,
+          lateralOffset: ix.lateralOffsetMiles,
+          impactZone: ix.impactZone, willIntercept: ix.willIntercept,
+          etaMinutes: ix.etaMinutes,
+        });
         const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
         const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
         interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
@@ -446,10 +472,31 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
       );
     });
 
+    putStructuredCells(`${lat.toFixed(3)},${lon.toFixed(3)}`, structured);
+
+    // Honest header: this is HRRR forecast precip converted to synthetic
+    // dBZ via Marshall-Palmer, NOT raw NEXRAD reflectivity. Calling it
+    // "NEXRAD TRACKED CELLS" was misleading the LLM into trusting it as
+    // ground truth.
     const headerNote = alignedLine
-      ? 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion, line structure detected):'
-      : 'NEXRAD TRACKED CELLS (HRRR-derived, per-cell motion):';
-    return `${headerNote}\n${lines.join('\n')}`;
+      ? 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; line structure detected):'
+      : 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; ~145 mi radius):';
+
+    // "Radar reality check" line: the 3 strongest cells within 60 mi
+    // restated as a one-liner so the LLM cannot claim the radar is empty.
+    const realityCells = [...structured]
+      .filter(s => (s.distanceMiles ?? 999) <= 60 && (s.dbz ?? 0) >= 35)
+      .sort((a, b) => (b.dbz ?? 0) - (a.dbz ?? 0))
+      .slice(0, 3);
+    const realityLine = realityCells.length
+      ? '\nRADAR REALITY CHECK (top cells within 60 mi): ' +
+        realityCells.map(s =>
+          `${s.dbz}dBZ ${s.bearingFromUser} ${s.distanceMiles}mi moving ${s.motionDirLabel ?? '?'} @ ${s.motionSpeedMph ?? '?'}mph` +
+          (s.willIntercept && s.etaMinutes != null ? ` (ETA ${s.etaMinutes}min — INBOUND)` : '')
+        ).join('; ')
+      : '';
+
+    return `${headerNote}\n${lines.join('\n')}${realityLine}`;
   } catch (e) {
     console.warn('[radar] grid sample threw', e);
     return 'RADAR: Cell data unavailable.';
