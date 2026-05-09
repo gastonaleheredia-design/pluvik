@@ -25,6 +25,8 @@ export type Database = {
           summary: string | null
           user_id: string
           verdict: string | null
+          verdict_sentence: string | null
+          verdict_word: string | null
         }
         Insert: {
           checked_at?: string | null
@@ -36,6 +38,8 @@ export type Database = {
           summary?: string | null
           user_id: string
           verdict?: string | null
+          verdict_sentence?: string | null
+          verdict_word?: string | null
         }
         Update: {
           checked_at?: string | null
@@ -47,6 +51,8 @@ export type Database = {
           summary?: string | null
           user_id?: string
           verdict?: string | null
+          verdict_sentence?: string | null
+          verdict_word?: string | null
         }
         Relationships: [
           {
@@ -144,6 +150,8 @@ export type Database = {
           current_percentage: number | null
           current_summary: string | null
           current_verdict: string | null
+          current_verdict_sentence: string | null
+          current_verdict_word: string | null
           id: string
           is_active: boolean | null
           last_checked_at: string | null
@@ -159,6 +167,8 @@ export type Database = {
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
+          current_verdict_sentence?: string | null
+          current_verdict_word?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
@@ -174,6 +184,8 @@ export type Database = {
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
+          current_verdict_sentence?: string | null
+          current_verdict_word?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
