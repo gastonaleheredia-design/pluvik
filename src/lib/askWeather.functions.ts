@@ -14,6 +14,7 @@ import { calculateConfidence } from './confidenceCalculator';
 import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
+import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
 
 interface WeatherRequest {
   question: string;
