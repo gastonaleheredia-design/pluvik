@@ -26,18 +26,6 @@ interface TrackedEvent {
   lon?: number | null;
 }
 
-interface JournalEntry {
-  id: string;
-  verdict: string;
-  percentage: number;
-  summary: string;
-  confidence: string;
-  current_conditions: string;
-  checked_at: string;
-  verdict_word?: string | null;
-  verdict_sentence?: string | null;
-}
-
 export const Route = createFileRoute('/event/$id')({
   component: EventPage,
 });
@@ -57,23 +45,6 @@ const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
 
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-
-  if (diff < 60) return 'JUST NOW';
-  if (diff < 3600) return `${Math.floor(diff / 60)} MIN AGO`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} HRS AGO`;
-
-  return date
-    .toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })
-    .toUpperCase();
-}
-
 function EventPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
@@ -81,7 +52,6 @@ function EventPage() {
   const { id } = Route.useParams();
 
   const [event, setEvent] = useState<TrackedEvent | null>(null);
-  const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [snapshots, setSnapshots] = useState<TimelineSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -101,18 +71,12 @@ function EventPage() {
         .eq('user_id', user.id)
         .single(),
       supabase
-        .from('journal_entries')
-        .select('*')
-        .eq('event_id', id)
-        .order('checked_at', { ascending: false }),
-      supabase
         .from('event_forecast_snapshots')
         .select('*')
         .eq('event_id', id)
         .order('created_at', { ascending: false }),
-    ]).then(([{ data: eventData }, { data: journalData }, { data: snapData }]) => {
+    ]).then(([{ data: eventData }, { data: snapData }]) => {
       if (eventData) setEvent(eventData as TrackedEvent);
-      if (journalData) setJournal(journalData as JournalEntry[]);
       if (snapData) setSnapshots(snapData as TimelineSnapshot[]);
       setLoading(false);
     });
@@ -625,82 +589,19 @@ function EventPage() {
             marginBottom: '14px',
           }}
         >
-          {snapshots.length > 0 ? 'FORECAST TIMELINE' : t('event.journal_label')}
+          FORECAST TIMELINE
         </div>
 
-        {/* Snapshot timeline preferred; fall back to legacy journal entries. */}
         {snapshots.length > 0 ? (
           <EventTimeline snapshots={snapshots} />
         ) : (
           <div
-          style={{
-            position: 'relative',
-            paddingLeft: '20px',
-            borderLeft: `1px solid ${INK}1a`,
-          }}
-        >
-          {journal.map((entry, index) => (
-            <div
-              key={entry.id}
-              style={{ position: 'relative', marginBottom: '22px' }}
-            >
-              {/* Timeline dot */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '-26px',
-                  top: '4px',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: index === 0 ? ACCENT : `${INK}33`,
-                }}
-              />
-
-              {/* Timestamp */}
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.1em',
-                  color: MUTED,
-                  marginBottom: '4px',
-                }}
-              >
-                {index === 0 ? `${t('event.now_label')} · ` : ''}
-                {formatTime(entry.checked_at)}
-              </div>
-
-              {/* Journal text */}
-              <div
-                style={{
-                  fontSize: '0.95rem',
-                  fontStyle: 'italic',
-                  color: INK,
-                  lineHeight: 1.4,
-                  marginBottom: '4px',
-                }}
-              >
-                &ldquo;{entry.verdict_sentence ?? entry.summary}&rdquo;
-              </div>
-
-              {/* Verdict + percentage */}
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  letterSpacing: '0.06em',
-                  color: MUTED,
-                }}
-              >
-                {(entry.verdict_word ?? entry.verdict)}
-                {typeof entry.percentage === 'number' && entry.percentage > 0
-                  ? ` · ${entry.percentage}%`
-                  : ''}
-              </div>
-            </div>
-          ))}
-
-          {/* First entry placeholder if journal is empty */}
-          {journal.length === 0 && (
+            style={{
+              position: 'relative',
+              paddingLeft: '20px',
+              borderLeft: `1px solid ${INK}1a`,
+            }}
+          >
             <div style={{ position: 'relative' }}>
               <div
                 style={{
@@ -724,7 +625,6 @@ function EventPage() {
                 &ldquo;{t('event.started_tracking')}&rdquo;
               </div>
             </div>
-          )}
           </div>
         )}
       </div>
