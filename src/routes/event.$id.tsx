@@ -26,18 +26,6 @@ interface TrackedEvent {
   lon?: number | null;
 }
 
-interface JournalEntry {
-  id: string;
-  verdict: string;
-  percentage: number;
-  summary: string;
-  confidence: string;
-  current_conditions: string;
-  checked_at: string;
-  verdict_word?: string | null;
-  verdict_sentence?: string | null;
-}
-
 export const Route = createFileRoute('/event/$id')({
   component: EventPage,
 });
@@ -81,7 +69,6 @@ function EventPage() {
   const { id } = Route.useParams();
 
   const [event, setEvent] = useState<TrackedEvent | null>(null);
-  const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [snapshots, setSnapshots] = useState<TimelineSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -101,18 +88,12 @@ function EventPage() {
         .eq('user_id', user.id)
         .single(),
       supabase
-        .from('journal_entries')
-        .select('*')
-        .eq('event_id', id)
-        .order('checked_at', { ascending: false }),
-      supabase
         .from('event_forecast_snapshots')
         .select('*')
         .eq('event_id', id)
         .order('created_at', { ascending: false }),
-    ]).then(([{ data: eventData }, { data: journalData }, { data: snapData }]) => {
+    ]).then(([{ data: eventData }, { data: snapData }]) => {
       if (eventData) setEvent(eventData as TrackedEvent);
-      if (journalData) setJournal(journalData as JournalEntry[]);
       if (snapData) setSnapshots(snapData as TimelineSnapshot[]);
       setLoading(false);
     });
