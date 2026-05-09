@@ -329,6 +329,28 @@ function EventPage() {
           {event.address}
         </div>
 
+        {/* Lifecycle banner — shown when the event has been archived/concluded */}
+        {event.archived_at && (
+          <div
+            style={{
+              backgroundColor: '#15803d14',
+              border: `1px solid #15803d33`,
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '20px',
+              fontSize: '0.85rem',
+              color: '#15803d',
+              lineHeight: 1.4,
+            }}
+          >
+            <strong style={{ fontWeight: 700, letterSpacing: '0.04em' }}>
+              TRACKING ENDED ·{' '}
+            </strong>
+            {snapshots.find((s) => s.is_final)?.summary ??
+              "This plan has passed. We've stopped tracking it."}
+          </div>
+        )}
+
         {/* Current forecast card */}
         <div
           style={{
