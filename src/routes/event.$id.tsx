@@ -190,8 +190,17 @@ function EventPage() {
     );
   }
 
+  const displayVerdict =
+    event.current_verdict_word ?? event.current_verdict ?? 'UNKNOWN';
+  const displaySentence =
+    event.current_verdict_sentence ?? event.current_summary;
   const colors =
-    VERDICT_COLORS[event.current_verdict] ?? VERDICT_COLORS.UNKNOWN;
+    VERDICT_COLORS[displayVerdict] ??
+    VERDICT_COLORS[event.current_verdict] ??
+    VERDICT_COLORS.UNKNOWN;
+  const showPercentage =
+    typeof event.current_percentage === 'number' &&
+    event.current_percentage > 0;
 
   return (
     <div
@@ -344,23 +353,25 @@ function EventPage() {
                 letterSpacing: '0.05em',
               }}
             >
-              {event.current_verdict}
+              {displayVerdict}
             </span>
           </div>
 
-          {/* Percentage */}
-          <div
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '3.5rem',
-              fontWeight: 400,
-              lineHeight: 1,
-              marginBottom: '10px',
-              color: '#faf7f0',
-            }}
-          >
-            {event.current_percentage}%
-          </div>
+          {/* Percentage — hidden when 0 / null (e.g. watch-only verdicts) */}
+          {showPercentage && (
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '3.5rem',
+                fontWeight: 400,
+                lineHeight: 1,
+                marginBottom: '10px',
+                color: '#faf7f0',
+              }}
+            >
+              {event.current_percentage}%
+            </div>
+          )}
 
           {/* Summary */}
           <div
@@ -371,7 +382,7 @@ function EventPage() {
               lineHeight: 1.45,
             }}
           >
-            &ldquo;{event.current_summary}&rdquo;
+            &ldquo;{displaySentence}&rdquo;
           </div>
         </div>
 
