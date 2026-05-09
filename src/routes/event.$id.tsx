@@ -554,6 +554,36 @@ function EventPage() {
           >
             {t('event.action_edit')}
           </button>
+          {!event.archived_at && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || busy}
+              style={{
+                padding: '12px',
+                background: 'transparent',
+                color: ACCENT,
+                border: `1px solid ${ACCENT}33`,
+                borderRadius: '100px',
+                fontSize: '0.85rem',
+                cursor: refreshing || busy ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: refreshing || busy ? 0.6 : 1,
+              }}
+            >
+              {refreshing ? 'Refreshing forecast…' : '↻ Refresh forecast'}
+            </button>
+          )}
+          {refreshError && (
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: '#b91c1c',
+                textAlign: 'center',
+              }}
+            >
+              {refreshError}
+            </div>
+          )}
           <button
             onClick={handleComplete}
             disabled={busy}
