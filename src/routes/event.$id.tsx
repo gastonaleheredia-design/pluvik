@@ -510,7 +510,7 @@ function EventPage() {
                   marginBottom: '4px',
                 }}
               >
-                &ldquo;{entry.summary}&rdquo;
+                &ldquo;{entry.verdict_sentence ?? entry.summary}&rdquo;
               </div>
 
               {/* Verdict + percentage */}
@@ -521,7 +521,10 @@ function EventPage() {
                   color: MUTED,
                 }}
               >
-                {entry.verdict} · {entry.percentage}%
+                {(entry.verdict_word ?? entry.verdict)}
+                {typeof entry.percentage === 'number' && entry.percentage > 0
+                  ? ` · ${entry.percentage}%`
+                  : ''}
               </div>
             </div>
           ))}
