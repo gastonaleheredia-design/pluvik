@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { EventTimeline, type TimelineSnapshot } from '../components/EventTimeline';
 
 interface TrackedEvent {
   id: string;
@@ -16,6 +17,8 @@ interface TrackedEvent {
   created_at: string;
   current_verdict_word?: string | null;
   current_verdict_sentence?: string | null;
+  archived_at?: string | null;
+  event_at?: string | null;
 }
 
 interface JournalEntry {
@@ -74,6 +77,7 @@ function EventPage() {
 
   const [event, setEvent] = useState<TrackedEvent | null>(null);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
+  const [snapshots, setSnapshots] = useState<TimelineSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
@@ -94,9 +98,15 @@ function EventPage() {
         .select('*')
         .eq('event_id', id)
         .order('checked_at', { ascending: false }),
-    ]).then(([{ data: eventData }, { data: journalData }]) => {
+      supabase
+        .from('event_forecast_snapshots')
+        .select('*')
+        .eq('event_id', id)
+        .order('created_at', { ascending: false }),
+    ]).then(([{ data: eventData }, { data: journalData }, { data: snapData }]) => {
       if (eventData) setEvent(eventData as TrackedEvent);
       if (journalData) setJournal(journalData as JournalEntry[]);
+      if (snapData) setSnapshots(snapData as TimelineSnapshot[]);
       setLoading(false);
     });
   }, [user, id]);
@@ -319,6 +329,28 @@ function EventPage() {
           {event.address}
         </div>
 
+        {/* Lifecycle banner — shown when the event has been archived/concluded */}
+        {event.archived_at && (
+          <div
+            style={{
+              backgroundColor: '#15803d14',
+              border: `1px solid #15803d33`,
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '20px',
+              fontSize: '0.85rem',
+              color: '#15803d',
+              lineHeight: 1.4,
+            }}
+          >
+            <strong style={{ fontWeight: 700, letterSpacing: '0.04em' }}>
+              TRACKING ENDED ·{' '}
+            </strong>
+            {snapshots.find((s) => s.is_final)?.summary ??
+              "This plan has passed. We've stopped tracking it."}
+          </div>
+        )}
+
         {/* Current forecast card */}
         <div
           style={{
@@ -458,11 +490,14 @@ function EventPage() {
             marginBottom: '14px',
           }}
         >
-          {t('event.journal_label')}
+          {snapshots.length > 0 ? 'FORECAST TIMELINE' : t('event.journal_label')}
         </div>
 
-        {/* Journal timeline */}
-        <div
+        {/* Snapshot timeline preferred; fall back to legacy journal entries. */}
+        {snapshots.length > 0 ? (
+          <EventTimeline snapshots={snapshots} />
+        ) : (
+          <div
           style={{
             position: 'relative',
             paddingLeft: '20px',
@@ -555,7 +590,8 @@ function EventPage() {
               </div>
             </div>
           )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
