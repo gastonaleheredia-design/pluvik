@@ -30,7 +30,15 @@ interface WeatherRequest {
 
 export interface ExtendedWeatherAnswer {
   mode: 'regular' | 'severe' | 'hurricane';
-  verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
+  verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
+  /** Forecast maturity at the time this answer was produced. */
+  forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live';
+  decision_label?: string;
+  chance_of_impact?: number | null;
+  main_threat?: string;
+  recommended_action?: string;
+  plain_english_summary?: string;
+  stage_outro?: string;
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
