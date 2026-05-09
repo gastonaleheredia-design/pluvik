@@ -19,7 +19,36 @@ The app answers **"Will weather affect my plan?"** Every answer carries a **fore
 | 9 | Tracked event card UI (timeline + lifecycle states) | Done | `EventTimeline.tsx`, dashboard active/archived toggle |
 | 10 | Contextual MRMS radar (Live stage only) | Done | `LiveRadarMap.tsx` mounted on event detail when latest snapshot stage = `live` |
 
-Total: **10 phases — all complete.**
+Total: **10 phases — all complete and wired.**
+
+## Post-build wiring (May 2026)
+
+End-to-end review found phases 7/8/9 were shipped but not actually firing in
+production. The following gaps were closed so the lifecycle now runs on its own:
+
+1. **`event_at` is captured on track** — `askWeather` returns `event_at`
+   derived from `hoursAhead`; `answer.tsx` writes it onto `tracked_events`
+   so the sweep job has something to compare against.
+2. **INITIAL snapshot on track** — `answer.tsx` calls `recordEventSnapshot`
+   right after saving the tracked event, so every plan starts with a
+   timeline entry. Legacy `journal_entries` writes remain only for
+   back-compat and are no longer read.
+3. **Snapshot on every re-evaluation** — event detail page exposes a
+   "↻ Refresh forecast" button that re-runs `askWeather` with a recomputed
+   `hoursAhead`, updates `tracked_events`, and appends a new snapshot
+   (auto-tagged STAGE_PROMOTED / SIGNIFICANT_CHANGE / NEW_DATA_SOURCE /
+   MINOR_REFRESH).
+4. **Hourly automated re-evaluation** — `/api/public/refresh-events`
+   (server route) picks up to 25 active, upcoming events whose
+   `last_checked_at` is older than 30 min and runs the same pipeline
+   server-side via `supabaseAdmin`. Scheduled by pg_cron job
+   `refresh-tracked-events-hourly`.
+5. **Legacy journal fallback removed** — event detail always renders
+   `EventTimeline`. The `journal_entries` table is no longer queried.
+
+Both cron jobs (`sweep-events` 15-min, `refresh-events` hourly) target the
+stable `project--<id>.lovable.app` URL and start firing once the app is
+published.
 
 ## Key decisions confirmed this round
 
