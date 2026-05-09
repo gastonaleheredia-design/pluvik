@@ -91,6 +91,19 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
   const parsed = WeatherAnswerSchema.safeParse(raw);
   if (parsed.success) {
     const d = parsed.data as Record<string, unknown>;
+    const stage = d.forecast_stage as ForecastStage | undefined;
+    const isNonVerdictStage = stage ? NON_VERDICT_STAGES.includes(stage) : false;
+
+    // Climate/Outlook: force verdict-free shape regardless of what the model returned.
+    if (isNonVerdictStage) {
+      d.verdict = null;
+      d.chance_of_impact = null;
+      d.headline_number = null;
+      d.percentage = undefined;
+      d.impact_percent = undefined;
+      if (!d.verdict_word) d.verdict_word = 'MAYBE';
+    }
+
     // Normalize: ensure both `percentage` and `impact_percent` are present.
     if (d.impact_percent == null && typeof d.percentage === 'number') {
       d.impact_percent = d.percentage;
@@ -114,7 +127,7 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
     if (!d.verdict_sentence && typeof d.summary === 'string') {
       d.verdict_sentence = d.summary;
     }
-    if (d.headline_number === undefined) {
+    if (d.headline_number === undefined && !isNonVerdictStage) {
       const pct = typeof d.percentage === 'number' ? d.percentage : (typeof d.impact_percent === 'number' ? d.impact_percent : null);
       d.headline_number = pct != null ? { value: `${pct}%`, label: 'CHANCE OF RAIN' } : null;
     }
