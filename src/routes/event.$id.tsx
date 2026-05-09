@@ -490,11 +490,14 @@ function EventPage() {
             marginBottom: '14px',
           }}
         >
-          {t('event.journal_label')}
+          {snapshots.length > 0 ? 'FORECAST TIMELINE' : t('event.journal_label')}
         </div>
 
-        {/* Journal timeline */}
-        <div
+        {/* Snapshot timeline preferred; fall back to legacy journal entries. */}
+        {snapshots.length > 0 ? (
+          <EventTimeline snapshots={snapshots} />
+        ) : (
+          <div
           style={{
             position: 'relative',
             paddingLeft: '20px',
@@ -587,7 +590,8 @@ function EventPage() {
               </div>
             </div>
           )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
