@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
+import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
