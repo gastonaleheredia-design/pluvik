@@ -45,23 +45,6 @@ const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
 
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-
-  if (diff < 60) return 'JUST NOW';
-  if (diff < 3600) return `${Math.floor(diff / 60)} MIN AGO`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} HRS AGO`;
-
-  return date
-    .toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })
-    .toUpperCase();
-}
-
 function EventPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
