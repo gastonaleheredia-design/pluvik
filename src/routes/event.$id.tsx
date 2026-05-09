@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { EventTimeline, type TimelineSnapshot } from '../components/EventTimeline';
+import { LiveRadarMap } from '../components/LiveRadarMap';
 
 interface TrackedEvent {
   id: string;
@@ -19,6 +20,8 @@ interface TrackedEvent {
   current_verdict_sentence?: string | null;
   archived_at?: string | null;
   event_at?: string | null;
+  lat?: number | null;
+  lon?: number | null;
 }
 
 interface JournalEntry {
