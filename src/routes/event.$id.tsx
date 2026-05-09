@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { EventTimeline, type TimelineSnapshot } from '../components/EventTimeline';
 
 interface TrackedEvent {
   id: string;
@@ -16,6 +17,8 @@ interface TrackedEvent {
   created_at: string;
   current_verdict_word?: string | null;
   current_verdict_sentence?: string | null;
+  archived_at?: string | null;
+  event_at?: string | null;
 }
 
 interface JournalEntry {
@@ -74,6 +77,7 @@ function EventPage() {
 
   const [event, setEvent] = useState<TrackedEvent | null>(null);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
+  const [snapshots, setSnapshots] = useState<TimelineSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
@@ -94,9 +98,15 @@ function EventPage() {
         .select('*')
         .eq('event_id', id)
         .order('checked_at', { ascending: false }),
-    ]).then(([{ data: eventData }, { data: journalData }]) => {
+      supabase
+        .from('event_forecast_snapshots')
+        .select('*')
+        .eq('event_id', id)
+        .order('created_at', { ascending: false }),
+    ]).then(([{ data: eventData }, { data: journalData }, { data: snapData }]) => {
       if (eventData) setEvent(eventData as TrackedEvent);
       if (journalData) setJournal(journalData as JournalEntry[]);
+      if (snapData) setSnapshots(snapData as TimelineSnapshot[]);
       setLoading(false);
     });
   }, [user, id]);
