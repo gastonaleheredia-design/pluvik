@@ -16,6 +16,18 @@ interface TrackedEvent {
   current_confidence: string;
   last_checked_at: string;
   created_at: string;
+  archived_at?: string | null;
+  event_at?: string | null;
+}
+
+interface SnapshotMini {
+  event_id: string;
+  created_at: string;
+  decision_label: string | null;
+  change_tag:
+    | 'INITIAL' | 'STAGE_PROMOTED' | 'NEW_DATA_SOURCE' | 'SIGNIFICANT_CHANGE'
+    | 'MINOR_REFRESH' | 'RESOLVED_BENIGN' | 'CONCLUDED';
+  is_final: boolean;
 }
 
 export const Route = createFileRoute('/dashboard')({
@@ -34,28 +46,52 @@ const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
 
+function relTime(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 function DashboardPage() {
   const { t } = useTranslation();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState<TrackedEvent[]>([]);
+  const [snapshots, setSnapshots] = useState<SnapshotMini[]>([]);
+  const [view, setView] = useState<'active' | 'archived'>('active');
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     setLoadingEvents(true);
-    supabase
+    const query = supabase
       .from('tracked_events')
       .select('*')
       .eq('user_id', user.id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setEvents(data as TrackedEvent[]);
-        setLoadingEvents(false);
-      });
-  }, [user]);
+      .order('created_at', { ascending: false });
+    const filtered =
+      view === 'active'
+        ? query.is('archived_at', null)
+        : query.not('archived_at', 'is', null);
+    filtered.then(async ({ data }) => {
+      const list = (data ?? []) as TrackedEvent[];
+      setEvents(list);
+      if (list.length > 0) {
+        const { data: snaps } = await supabase
+          .from('event_forecast_snapshots')
+          .select('event_id, created_at, decision_label, change_tag, is_final')
+          .in('event_id', list.map((e) => e.id))
+          .order('created_at', { ascending: false });
+        setSnapshots((snaps ?? []) as SnapshotMini[]);
+      } else {
+        setSnapshots([]);
+      }
+      setLoadingEvents(false);
+    });
+  }, [user, view]);
 
   const handleDelete = async (e: React.MouseEvent, eventId: string) => {
     e.preventDefault();
