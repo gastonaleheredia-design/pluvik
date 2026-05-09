@@ -1,1 +1,70 @@
-## Product direction (locked)\n\nThe app answers **\
+# Build Plan — Forecast Stages, Timeline, Plain-Language Translation
+
+## Product direction (locked)
+
+The app answers **"Will weather affect my plan?"** Every answer carries a **forecast maturity stage** (Climate / Outlook / Trend / Forecast / Live) and evolves over time as the event approaches. Long-range data (CPC outlooks, climatology) is **always translated into plain English** — never raw percentages or technical phrasing. Each tracked event has a **lifecycle** that ends with a clear "concluded" notice so the user knows tracking has stopped.
+
+## Phases
+
+| # | Phase | Status | Ships |
+|---|---|---|---|
+| 1 | Forecast stage classifier + StageBadge | Done | `forecastStage.ts`, `StageBadge.tsx` |
+| 2 | Answer schema + system prompt rules per stage | Next | New schema fields, stage-aware prompt, Climate/Outlook verdict suppression |
+| 3 | Source router by stage | | `sourceRouter.ts` — picks data sources per stage + question type |
+| 4 | Climate Normals (NClimGrid 1991–2020) fetcher | | `fetchClimateNormals.ts` for `climate` stage |
+| 5 | CPC Outlooks fetcher (8–14d, monthly, seasonal) | | `fetchCpcOutlooks.ts` for `outlook` stage, trigger-driven |
+| 6 | **Plain-Language Translator layer** | | `plainLanguage.ts` + prompt rules: every CPC/climate signal becomes a human sentence ("Slightly warmer than usual for late May" — never "60% above normal") |
+| 7 | Forecast Timeline — snapshots + change tags | | `event_forecast_snapshots` table, snapshot writer, change classifier (`INITIAL` / `STAGE_PROMOTED` / `NEW_DATA_SOURCE` / `SIGNIFICANT_CHANGE` / `MINOR_REFRESH` / `RESOLVED_BENIGN` / `CONCLUDED`) |
+| 8 | **Event Lifecycle + Conclusion notice** | | 24h post-event "All clear / All done" state → auto-archive. Final `CONCLUDED` snapshot with plain message: "This plan is over — we're no longer tracking it." |
+| 9 | Tracked event card UI (timeline + lifecycle states) | | "Updated Xm ago · was [previous]", expandable history, calm resolved state, archived view |
+| 10 | Contextual MRMS radar (Live stage only) | | Mapbox + MRMS tile overlay on event detail when stage = `live` |
+
+Total: **10 phases** (1 done, 9 to go).
+
+## Key decisions confirmed this round
+
+- **Resolved benign events:** stay on the active list for **24 hours after event time** with a calm "All clear" state, then auto-archive. User can view from archive.
+- **End-of-lifecycle notice:** when an event is archived (resolved benign, concluded normally, or post-impact), the final snapshot is tagged `CONCLUDED` and shows a plain-English closing message so the user knows tracking has stopped. Examples:
+  - Sunny event: *"Your hike on Saturday is done — it stayed clear the whole time. We've stopped tracking this plan."*
+  - Storm event: *"The storm has passed your area. We've stopped tracking this plan — check your local news for any cleanup info."*
+  - Outlook-only event that never matured: *"This plan has passed. We've stopped tracking it."*
+- **Plain-Language Translator (new layer, Phase 6):** every long-range data source must be digested by the app and re-expressed in human language before reaching the user. Hard rules added to the system prompt:
+  - Never expose: "60% above normal", "anomaly", "percentile", "climatological mean", "ensemble probability", "MJO", "ENSO".
+  - Always say things like: *"This time of year is usually mild with light rain about 1 day in 4."* / *"Long-range signals lean slightly warmer and drier than usual — but it's too far out to say day by day."*
+  - Climate stage answers always end with: *"As your event gets closer, this will move into a real forecast."*
+  - Outlook stage answers always end with: *"This is a tendency, not a forecast — check back in a few days for specifics."*
+
+## Lifecycle states (full picture)
+
+```text
+[Created]
+   │
+   ▼
+[Climate] ──► [Outlook] ──► [Trend] ──► [Forecast] ──► [Live]
+   (each stage transition = STAGE_PROMOTED snapshot, plain-English "what changed")
+                                                          │
+                                          ┌───────────────┼───────────────┐
+                                          ▼               ▼               ▼
+                                   [Resolved Benign]  [Impacted]    [Event Time Passed]
+                                          │               │               │
+                                          └───── 24h "All clear" window ──┘
+                                                          │
+                                                          ▼
+                                               [CONCLUDED snapshot]
+                                                  (plain message)
+                                                          │
+                                                          ▼
+                                                    [Archived]
+```
+
+## Technical notes (for the build)
+
+- **`event_forecast_snapshots` table:** `event_id`, `created_at`, `stage`, `decision_label`, `chance_of_impact`, `main_threat`, `summary`, `data_sources` (jsonb), `change_tag`, `previous_snapshot_id`, `is_final` (bool, true only for `CONCLUDED`). RLS: user-only via `event_id` → `tracked_events.user_id`.
+- **`tracked_events`** gets two new columns: `event_at` (timestamptz, nullable — when the plan happens) and `archived_at` (timestamptz, nullable). Active list filter = `archived_at IS NULL`.
+- **Background sweep** (every snapshot write checks): if `event_at + 24h < now()` and not archived → write `CONCLUDED` snapshot, set `archived_at = now()`.
+- **Plain-Language Translator** lives in `src/lib/plainLanguage.ts` and is called by `askWeather.functions.ts` *before* the model writes the final summary, so the model receives pre-digested human sentences for every CPC/climate signal rather than raw numbers. Backed by deterministic rules per signal type (temperature tercile, precip tercile, drought, ENSO/MJO context) + LLM polish pass.
+- **Mapbox token:** none found in project secrets — will request `MAPBOX_TOKEN` at the start of Phase 10.
+
+## Starting next
+
+Phase 2 — answer schema + stage-aware system prompt. Climate/Outlook stages will return verdict=null and a plain-English tendency sentence. Trend/Forecast/Live keep full GO/CAUTION/NO-GO.

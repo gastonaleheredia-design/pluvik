@@ -12,6 +12,8 @@ import {
 } from './pipelineAdapters';
 import { calculateConfidence } from './confidenceCalculator';
 import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
+import { resolveForecastStage } from './forecastStage';
+import { buildStageRules } from './stagePrompt';
 
 interface WeatherRequest {
   question: string;
@@ -22,11 +24,21 @@ interface WeatherRequest {
   tempUnit?: 'F' | 'C';
   windUnit?: 'mph' | 'kph';
   timeFormat?: '12h' | '24h';
+  /** Hours from now until the user's event. Drives forecast stage classification. */
+  hoursAhead?: number;
 }
 
 export interface ExtendedWeatherAnswer {
   mode: 'regular' | 'severe' | 'hurricane';
-  verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN';
+  verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
+  /** Forecast maturity at the time this answer was produced. */
+  forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live';
+  decision_label?: string;
+  chance_of_impact?: number | null;
+  main_threat?: string;
+  recommended_action?: string;
+  plain_english_summary?: string;
+  stage_outro?: string;
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
@@ -242,7 +254,7 @@ Respond ONLY with valid JSON:
 export const askWeather = createServerFn({ method: 'POST' })
   .inputValidator((data: WeatherRequest) => data)
   .handler(async ({ data }: { data: WeatherRequest }) => {
-    const { question, lat, lon, language, address } = data;
+    const { question, lat, lon, language, address, hoursAhead } = data;
 
     // 1. Parse question
     const parsed = parseQuestion(question);
@@ -301,9 +313,19 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     // 8. Mode detection (severe/hurricane override) + system prompt
     const mode = await detectMode(lat, lon, briefing.alerts);
+
+    // 8b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
+    const hasActiveWarnings = mode === 'severe' || mode === 'hurricane' ||
+      /warning|tornado|flash flood/i.test(briefing.alerts ?? '');
+    const stageInfo = resolveForecastStage({
+      hoursAhead: typeof hoursAhead === 'number' ? hoursAhead : 24,
+      hasActiveWarnings,
+    });
+    const stageRules = buildStageRules({ stage: stageInfo });
+
     const systemPrompt =
-      mode === 'severe' ? SEVERE_PROMPT :
-      mode === 'hurricane' ? HURRICANE_PROMPT :
+      mode === 'severe' ? SEVERE_PROMPT + '\n' + stageRules :
+      mode === 'hurricane' ? HURRICANE_PROMPT + '\n' + stageRules :
       buildScenarioSystemPrompt(
         scenarioProfile.scenario,
         scenarioProfile.horizon,
@@ -311,7 +333,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         stormIntercepts,
         confidence,
         parsed.sensitivityProfile,
-      );
+      ) + '\n' + stageRules;
 
     const userMessage =
       `Location: ${address} (${lat.toFixed(4)}, ${lon.toFixed(4)})\n` +
@@ -395,6 +417,7 @@ export const askWeather = createServerFn({ method: 'POST' })
     return {
       ...validated.data,
       mode,
+      forecast_stage: stageInfo.stage,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
     } as unknown as ExtendedWeatherAnswer;
