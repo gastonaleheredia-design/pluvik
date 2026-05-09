@@ -15,6 +15,9 @@ import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
+import { fetchClimateNormals } from './fetchers/fetchClimateNormals';
+import { fetchCpcOutlooks } from './fetchers/fetchCpcOutlooks';
+import { buildPlainLanguageContext } from './plainLanguage';
 
 interface WeatherRequest {
   question: string;
