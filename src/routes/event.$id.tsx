@@ -606,82 +606,19 @@ function EventPage() {
             marginBottom: '14px',
           }}
         >
-          {snapshots.length > 0 ? 'FORECAST TIMELINE' : t('event.journal_label')}
+          FORECAST TIMELINE
         </div>
 
-        {/* Snapshot timeline preferred; fall back to legacy journal entries. */}
         {snapshots.length > 0 ? (
           <EventTimeline snapshots={snapshots} />
         ) : (
           <div
-          style={{
-            position: 'relative',
-            paddingLeft: '20px',
-            borderLeft: `1px solid ${INK}1a`,
-          }}
-        >
-          {journal.map((entry, index) => (
-            <div
-              key={entry.id}
-              style={{ position: 'relative', marginBottom: '22px' }}
-            >
-              {/* Timeline dot */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '-26px',
-                  top: '4px',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: index === 0 ? ACCENT : `${INK}33`,
-                }}
-              />
-
-              {/* Timestamp */}
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.1em',
-                  color: MUTED,
-                  marginBottom: '4px',
-                }}
-              >
-                {index === 0 ? `${t('event.now_label')} · ` : ''}
-                {formatTime(entry.checked_at)}
-              </div>
-
-              {/* Journal text */}
-              <div
-                style={{
-                  fontSize: '0.95rem',
-                  fontStyle: 'italic',
-                  color: INK,
-                  lineHeight: 1.4,
-                  marginBottom: '4px',
-                }}
-              >
-                &ldquo;{entry.verdict_sentence ?? entry.summary}&rdquo;
-              </div>
-
-              {/* Verdict + percentage */}
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  letterSpacing: '0.06em',
-                  color: MUTED,
-                }}
-              >
-                {(entry.verdict_word ?? entry.verdict)}
-                {typeof entry.percentage === 'number' && entry.percentage > 0
-                  ? ` · ${entry.percentage}%`
-                  : ''}
-              </div>
-            </div>
-          ))}
-
-          {/* First entry placeholder if journal is empty */}
-          {journal.length === 0 && (
+            style={{
+              position: 'relative',
+              paddingLeft: '20px',
+              borderLeft: `1px solid ${INK}1a`,
+            }}
+          >
             <div style={{ position: 'relative' }}>
               <div
                 style={{
@@ -705,7 +642,6 @@ function EventPage() {
                 &ldquo;{t('event.started_tracking')}&rdquo;
               </div>
             </div>
-          )}
           </div>
         )}
       </div>
