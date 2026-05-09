@@ -344,8 +344,8 @@ function AnswerPage() {
   // ── ANSWER STATE ───────────────────────────────
   // Build the 4-block briefing from the validated answer.
   const verdict: BriefingVerdict =
-    (['GO', 'CAUTION', 'NO-GO', 'UNKNOWN'].includes(answer.verdict)
-      ? answer.verdict
+    (answer.verdict && ['GO', 'CAUTION', 'NO-GO', 'UNKNOWN'].includes(answer.verdict)
+      ? (answer.verdict as string)
       : 'UNKNOWN') as BriefingVerdict;
 
   // Block 1 — the direct answer. Prefer decision_window (already a sentence
