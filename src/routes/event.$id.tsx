@@ -14,6 +14,8 @@ interface TrackedEvent {
   current_confidence: string;
   last_checked_at: string;
   created_at: string;
+  current_verdict_word?: string | null;
+  current_verdict_sentence?: string | null;
 }
 
 interface JournalEntry {
@@ -24,6 +26,8 @@ interface JournalEntry {
   confidence: string;
   current_conditions: string;
   checked_at: string;
+  verdict_word?: string | null;
+  verdict_sentence?: string | null;
 }
 
 export const Route = createFileRoute('/event/$id')({
@@ -35,6 +39,9 @@ const VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
   CAUTION: { bg: '#f59e0b', text: '#0b1018' },
   'NO-GO': { bg: '#b91c1c', text: '#faf7f0' },
   UNKNOWN: { bg: '#6b7280', text: '#faf7f0' },
+  YES: { bg: '#15803d', text: '#faf7f0' },
+  MAYBE: { bg: '#f59e0b', text: '#0b1018' },
+  NO: { bg: '#b91c1c', text: '#faf7f0' },
 };
 
 const PAGE_BG = '#faf7f0';
