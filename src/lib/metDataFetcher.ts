@@ -308,70 +308,13 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
-  try {
-    const res = await fetch(
-      `https://mesonet.agron.iastate.edu/json/nexrad_attr.py?lat=${lat}&lon=${lon}&radius=150`,
-      { headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' }, redirect: 'follow' }
-    );
-    if (!res.ok) {
-      console.warn('[radar] IEM endpoint failed', res.status, '— falling back to grid sample');
-      return await fetchRadarCellsFromGrid(lat, lon);
-    }
-    let data: any = null;
-    try { data = await res.json(); } catch {
-      console.warn('[radar] IEM returned non-JSON — falling back to grid sample');
-      return await fetchRadarCellsFromGrid(lat, lon);
-    }
-    if (!data?.attrs?.length) {
-      console.log('[radar:diag] IEM returned 0 attrs for', { lat, lon });
-      // IEM said no tracked cells — verify against grid sample. If grid finds
-      // active heavy precip, prefer that signal.
-      const gridText = await fetchRadarCellsFromGrid(lat, lon);
-      if (gridText && !gridText.includes('No active')) return gridText;
-      return 'RADAR: No tracked storm cells within 150 miles.';
-    }
-
-    console.log('[radar:diag] IEM cellCount=', data.attrs.length, 'maxDbz=',
-      Math.max(...data.attrs.map((c: any) => c.dbz ?? 0)),
-      'user=', { lat, lon });
-
-    const cells = data.attrs.slice(0, 5).map((c: any) => {
-      const dLat = c.lat - lat;
-      const dLon = c.lon - lon;
-      const distMiles = Math.round(Math.sqrt(dLat * dLat + dLon * dLon) * 69);
-      const bearing = Math.round(Math.atan2(dLon, dLat) * 180 / Math.PI);
-      const compassDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((bearing + 360) % 360) / 45) % 8];
-
-      const speedKts = c.drct != null && c.sknt != null ? c.sknt : null;
-      const speedMph = speedKts ? Math.round(speedKts * 1.15078) : null;
-
-      let interceptLine = '';
-      if (c.lat != null && c.lon != null && c.drct != null && speedMph != null && c.dbz != null) {
-        const ix = calculateStormIntercept(lat, lon, c.lat, c.lon, c.drct, speedMph, c.dbz);
-        console.log('[intercept:diag]', {
-          bearing: compassDir,
-          distMiles,
-          dbz: c.dbz,
-          motionDeg: c.drct,
-          speedMph,
-          lateralOffset: ix.lateralOffsetMiles,
-          impactZone: ix.impactZone,
-          willIntercept: ix.willIntercept,
-          etaMinutes: ix.etaMinutes,
-        });
-        const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
-        const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
-        interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
-      }
-
-      return `Cell ${compassDir} at ${distMiles}mi | dBZ:${c.dbz ?? '?'} | Motion:${c.drct ?? '?'}° at ${speedMph ?? '?'}mph${interceptLine}`;
-    });
-
-    return `NEXRAD TRACKED CELLS:\n${cells.join('\n')}`;
-  } catch (e) {
-    console.warn('[radar] IEM threw, falling back to grid sample', e);
-    try { return await fetchRadarCellsFromGrid(lat, lon); } catch { return 'RADAR: Cell data unavailable.'; }
-  }
+  // Note: the historical IEM `nexrad_attr.py` endpoint is dead (301 → HTML
+  // documentation). There is currently no free, real-time JSON source for
+  // raw NEXRAD reflectivity that runs inside a Cloudflare Worker, so we
+  // use the HRRR per-cell nowcast as our primary radar-equivalent feed.
+  // The header makes this explicit so the LLM doesn't claim "NEXRAD said
+  // there's nothing" when the truth is "no real radar was ingested".
+  return await fetchRadarCellsFromGrid(lat, lon);
 }
 
 /**
