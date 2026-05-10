@@ -223,6 +223,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   // Effective "you are here" coords: prefer real GPS fix when present.
   const meLat = gpsCoord?.lat ?? lat;
   const meLon = gpsCoord?.lon ?? lon;
+  // Mirror of meLat/meLon held in a ref so long-lived effects (init,
+  // 120s refresher) can read the latest coords without being closures
+  // over a stale first-mount value.
+  const coordsRef = useRef<{ lat: number; lon: number }>({ lat: meLat, lon: meLon });
+  useEffect(() => {
+    coordsRef.current = { lat: meLat, lon: meLon };
+  }, [meLat, meLon]);
 
   // Color scheme by mode (RainViewer): rain & mix use NEXRAD III (NWS) palette;
   // snow uses Universal Blue.
@@ -432,7 +439,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const refresher = setInterval(async () => {
       const fr = await fetchFrames();
       if (fr) framesRef.current = fr;
-      if (mapRef.current) void refreshWarnings(mapRef.current, lat, lon);
+      if (mapRef.current) {
+        const { lat: la, lon: lo } = coordsRef.current;
+        void refreshWarnings(mapRef.current, la, lo);
+      }
     }, 120_000);
 
     return () => {
