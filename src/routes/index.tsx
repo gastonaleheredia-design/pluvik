@@ -305,6 +305,10 @@ function HomePage() {
       return;
     }
     let cancelled = false;
+    // When the selected coordinates change, immediately drop any stale
+    // briefing/warning so an old banner from a previous city cannot remain
+    // visible while the new city is loading.
+    setBriefing(null);
     const fetchOnce = (showLoading: boolean) => {
       if (showLoading) setBriefingLoading(true);
       // Snapshot the coords this fetch was issued for, so a stale response
@@ -322,6 +326,7 @@ function HomePage() {
         })
         .catch(() => {
           if (cancelled) return;
+          if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
           setBriefing({
             word: null,
             sentence: i18n.language.startsWith('es')
@@ -347,11 +352,16 @@ function HomePage() {
   useEffect(() => {
     if (briefing?.error !== 'upstream_unavailable') return;
     if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+    const reqLat = selectedAddress.lat;
+    const reqLon = selectedAddress.lon;
     const timer = setTimeout(() => {
       getHomeBriefing({
         data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
       })
-        .then((b) => setBriefing(b))
+        .then((b) => {
+          if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
+          setBriefing(b);
+        })
         .catch(() => {});
     }, 5000);
     return () => clearTimeout(timer);
@@ -362,13 +372,21 @@ function HomePage() {
   useEffect(() => {
     const expiresIso = briefing?.alert?.expires_iso;
     if (!expiresIso || selectedAddress.lat == null || selectedAddress.lon == null) return;
+    const reqLat = selectedAddress.lat;
+    const reqLon = selectedAddress.lon;
     const id = setInterval(() => {
       const expired = Date.now() >= new Date(expiresIso).getTime();
       if (expired) {
+        // Clear the stale alert immediately so the banner disappears while
+        // the refresh is in flight.
+        setBriefing((prev) => (prev ? { ...prev, alert: null } : prev));
         getHomeBriefing({
           data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
         })
-          .then((b) => setBriefing(b))
+          .then((b) => {
+            if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
+            setBriefing(b);
+          })
           .catch(() => {});
       }
     }, 30000);
