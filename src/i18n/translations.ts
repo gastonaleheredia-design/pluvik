@@ -54,6 +54,9 @@ export const translations = {
         motion_parallel: 'moving parallel',
         motion_moving_away: 'moving away',
         motion_stationary: 'stationary',
+        motion_unknown: 'nearby',
+        warning_until: 'UNTIL',
+        warning_active: 'ACTIVE',
       },
       // Answer
       answer: {
