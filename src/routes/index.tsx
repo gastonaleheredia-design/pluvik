@@ -10,6 +10,7 @@ import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
+import { transcribeVoice } from '../lib/transcribeVoice.functions';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
@@ -28,18 +29,21 @@ export const Route = createFileRoute('/')({
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const { address: selectedAddress, following, setFollowing, followActive, followError } = useAddress();
+  const { address: selectedAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [showAddrHint, setShowAddrHint] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [micSupported, setMicSupported] = useState(true);
+  const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
-  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxRecordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -104,73 +108,111 @@ function HomePage() {
     } catch { /* ignore */ }
   }, []);
 
-  // Detect Web Speech API support.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    setMicSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
-  }, []);
-
-  const toggleListening = async () => {
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) {
-      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
-      return;
+  // ---- Voice input via MediaRecorder + Lovable AI Gateway (Gemini) ----
+  const cleanupRecording = () => {
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (maxRecordTimerRef.current) { clearTimeout(maxRecordTimerRef.current); maxRecordTimerRef.current = null; }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
     }
+    mediaRecorderRef.current = null;
+  };
 
-    if (listening && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-      return;
-    }
-
-    // Create the recognition object SYNCHRONOUSLY first so iOS Safari
-    // keeps the user-gesture context. We request mic permission separately
-    // only if it has not already been granted.
-    let rec: any;
-    try {
-      rec = new SR();
-      rec.lang = i18n.language?.startsWith('es') ? 'es-ES' : 'en-US';
-      rec.continuous = false;
-      rec.interimResults = true;
-    } catch {
-      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
-      return;
-    }
-
-    let finalText = '';
-      rec.onresult = (e: any) => {
-        let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript;
-          else interim += r[0].transcript;
-        }
-        setQuestionText((finalText + interim).trimStart());
-      };
-      rec.onerror = (e: any) => {
-        setListening(false);
-        const err = e?.error ?? '';
-        if (err === 'not-allowed' || err === 'service-not-allowed') {
-          setMicError(t('home.mic_blocked', { defaultValue: 'Microphone blocked. Enable it in browser settings.' }));
-        } else if (err === 'no-speech') {
-          setMicError(t('home.mic_no_speech', { defaultValue: "Didn't catch that — try again." }));
-        } else if (err) {
-          setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
-        }
-      };
-      rec.onend = () => { setListening(false); recognitionRef.current = null; };
-      recognitionRef.current = rec;
-    setMicError(null);
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setListening(false);
-      setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop(); } catch { /* ignore */ }
     }
   };
+
+  const startRecording = async () => {
+    if (typeof window === 'undefined') return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
+      return;
+    }
+    setMicError(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      const msg = err?.name === 'NotAllowedError'
+        ? t('home.mic_blocked', { defaultValue: 'Microphone blocked. Allow it in your browser, then tap the mic again.' })
+        : t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' });
+      setMicError(msg);
+      return;
+    }
+    micStreamRef.current = stream;
+
+    // Pick the best supported mimeType.
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+    ];
+    let mimeType = '';
+    for (const c of candidates) {
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(c)) {
+        mimeType = c;
+        break;
+      }
+    }
+
+    let rec: MediaRecorder;
+    try {
+      rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch {
+      cleanupRecording();
+      setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+      return;
+    }
+    audioChunksRef.current = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+    rec.onstop = async () => {
+      const chunks = audioChunksRef.current;
+      const recordedType = rec.mimeType || mimeType || 'audio/webm';
+      cleanupRecording();
+      if (!chunks.length) { setMicState('idle'); return; }
+      setMicState('transcribing');
+      const blob = new Blob(chunks, { type: recordedType });
+      try {
+        const base64 = await blobToBase64(blob);
+        const result = await transcribeVoice({
+          data: { audioBase64: base64, mimeType: recordedType, language: i18n.language },
+        });
+        const text = (result?.text ?? '').trim();
+        if (text) {
+          setQuestionText((prev) => (prev ? prev + ' ' : '') + text);
+        } else {
+          setMicError(t('home.mic_no_speech', { defaultValue: "Didn't catch that — try again." }));
+        }
+      } catch (err: any) {
+        setMicError(err?.message || t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+      } finally {
+        setMicState('idle');
+      }
+    };
+
+    mediaRecorderRef.current = rec;
+    rec.start();
+    setMicState('recording');
+
+    // Hard cap: stop after 15s no matter what.
+    maxRecordTimerRef.current = setTimeout(() => stopRecording(), 15_000);
+  };
+
+  const toggleMic = () => {
+    if (micState === 'recording') stopRecording();
+    else if (micState === 'idle') void startRecording();
+    // 'transcribing' is non-interactive
+  };
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => { cleanupRecording(); };
+  }, []);
 
   // Fetch the home briefing for the saved address.
   // Re-runs on focus and on a 30s tick while an alert is showing so the
