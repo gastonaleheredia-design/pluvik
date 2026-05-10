@@ -63,6 +63,8 @@ function EventPage() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [stationOpen, setStationOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
