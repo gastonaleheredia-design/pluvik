@@ -164,6 +164,8 @@ interface WeatherRequest {
   timeFormat?: '12h' | '24h';
   /** Hours from now until the user's event. Drives forecast stage classification. */
   hoursAhead?: number;
+  /** Hours from now until the END of the user's event window (optional). */
+  endHoursAhead?: number;
 }
 
 export interface ExtendedWeatherAnswer {
@@ -424,7 +426,7 @@ Respond ONLY with valid JSON:
 export const askWeather = createServerFn({ method: 'POST' })
   .inputValidator((data: WeatherRequest) => data)
   .handler(async ({ data }: { data: WeatherRequest }) => {
-    const { question, lat, lon, language, address, hoursAhead } = data;
+    const { question, lat, lon, language, address, hoursAhead, endHoursAhead } = data;
 
     // 1. Parse question
     const parsed = parseQuestion(question);
@@ -633,6 +635,9 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Language: ${language.startsWith('es') ? 'Spanish' : 'English'}\n` +
       `Activity type detected: ${parsed.activityType}\n` +
       `Time window: ${parsed.timeWindow}\n` +
+      (typeof endHoursAhead === 'number' && typeof hoursAhead === 'number' && endHoursAhead > hoursAhead
+        ? `Event window: ${new Date(Date.now() + hoursAhead * 3_600_000).toISOString()} → ${new Date(Date.now() + endHoursAhead * 3_600_000).toISOString()} (reason about the entire window, not a single instant — call out which hours look worst).\n`
+        : '') +
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
