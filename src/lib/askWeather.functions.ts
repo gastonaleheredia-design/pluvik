@@ -571,12 +571,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
       next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
       cpc_narrative:
-        ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ??
-        // Fall back to a trimmed first sentence of the raw paragraph if the
-        // model omitted the field — better than rendering nothing.
-        (cpcNarrativeFromContext
-          ? cpcNarrativeFromContext.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ')
-          : null),
+        ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ?? null,
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),
