@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { BottomNav } from '../components/BottomNav';
-import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
+import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
 
 interface TrackedEvent {
   id: string;
