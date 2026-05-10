@@ -575,9 +575,15 @@ function HomePage() {
               type="button"
               onClick={() => {
                 if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+                const reqLat = selectedAddress.lat;
+                const reqLon = selectedAddress.lon;
                 setBriefingLoading(true);
                 getHomeBriefing({ data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language } })
-                  .then((b) => { setBriefing(b); setBriefingLoading(false); })
+                  .then((b) => {
+                    if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
+                    setBriefing(b);
+                    setBriefingLoading(false);
+                  })
                   .catch(() => setBriefingLoading(false));
               }}
               aria-label={t('home.refresh', { defaultValue: 'Refresh' })}
