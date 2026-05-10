@@ -62,6 +62,11 @@ ${hasPlainLanguageDigest ? '- The user message already contains a pre-digested p
   "plain_english_summary": "same as summary, plain English",
   "recommended_action": "1 friendly suggestion (e.g. 'Check back in a week for a real forecast.')",
   "stage_outro": "${outro}",
+  "meteorologist_take": "1 person-to-person guidance sentence in second person — e.g. 'If I were you, I'd lock in the venue but keep the tent vendor's number handy. We'll start watching this around <date>.'",
+  "next_check_at": "friendly date phrase, e.g. 'Oct 22, 2026' — about 15 days before the event",
+  "hazards": null,
+  "timeline": null,
+  "event_window": null,
   "confidence": "VERY_LOW" | "LOW"
 }
 `;
