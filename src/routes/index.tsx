@@ -713,7 +713,11 @@ function HomePage() {
           <input
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
-            placeholder={listening ? t('home.mic_listening') : t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })}
+            placeholder={
+              micState === 'recording' ? t('home.mic_listening', { defaultValue: 'Listening…' }) :
+              micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
+              t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
+            }
             style={{
               flex: 1,
               border: 'none',
@@ -728,28 +732,42 @@ function HomePage() {
           />
           <button
               type="button"
-              onClick={toggleListening}
+              onClick={toggleMic}
+              disabled={micState === 'transcribing'}
               aria-label="Voice input"
               style={{
                 width: '34px',
                 height: '34px',
                 borderRadius: '50%',
                 border: 'none',
-                backgroundColor: listening ? ACCENT : '#f1ede4',
-                color: listening ? PAGE_BG : INK,
-                cursor: 'pointer',
+                backgroundColor: micState === 'recording' ? ACCENT : '#f1ede4',
+                color: micState === 'recording' ? PAGE_BG : INK,
+                cursor: micState === 'transcribing' ? 'default' : 'pointer',
+                opacity: micState === 'transcribing' ? 0.6 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                transition: 'background-color 120ms ease',
+                transition: 'background-color 120ms ease, opacity 120ms ease',
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3" />
-                <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-              </svg>
+              {micState === 'transcribing' ? (
+                <span
+                  style={{
+                    width: 12, height: 12, borderRadius: '50%',
+                    border: '2px solid currentColor',
+                    borderTopColor: 'transparent',
+                    animation: 'micSpin 0.8s linear infinite',
+                    display: 'inline-block',
+                  }}
+                />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="22" />
+                </svg>
+              )}
           </button>
           <button
             type="submit"
