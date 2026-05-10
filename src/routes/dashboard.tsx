@@ -582,16 +582,18 @@ function DashboardPage() {
           const pctLine = (() => {
             if (isClimate) return null;
             if (isOutlook) return latest?.decision_label ?? 'Long-range trend';
+            const planLabel = verdictToPlanLabel(event.current_verdict);
+            const planSuffix = planLabel ? ` · ${planLabel}` : '';
             if (isModelTrend && typeof event.current_percentage === 'number') {
               const lo = Math.max(0, event.current_percentage - 10);
               const hi = Math.min(100, event.current_percentage + 10);
               return isRainQ
-                ? `${lo}–${hi}% chance of rain · plan: ${event.current_verdict}`
-                : `${lo}–${hi}% · ${event.current_verdict}`;
+                ? `${lo}–${hi}% chance of rain${planSuffix}`
+                : `${lo}–${hi}%${planSuffix}`;
             }
             return isRainQ
-              ? `${event.current_percentage}% chance of rain · plan: ${event.current_verdict}`
-              : `${event.current_percentage}% · ${event.current_verdict}`;
+              ? `${event.current_percentage}% chance of rain${planSuffix}`
+              : `${event.current_percentage}%${planSuffix}`;
           })();
           const previousVerdict = eventSnaps
             .slice(1)
