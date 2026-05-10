@@ -126,7 +126,8 @@ export interface ValidationOutcome {
  * instead of throwing. `issues` lists what failed for logging.
  */
 export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
-  const parsed = WeatherAnswerSchema.safeParse(raw);
+  const normalized = normalizeRawAnswer(raw);
+  const parsed = WeatherAnswerSchema.safeParse(normalized);
   if (parsed.success) {
     const d = parsed.data as Record<string, unknown>;
     const stage = d.forecast_stage as ForecastStage | undefined;
