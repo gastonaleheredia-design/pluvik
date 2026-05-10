@@ -19,6 +19,8 @@ interface TrackedEvent {
   archived_at?: string | null;
   event_at?: string | null;
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
+  last_significant_change_at?: string | null;
+  user_seen_change_at?: string | null;
 }
 
 interface SnapshotMini {
@@ -54,6 +56,17 @@ function relTime(iso: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+/** "in 2d 3h", "in 5h", "in 30m", or "soon" — used for archive countdown. */
+function relFuture(iso: string): string {
+  const diff = Math.floor((new Date(iso).getTime() - Date.now()) / 1000);
+  if (diff <= 60) return 'soon';
+  if (diff < 3600) return `in ${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `in ${Math.floor(diff / 3600)}h`;
+  const days = Math.floor(diff / 86400);
+  const hours = Math.floor((diff - days * 86400) / 3600);
+  return hours > 0 ? `in ${days}d ${hours}h` : `in ${days}d`;
 }
 
 function DashboardPage() {
