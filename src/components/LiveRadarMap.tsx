@@ -58,7 +58,8 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
       container: containerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
       center: [lon, lat],
-      zoom: 8,
+      zoom: 6.5,
+      maxZoom: 9,
       attributionControl: false,
       cooperativeGestures: true,
     });
@@ -84,6 +85,7 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
           type: "raster",
           tiles: [tileUrl],
           tileSize: 256,
+          maxzoom: 7,
           attribution: "© RainViewer · NOAA radar",
         });
         map.addLayer({
