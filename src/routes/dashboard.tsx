@@ -173,6 +173,28 @@ function DashboardPage() {
         setSnapshots([]);
       }
       setLoadingEvents(false);
+      // Mark unseen significant changes as seen now that the user is viewing
+      // the active list. Only run for the active view so archived browsing
+      // doesn't clear the indicator prematurely.
+      if (view === 'active') {
+        const unseenIds = list
+          .filter((e) => {
+            const changed = e.last_significant_change_at
+              ? new Date(e.last_significant_change_at).getTime()
+              : 0;
+            const seen = e.user_seen_change_at
+              ? new Date(e.user_seen_change_at).getTime()
+              : 0;
+            return changed > seen;
+          })
+          .map((e) => e.id);
+        if (unseenIds.length > 0) {
+          await supabase
+            .from('tracked_events')
+            .update({ user_seen_change_at: new Date().toISOString() })
+            .in('id', unseenIds);
+        }
+      }
     });
   }, [user, view]);
 
