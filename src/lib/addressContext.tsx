@@ -17,6 +17,10 @@ const DEFAULT_ADDRESS: SelectedAddress = {
 
 const STORAGE_KEY = 'pluvik-selected-address';
 const FOLLOW_KEY = 'pluvik-follow-location';
+const LAST_FIX_KEY = 'pluvik-last-fix-ts';
+
+/** "live" = fresh GPS (<5 min). "stale" = older GPS. "manual" = user picked. */
+export type LocationFreshness = 'live' | 'stale' | 'manual';
 
 interface AddressContextType {
   address: SelectedAddress;
@@ -28,6 +32,10 @@ interface AddressContextType {
   followActive: boolean;
   /** Last error from watchPosition, if any. */
   followError: string | null;
+  /** Visual freshness of the current address. */
+  freshness: LocationFreshness;
+  /** Re-enable auto-follow (used by the address picker "Use my current location" flow). */
+  resumeFollowing: () => void;
 }
 
 const AddressContext = createContext<AddressContextType | null>(null);
@@ -60,13 +68,31 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
   const [following, setFollowingState] = useState<boolean>(() => {
     try {
       if (typeof window !== 'undefined') {
-        return localStorage.getItem(FOLLOW_KEY) === 'true';
+        // Default ON. Only OFF when the user explicitly picked a place.
+        const stored = localStorage.getItem(FOLLOW_KEY);
+        return stored === null ? true : stored === 'true';
       }
     } catch { /* ignore */ }
-    return false;
+    return true;
   });
   const [followActive, setFollowActive] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
+  const [lastFixTs, setLastFixTs] = useState<number | null>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const v = localStorage.getItem(LAST_FIX_KEY);
+        return v ? parseInt(v, 10) || null : null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+  // Tick every 30s so freshness ('live' → 'stale') updates without remount.
+  const [, setFreshTick] = useState(0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const id = setInterval(() => setFreshTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const lastFixRef = useRef<{ lat: number; lon: number; t: number } | null>(null);
 
   const setAddress = (addr: SelectedAddress) => {
@@ -75,6 +101,11 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(addr));
     } catch (err) {
       console.warn('[address] failed to persist selected address', err);
+    }
+    // A user-picked address turns OFF auto-follow until they re-enable.
+    if (addr.meta !== 'FOLLOWING') {
+      setFollowingState(false);
+      try { localStorage.setItem(FOLLOW_KEY, 'false'); } catch { /* ignore */ }
     }
   };
 
@@ -92,13 +123,18 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const resumeFollowing = () => setFollowing(true);
+
   // Defensive hydration: re-read the follow flag once on mount in case the
   // initial useState ran before localStorage was available (SSR snapshot).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(FOLLOW_KEY);
-      if (stored === 'true' && !following) setFollowingState(true);
+      if (stored === null && !following) {
+        // First visit: default ON.
+        setFollowingState(true);
+      } else if (stored === 'true' && !following) setFollowingState(true);
       else if (stored === 'false' && following) setFollowingState(false);
     } catch { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,6 +179,9 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
       const next: SelectedAddress = { label, meta: 'FOLLOWING', lat, lon };
       setAddressState(next);
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      const ts = Date.now();
+      setLastFixTs(ts);
+      try { localStorage.setItem(LAST_FIX_KEY, String(ts)); } catch { /* ignore */ }
     };
 
     const watchId = navigator.geolocation.watchPosition(
@@ -164,8 +203,15 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     };
   }, [following]);
 
+  // Compute freshness for the consumer.
+  const freshness: LocationFreshness = (() => {
+    if (!following || address.meta !== 'FOLLOWING') return 'manual';
+    if (lastFixTs && Date.now() - lastFixTs < 5 * 60_000) return 'live';
+    return 'stale';
+  })();
+
   return (
-    <AddressContext.Provider value={{ address, setAddress, following, setFollowing, followActive, followError }}>
+    <AddressContext.Provider value={{ address, setAddress, following, setFollowing, followActive, followError, freshness, resumeFollowing }}>
       {children}
     </AddressContext.Provider>
   );

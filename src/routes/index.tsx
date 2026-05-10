@@ -10,9 +10,25 @@ import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
+import { transcribeVoice } from '../lib/transcribeVoice.functions';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
+
+/** Convert a Blob to a raw (no data: prefix) base64 string. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      // result looks like "data:audio/webm;base64,XXXX"
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read audio'));
+    reader.readAsDataURL(blob);
+  });
+}
 
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
@@ -28,18 +44,21 @@ export const Route = createFileRoute('/')({
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const { address: selectedAddress, following, setFollowing, followActive, followError } = useAddress();
+  const { address: selectedAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [showAddrHint, setShowAddrHint] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [micSupported, setMicSupported] = useState(true);
+  const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
-  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxRecordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -104,73 +123,111 @@ function HomePage() {
     } catch { /* ignore */ }
   }, []);
 
-  // Detect Web Speech API support.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    setMicSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
-  }, []);
-
-  const toggleListening = async () => {
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) {
-      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
-      return;
+  // ---- Voice input via MediaRecorder + Lovable AI Gateway (Gemini) ----
+  const cleanupRecording = () => {
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (maxRecordTimerRef.current) { clearTimeout(maxRecordTimerRef.current); maxRecordTimerRef.current = null; }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
     }
+    mediaRecorderRef.current = null;
+  };
 
-    if (listening && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-      return;
-    }
-
-    // Create the recognition object SYNCHRONOUSLY first so iOS Safari
-    // keeps the user-gesture context. We request mic permission separately
-    // only if it has not already been granted.
-    let rec: any;
-    try {
-      rec = new SR();
-      rec.lang = i18n.language?.startsWith('es') ? 'es-ES' : 'en-US';
-      rec.continuous = false;
-      rec.interimResults = true;
-    } catch {
-      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
-      return;
-    }
-
-    let finalText = '';
-      rec.onresult = (e: any) => {
-        let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript;
-          else interim += r[0].transcript;
-        }
-        setQuestionText((finalText + interim).trimStart());
-      };
-      rec.onerror = (e: any) => {
-        setListening(false);
-        const err = e?.error ?? '';
-        if (err === 'not-allowed' || err === 'service-not-allowed') {
-          setMicError(t('home.mic_blocked', { defaultValue: 'Microphone blocked. Enable it in browser settings.' }));
-        } else if (err === 'no-speech') {
-          setMicError(t('home.mic_no_speech', { defaultValue: "Didn't catch that — try again." }));
-        } else if (err) {
-          setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
-        }
-      };
-      rec.onend = () => { setListening(false); recognitionRef.current = null; };
-      recognitionRef.current = rec;
-    setMicError(null);
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setListening(false);
-      setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop(); } catch { /* ignore */ }
     }
   };
+
+  const startRecording = async () => {
+    if (typeof window === 'undefined') return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
+      return;
+    }
+    setMicError(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      const msg = err?.name === 'NotAllowedError'
+        ? t('home.mic_blocked', { defaultValue: 'Microphone blocked. Allow it in your browser, then tap the mic again.' })
+        : t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' });
+      setMicError(msg);
+      return;
+    }
+    micStreamRef.current = stream;
+
+    // Pick the best supported mimeType.
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+    ];
+    let mimeType = '';
+    for (const c of candidates) {
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(c)) {
+        mimeType = c;
+        break;
+      }
+    }
+
+    let rec: MediaRecorder;
+    try {
+      rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch {
+      cleanupRecording();
+      setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+      return;
+    }
+    audioChunksRef.current = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+    rec.onstop = async () => {
+      const chunks = audioChunksRef.current;
+      const recordedType = rec.mimeType || mimeType || 'audio/webm';
+      cleanupRecording();
+      if (!chunks.length) { setMicState('idle'); return; }
+      setMicState('transcribing');
+      const blob = new Blob(chunks, { type: recordedType });
+      try {
+        const base64 = await blobToBase64(blob);
+        const result = await transcribeVoice({
+          data: { audioBase64: base64, mimeType: recordedType, language: i18n.language },
+        });
+        const text = (result?.text ?? '').trim();
+        if (text) {
+          setQuestionText((prev) => (prev ? prev + ' ' : '') + text);
+        } else {
+          setMicError(t('home.mic_no_speech', { defaultValue: "Didn't catch that — try again." }));
+        }
+      } catch (err: any) {
+        setMicError(err?.message || t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+      } finally {
+        setMicState('idle');
+      }
+    };
+
+    mediaRecorderRef.current = rec;
+    rec.start();
+    setMicState('recording');
+
+    // Hard cap: stop after 15s no matter what.
+    maxRecordTimerRef.current = setTimeout(() => stopRecording(), 15_000);
+  };
+
+  const toggleMic = () => {
+    if (micState === 'recording') stopRecording();
+    else if (micState === 'idle') void startRecording();
+    // 'transcribing' is non-interactive
+  };
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => { cleanupRecording(); };
+  }, []);
 
   // Fetch the home briefing for the saved address.
   // Re-runs on focus and on a 30s tick while an alert is showing so the
@@ -355,23 +412,24 @@ function HomePage() {
               gap: '8px',
             }}
           >
-            {following && (
-              <span
-                aria-hidden
-                style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  backgroundColor: followActive ? '#16a34a' : ACCENT,
-                  animation: 'homePulse 1.4s ease-in-out infinite',
-                  display: 'inline-block',
-                }}
-              />
-            )}
+            <span
+              aria-hidden
+              title={
+                freshness === 'live' ? 'Live GPS' :
+                freshness === 'stale' ? 'Last known location' :
+                'Pinned address'
+              }
+              style={{
+                width: 6, height: 6, borderRadius: '50%',
+                backgroundColor:
+                  freshness === 'live' ? '#16a34a' :
+                  freshness === 'stale' ? '#f59e0b' :
+                  '#9ca3af',
+                animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                display: 'inline-block',
+              }}
+            />
             {t('home.right_now_at', { defaultValue: 'RIGHT NOW AT' })}
-            {following && (
-              <span style={{ color: ACCENT }}>
-                · {t('home.following', { defaultValue: 'FOLLOWING' })}
-              </span>
-            )}
           </span>
           <span
             style={{
@@ -401,59 +459,33 @@ function HomePage() {
           )}
         </button>
 
-        {/* Location mode segmented toggle: FIXED ↔ FOLLOW ME */}
-        <div
-          role="group"
-          aria-label="Location mode"
-          style={{
-            marginTop: '-18px',
-            marginBottom: '24px',
-            display: 'inline-flex',
-            padding: '3px',
-            borderRadius: '100px',
-            border: '1px solid rgba(11,16,24,0.12)',
-            background: 'rgba(11,16,24,0.04)',
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.58rem',
-            letterSpacing: '0.18em',
-          }}
-        >
-          {([
-            { key: 'fixed', active: !following, label: t('home.mode_fixed', { defaultValue: 'FIXED' }) },
-            { key: 'follow', active: following, label: t('home.mode_follow', { defaultValue: 'FOLLOW ME' }) },
-          ] as const).map((seg) => (
-            <button
-              key={seg.key}
-              type="button"
-              onClick={() => setFollowing(seg.key === 'follow')}
-              aria-pressed={seg.active}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '100px',
-                border: 'none',
-                cursor: 'pointer',
-                background: seg.active ? ACCENT : 'transparent',
-                color: seg.active ? PAGE_BG : MUTED,
-                fontFamily: 'inherit',
-                fontSize: 'inherit',
-                letterSpacing: 'inherit',
-                fontWeight: seg.active ? 700 : 500,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'background-color 120ms ease, color 120ms ease',
-              }}
-            >
-              {seg.key === 'follow' && (
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-              )}
-              {seg.label}
-            </button>
-          ))}
-        </div>
+        {/* "Use my current location" link — shown when the user is on a manually pinned address. */}
+        {freshness === 'manual' && (
+          <button
+            type="button"
+            onClick={resumeFollowing}
+            style={{
+              marginTop: '-12px',
+              marginBottom: '20px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.58rem',
+              letterSpacing: '0.16em',
+              color: ACCENT,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            </svg>
+            {t('home.use_my_location', { defaultValue: 'USE MY CURRENT LOCATION' })}
+          </button>
+        )}
         {followError && (
           <div style={{
             marginTop: '-12px', marginBottom: '16px',
@@ -672,7 +704,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}`}</style>
       </div>
 
       {/* Thin question input pinned near bottom */}
@@ -696,7 +728,11 @@ function HomePage() {
           <input
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
-            placeholder={listening ? t('home.mic_listening') : t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })}
+            placeholder={
+              micState === 'recording' ? t('home.mic_listening', { defaultValue: 'Listening…' }) :
+              micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
+              t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
+            }
             style={{
               flex: 1,
               border: 'none',
@@ -711,28 +747,42 @@ function HomePage() {
           />
           <button
               type="button"
-              onClick={toggleListening}
+              onClick={toggleMic}
+              disabled={micState === 'transcribing'}
               aria-label="Voice input"
               style={{
                 width: '34px',
                 height: '34px',
                 borderRadius: '50%',
                 border: 'none',
-                backgroundColor: listening ? ACCENT : '#f1ede4',
-                color: listening ? PAGE_BG : INK,
-                cursor: 'pointer',
+                backgroundColor: micState === 'recording' ? ACCENT : '#f1ede4',
+                color: micState === 'recording' ? PAGE_BG : INK,
+                cursor: micState === 'transcribing' ? 'default' : 'pointer',
+                opacity: micState === 'transcribing' ? 0.6 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                transition: 'background-color 120ms ease',
+                transition: 'background-color 120ms ease, opacity 120ms ease',
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3" />
-                <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-              </svg>
+              {micState === 'transcribing' ? (
+                <span
+                  style={{
+                    width: 12, height: 12, borderRadius: '50%',
+                    border: '2px solid currentColor',
+                    borderTopColor: 'transparent',
+                    animation: 'micSpin 0.8s linear infinite',
+                    display: 'inline-block',
+                  }}
+                />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="22" />
+                </svg>
+              )}
           </button>
           <button
             type="submit"
