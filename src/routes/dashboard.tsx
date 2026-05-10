@@ -22,6 +22,8 @@ interface TrackedEvent {
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
+  current_verdict_word?: string | null;
+  current_verdict_sentence?: string | null;
   current_maybe_explanation?: {
     afd_quote: string;
     model_reconciliation: string;
@@ -86,6 +88,11 @@ function DashboardPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedJustNow, setRefreshedJustNow] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'partial'; ok: number; total: number }
+    | { kind: 'failed' }
+  >({ kind: 'idle' });
 
   const reloadEvents = async () => {
     if (!user) return;
@@ -118,17 +125,36 @@ function DashboardPage() {
   const handleRefreshAll = async () => {
     if (refreshing || !user) return;
     setRefreshing(true);
+    setRefreshStatus({ kind: 'idle' });
     try {
       const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-      await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
+      const res = await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
         method: 'POST',
         headers: { apikey },
       });
+      let summary: { refreshed?: number; results?: Array<{ ok: boolean }> } | null = null;
+      try {
+        summary = await res.json();
+      } catch {
+        summary = null;
+      }
       await reloadEvents();
-      setRefreshedJustNow(true);
-      setTimeout(() => setRefreshedJustNow(false), 1800);
+      const total = summary?.results?.length ?? 0;
+      const ok = summary?.refreshed ?? 0;
+      if (!res.ok || (total > 0 && ok === 0)) {
+        setRefreshStatus({ kind: 'failed' });
+        setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
+      } else if (total > 0 && ok < total) {
+        setRefreshStatus({ kind: 'partial', ok, total });
+        setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
+      } else {
+        setRefreshedJustNow(true);
+        setTimeout(() => setRefreshedJustNow(false), 1800);
+      }
     } catch (err) {
       console.error('[dashboard] refresh-all failed', err);
+      setRefreshStatus({ kind: 'failed' });
+      setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
     } finally {
       setRefreshing(false);
     }
