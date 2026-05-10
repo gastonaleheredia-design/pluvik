@@ -367,14 +367,20 @@ export const askWeather = createServerFn({ method: 'POST' })
         eventMonth,
         normals,
         outlooks,
+        eventAtIso: new Date(
+          Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
+        ).toISOString(),
       });
       plainLanguageBlock = ctx.promptBlock;
       plainLanguageOutro = ctx.stageOutro;
+      // Stash next_check_at so we can backfill it if the model omits it.
+      (validateWeatherAnswer as unknown as { _nextCheckAt?: string | null })._nextCheckAt = ctx.nextCheckAt;
       console.log('[askWeather:diag] plain-language context', {
         stage: stageInfo.stage,
         sentenceCount: ctx.sentences.length,
         hasNormals: !!normals,
         hasOutlooks: !!outlooks,
+        nextCheckAt: ctx.nextCheckAt,
       });
     }
 
