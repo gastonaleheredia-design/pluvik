@@ -363,6 +363,11 @@ export const translations = {
         motion_unknown: 'cercana',
         warning_until: 'HASTA',
         warning_active: 'ACTIVO',
+        following: 'SIGUIENDO',
+        following_on: 'SIGUIENDO MI UBICACIÓN',
+        following_off: 'SEGUIR MI UBICACIÓN',
+        because: 'PORQUE',
+        because_aria: 'Por qué este veredicto',
       },
       // Answer
       answer: {
