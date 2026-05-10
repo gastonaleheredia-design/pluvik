@@ -127,11 +127,49 @@ async function fetchNwsFallback(lat: number, lon: number): Promise<OpenMeteoLite
   }
 }
 
-function fmtHour(d: Date): string {
-  const h = d.getHours();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12} ${ampm}`;
+function fmtHour(d: Date, tz: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    hour12: true,
+    timeZone: tz,
+  }).format(d).replace(/\s+/g, ' ').toUpperCase();
+}
+
+function fmtDow(d: Date, tz: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    timeZone: tz,
+  }).format(d).toUpperCase().replace('.', '').slice(0, 3);
+}
+
+/**
+ * Sample HRRR minutely_15 precipitation at the user's exact pin for the next
+ * hour. Catches active convection that the hourly bucket smooths away.
+ */
+async function fetchMinutelyAtPoint(
+  lat: number,
+  lon: number,
+): Promise<{ first15: number; sumNext60: number } | null> {
+  try {
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 6000);
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+      `&minutely_15=precipitation&forecast_minutely_15=4` +
+      `&models=gfs_hrrr&precipitation_unit=inch&timezone=auto`,
+      { signal: ctl.signal },
+    );
+    clearTimeout(tid);
+    if (!res.ok) return null;
+    const j = await res.json();
+    const arr: number[] = j?.minutely_15?.precipitation ?? [];
+    if (arr.length === 0) return null;
+    const first15 = arr[0] ?? 0;
+    const sumNext60 = arr.slice(0, 4).reduce((s, v) => s + (v ?? 0), 0);
+    return { first15, sumNext60 };
+  } catch {
+    return null;
+  }
 }
 
 function pickWord(opts: {
@@ -232,6 +270,16 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     const snowNow = (curCode >= 71 && curCode <= 77) || (curCode >= 85 && curCode <= 86);
     const thunderNow = curCode >= 95;
 
+    // Live point sample (HRRR minutely_15) — this catches "rain right now"
+    // when the smoothed hourly bucket says zero. Best-effort.
+    const minutely = await fetchMinutelyAtPoint(lat, lon);
+    let liveRainingNow = rainingNow;
+    let liveImminentRain = false;
+    if (minutely) {
+      if (minutely.first15 > 0.005) liveRainingNow = true;
+      if (minutely.sumNext60 > 0.02) liveImminentRain = true;
+    }
+
     // Find first hour with meaningful rain in the next 7 days.
     const times: string[] = j.hourly?.time ?? [];
     const probs: number[] = j.hourly?.precipitation_probability ?? [];
@@ -250,15 +298,26 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     if (nextRainIdx >= 0) {
       const when = new Date(times[nextRainIdx]);
       hoursUntilRain = Math.round((when.getTime() - Date.now()) / (1000 * 60 * 60));
-      const dayNames = language.startsWith('es') ? DAY_NAMES_ES : DAY_NAMES_EN;
-      const dow = dayNames[when.getDay()];
+      const localeForFmt = language.startsWith('es') ? 'es-US' : 'en-US';
+      const dow = fmtDow(when, tz, localeForFmt);
       nextRainCaption = language.startsWith('es')
-        ? `PRÓXIMA LLUVIA · ${dow} ${fmtHour(when)}`
-        : `NEXT RAIN · ${dow} ${fmtHour(when)}`;
+        ? `PRÓXIMA LLUVIA · ${dow} ${fmtHour(when, tz, localeForFmt)}`
+        : `NEXT RAIN · ${dow} ${fmtHour(when, tz, localeForFmt)}`;
       // If rain is starting in <2h, treat as "RAIN SOON"
     }
 
-    let word = pickWord({ rainingNow, thunderNow, snowNow, cloudCover, hoursUntilRain });
+    // Live signal beats the smoothed hourly bucket when it disagrees.
+    if (liveImminentRain && (hoursUntilRain == null || hoursUntilRain > 0)) {
+      hoursUntilRain = 0;
+    }
+
+    let word = pickWord({
+      rainingNow: liveRainingNow,
+      thunderNow,
+      snowNow,
+      cloudCover,
+      hoursUntilRain,
+    });
 
     // Radar-aware override: if a real cell is approaching within 90 min,
     // promote to STORMS so the home screen agrees with Ask. Best-effort —
@@ -285,17 +344,33 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     // Nearby (non-imminent) cell — only render when verdict isn't already STORMS/RAINING.
     let nearbyCell: HomeBriefing['nearby_cell'] = null;
+    let nearbyProbe: NearbyCellProbe | null = null;
     if (word === 'DRY' || word === 'CLOUDY' || word === 'RAIN SOON') {
       try {
-        const near: NearbyCellProbe | null = await probeNearbyCell(lat, lon);
-        if (near) {
+        nearbyProbe = await probeNearbyCell(lat, lon);
+        if (nearbyProbe) {
           nearbyCell = {
-            distance_mi: near.distanceMiles,
-            bearing: near.bearingFromUser,
-            motion: near.motionRelativeToUser,
+            distance_mi: nearbyProbe.distanceMiles,
+            bearing: nearbyProbe.bearingFromUser,
+            motion: nearbyProbe.motionRelativeToUser,
           };
         }
       } catch { /* ignore */ }
+    }
+
+    // A close, intense cell IS the story — promote the verdict regardless of
+    // what the smoothed hourly point forecast says.
+    if (nearbyProbe && (nearbyProbe.dbz ?? 0) >= 35 && nearbyProbe.distanceMiles <= 10) {
+      word = (nearbyProbe.dbz ?? 0) >= 50 ? 'STORMS' : 'RAINING';
+    } else if (
+      nearbyProbe &&
+      nearbyProbe.distanceMiles <= 25 &&
+      (nearbyProbe.motionRelativeToUser === 'approaching' ||
+        nearbyProbe.motionRelativeToUser === 'drifting_toward') &&
+      (word === 'DRY' || word === 'CLOUDY')
+    ) {
+      word = 'RAIN SOON';
+      if (hoursUntilRain == null) hoursUntilRain = 1;
     }
 
     // One-line italic summary.
@@ -335,14 +410,31 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     } else {
       if (word === 'STORMS' && stormOverride)
         sentence = `Storms approaching from the ${stormOverride.bearing ?? 'west'} — ~${stormOverride.eta} min to impact.`;
+      else if (word === 'STORMS' && nearbyProbe)
+        sentence = `Storm cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser} — closing in.`;
       else if (word === 'STORMS') sentence = 'Thunderstorms in the area.';
+      else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
+        sentence = `Rain right above you — cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}.`;
       else if (word === 'RAINING') sentence = 'Rain falling right now.';
       else if (word === 'SNOW') sentence = 'Snow falling.';
-      else if (word === 'RAIN SOON') sentence = `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`;
+      else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+        sentence = 'Rain starting within the hour.';
+      else if (word === 'RAIN SOON')
+        sentence = `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`;
       else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
       else if (word === 'CLOUDY') sentence = 'Overcast, dry for now.';
       else if (nextRainIdx < 0) sentence = 'Clear through the next 7 days.';
       else sentence = 'Clear right now.';
+    }
+
+    // Spanish equivalents for the new branches.
+    if (language.startsWith('es') && !activeAlert) {
+      if (word === 'STORMS' && nearbyProbe && !stormOverride)
+        sentence = `Celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser} — acercándose.`;
+      else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
+        sentence = `Lluvia justo encima — celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}.`;
+      else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+        sentence = 'Lluvia comenzando en la próxima hora.';
     }
 
     // Local "updated at" string in the address's timezone.
@@ -353,6 +445,20 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     });
 
     let alertOut: HomeBriefing['alert'] = null;
+
+    // Diagnostic — once per request so we can verify the fix from worker logs.
+    console.log('[homeBriefing:diag]', JSON.stringify({
+      word,
+      hoursUntilRain,
+      curPrecip,
+      minutely15First: minutely?.first15 ?? null,
+      minutely15Sum60: minutely?.sumNext60 ?? null,
+      nearbyCell,
+      nearbyDbz: nearbyProbe?.dbz ?? null,
+      stormOverride,
+      hasAlert: !!activeAlert,
+    }));
+
     if (activeAlert) {
       let expiresLocal: string | null = null;
       if (activeAlert.expiresIso) {
