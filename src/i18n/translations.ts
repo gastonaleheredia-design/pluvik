@@ -49,6 +49,8 @@ export const translations = {
         mic_blocked: 'Microphone blocked. Allow it in your browser, then tap the mic again.',
         mic_no_speech: "Didn't catch that — try again.",
         mic_error: 'Voice input failed. Try again.',
+        mic_recording_progress: 'RECORDING {{m}}:{{s}} / 1:00 — TAP MIC TO STOP',
+        mic_capped: 'STOPPED AT 1 MINUTE — TAP THE MIC AGAIN TO ADD MORE',
         right_now_at: 'RIGHT NOW AT',
         tap_to_change: '(tap to change)',
         use_my_location: 'USE MY CURRENT LOCATION',
