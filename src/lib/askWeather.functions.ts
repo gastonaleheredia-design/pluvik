@@ -15,10 +15,10 @@ import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
-import { fetchClimateNormals } from './fetchers/fetchClimateNormals';
+import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchClimateNormals';
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
-import { buildPlainLanguageContext } from './plainLanguage';
+import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 
 interface WeatherRequest {
   question: string;
@@ -368,22 +368,20 @@ export const askWeather = createServerFn({ method: 'POST' })
     // raw numbers or jargon (enforced by stagePrompt + this prompt block).
     const needsLongRange =
       stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
-    let plainLanguageBlock = '';
-    let plainLanguageOutro: string | null = null;
-    let plainLanguageNextCheckAt: string | null = null;
-    let cpcNarrativeFromContext: string | null = null;
     if (needsLongRange) {
       const eventDate = new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       );
       const eventMonth = eventDate.getUTCMonth() + 1;
+      const eventDay = eventDate.getUTCDate();
       // Fetch CPC outlooks at BOTH climate and outlook stages — at climate
       // stage the seasonal horizon is the right tool. Pick the horizon that
       // matches the user's lead time so the LLM only sees the relevant one.
       const leadHours = typeof hoursAhead === 'number' ? hoursAhead : 24;
       const targetHorizon = selectHorizonForLead(leadHours);
-      const [normals, outlooksAll, discussion] = await Promise.all([
+      const [normals, dailyNormal, outlooksAll, discussion] = await Promise.all([
         fetchClimateNormals(lat, lon),
+        fetchDailyClimateNormal(lat, lon, eventMonth, eventDay),
         fetchCpcOutlooks(lat, lon),
         fetchCpcDiscussion(targetHorizon, lat, lon),
       ]);
@@ -396,29 +394,77 @@ export const askWeather = createServerFn({ method: 'POST' })
         : null;
       const usableOutlooks: CpcOutlooks | null =
         outlooks && outlooks.horizons.length > 0 ? outlooks : null;
-      const ctx = buildPlainLanguageContext({
-        stage: stageInfo.stage,
-        eventMonth,
-        normals,
-        outlooks: usableOutlooks,
-        discussion,
-        eventAtIso: new Date(
-          Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
-        ).toISOString(),
+
+      // Build the deterministic digest and short-circuit the LLM. The model
+      // had been writing 1500-character monologues; we replace it with a
+      // glanceable, sourced digest. CPC is only included when the event date
+      // actually falls inside the matching horizon's valid window.
+      const eventIso = eventDate.toISOString();
+      const matchingHorizon = usableOutlooks?.horizons[0] ?? null;
+      const validHorizon = isCpcHorizonValidForEvent(matchingHorizon, eventIso)
+        ? matchingHorizon
+        : null;
+      // Friendly next-check phrase: ~15d before for climate, ~5d before for outlook.
+      const leadDays = stageInfo.stage === 'climate' ? 15 : 5;
+      const checkMs = Math.max(
+        eventDate.getTime() - leadDays * 24 * 3_600_000,
+        Date.now() + 24 * 3_600_000,
+      );
+      const checkDate = new Date(checkMs);
+      const nextCheckAt = checkDate.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        ...(checkDate.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
       });
-      plainLanguageBlock = ctx.promptBlock;
-      plainLanguageOutro = ctx.stageOutro;
-      plainLanguageNextCheckAt = ctx.nextCheckAt;
-      cpcNarrativeFromContext = ctx.cpcDiscussionParagraph;
-      console.log('[askWeather:diag] plain-language context', {
+
+      const digest = buildLongRangeDigest({
+        stage: stageInfo.stage as 'climate' | 'outlook',
+        eventIso,
+        address,
+        daily: dailyNormal,
+        cpcHorizon: validHorizon,
+        nextCheckAt,
+      });
+
+      console.log('[askWeather:diag] long-range digest (LLM bypass)', {
         stage: stageInfo.stage,
         targetHorizon,
-        sentenceCount: ctx.sentences.length,
-        hasNormals: !!normals,
-        hasOutlooks: !!usableOutlooks,
+        validHorizon: !!validHorizon,
+        hasDailyNormal: !!dailyNormal,
+        hasMonthlyNormals: !!normals,
         hasDiscussion: !!discussion,
-        nextCheckAt: ctx.nextCheckAt,
       });
+
+      return {
+        mode,
+        verdict: null,
+        forecast_stage: stageInfo.stage,
+        decision_label: digest.decisionLabel,
+        chance_of_impact: null,
+        main_threat: '',
+        summary: digest.cardSummary,
+        plain_english_summary: digest.cardSummary,
+        verdict_word: 'MAYBE',
+        verdict_sentence: digest.cardSummary,
+        headline_number: null,
+        confidence: stageInfo.stage === 'climate' ? 'VERY_LOW' : 'LOW',
+        current_conditions: '',
+        recommended_action: digest.meteorologistTake,
+        meteorologist_take: digest.meteorologistTake,
+        next_check_at: digest.nextCheckAt,
+        cpc_narrative: digest.cpcNarrative,
+        stage_outro: digest.stageOutro,
+        hazards: null,
+        timeline: null,
+        event_window: null,
+        percentage: 0,
+        event_at: eventIso,
+        data_sources: [
+          ...(dailyNormal ? ['climate_normals_daily'] : normals ? ['climate_normals'] : []),
+          ...(validHorizon ? ['cpc_outlooks'] : []),
+        ],
+        scenario: scenarioProfile.scenario,
+        horizon: scenarioProfile.horizon,
+      } as unknown as ExtendedWeatherAnswer;
     }
 
     const systemPrompt =
@@ -441,7 +487,6 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
-      (plainLanguageBlock ? `${plainLanguageBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}`;
 
     const controller = new AbortController();
@@ -517,15 +562,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       ...validated.data,
       mode,
       forecast_stage: stageInfo.stage,
-      stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
-      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
+      stage_outro: validated.data.stage_outro ?? undefined,
+      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? undefined,
       cpc_narrative:
-        ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ??
-        // Fall back to a trimmed first sentence of the raw paragraph if the
-        // model omitted the field — better than rendering nothing.
-        (cpcNarrativeFromContext
-          ? cpcNarrativeFromContext.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ')
-          : null),
+        ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ?? null,
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),

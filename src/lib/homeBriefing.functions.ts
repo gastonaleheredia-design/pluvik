@@ -39,6 +39,94 @@ export interface HomeBriefing {
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 
+/* ---------------------------------------------------------------- */
+/* Lightweight in-memory cache + NWS fallback                       */
+/* ---------------------------------------------------------------- */
+
+interface OpenMeteoLite {
+  current: { weather_code: number; precipitation: number; cloud_cover: number };
+  hourly: {
+    time: string[];
+    precipitation_probability: number[];
+    precipitation: number[];
+    weather_code: number[];
+  };
+  timezone: string;
+}
+
+const CACHE = new Map<string, { value: OpenMeteoLite; expires: number; staleUntil: number }>();
+const CACHE_FRESH_MS = 5 * 60 * 1000;
+const CACHE_STALE_MS = 60 * 60 * 1000;
+
+function cacheKey(lat: number, lon: number) {
+  return `${lat.toFixed(2)},${lon.toFixed(2)}`;
+}
+
+/** Try NWS api.weather.gov as a fallback. Returns Open-Meteo-shaped data or null. */
+async function fetchNwsFallback(lat: number, lon: number): Promise<OpenMeteoLite | null> {
+  try {
+    const headers = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)', accept: 'application/geo+json' };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    const pointsRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers, signal: ctl.signal });
+    if (!pointsRes.ok) { clearTimeout(t); return null; }
+    const points = await pointsRes.json();
+    const hourlyUrl = points?.properties?.forecastHourly;
+    const tz = points?.properties?.timeZone ?? 'UTC';
+    if (!hourlyUrl) { clearTimeout(t); return null; }
+    const hourlyRes = await fetch(hourlyUrl, { headers, signal: ctl.signal });
+    clearTimeout(t);
+    if (!hourlyRes.ok) return null;
+    const hourly = await hourlyRes.json();
+    const periods: Array<{ startTime: string; probabilityOfPrecipitation?: { value: number | null }; shortForecast?: string; isDaytime?: boolean }> = hourly?.properties?.periods ?? [];
+    if (periods.length === 0) return null;
+
+    const time: string[] = [];
+    const probs: number[] = [];
+    const precs: number[] = [];
+    const codes: number[] = [];
+    for (const p of periods.slice(0, 168)) {
+      time.push(p.startTime);
+      const pop = p.probabilityOfPrecipitation?.value ?? 0;
+      probs.push(pop ?? 0);
+      const sf = (p.shortForecast ?? '').toLowerCase();
+      const isThunder = /thunder|storm/.test(sf);
+      const isRain = /rain|shower|drizzle/.test(sf);
+      const isSnow = /snow|sleet|ice|wintry/.test(sf);
+      const isFog = /fog/.test(sf);
+      // Approximate Open-Meteo WMO codes used downstream.
+      let code = 0;
+      if (isThunder) code = 95;
+      else if (isSnow) code = 73;
+      else if (isRain) code = 63;
+      else if (isFog) code = 45;
+      else if (/cloud/.test(sf)) code = 3;
+      codes.push(code);
+      // Coarse precip estimate from PoP (we don't have inches from NWS hourly here).
+      precs.push(isRain || isThunder || isSnow ? Math.max(0.1, (pop ?? 0) / 100) : 0);
+    }
+
+    const cur = periods[0];
+    const curSf = (cur?.shortForecast ?? '').toLowerCase();
+    const curCode =
+      /thunder|storm/.test(curSf) ? 95 :
+      /snow|sleet|ice|wintry/.test(curSf) ? 73 :
+      /rain|shower|drizzle/.test(curSf) ? 63 :
+      /fog/.test(curSf) ? 45 :
+      /cloud/.test(curSf) ? 3 : 0;
+    const curCloud = /partly cloudy/.test(curSf) ? 50 : /cloud|overcast/.test(curSf) ? 90 : /clear|sunny/.test(curSf) ? 5 : 30;
+
+    return {
+      current: { weather_code: curCode, precipitation: curCode >= 50 ? 0.1 : 0, cloud_cover: curCloud },
+      hourly: { time, precipitation_probability: probs, precipitation: precs, weather_code: codes },
+      timezone: tz,
+    };
+  } catch (err) {
+    console.warn('[homeBriefing] NWS fallback failed:', (err as Error).message);
+    return null;
+  }
+}
+
 function fmtHour(d: Date): string {
   const h = d.getHours();
   const ampm = h >= 12 ? 'PM' : 'AM';
@@ -84,29 +172,40 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     };
 
-    let res: Response | null = null;
-    let lastErr: unknown = null;
-    const RETRY_DELAYS = [400, 1200, 3000];
-    for (let attempt = 0; attempt < 4; attempt++) {
+    // 0. Serve fresh cache immediately if available.
+    const ck = cacheKey(lat, lon);
+    const hit = CACHE.get(ck);
+    let j: OpenMeteoLite | null = hit && hit.expires > Date.now() ? hit.value : null;
+
+    // 1. Try Open-Meteo (one attempt; retries hammer 429s).
+    if (!j) {
       try {
         const r = await fetchOnce();
-        if (r.ok) { res = r; break; }
-        lastErr = `status_${r.status}`;
-        console.error('[homeBriefing] open-meteo non-ok', { attempt, status: r.status });
-        if (r.status < 500 && r.status !== 429) break; // don't retry 4xx (except rate limit)
+        if (r.ok) {
+          j = (await r.json()) as OpenMeteoLite;
+        } else {
+          console.warn('[homeBriefing] open-meteo non-ok', { status: r.status });
+        }
       } catch (err) {
-        lastErr = err;
-        console.error('[homeBriefing] open-meteo fetch failed', { attempt, err: (err as Error)?.message });
+        console.warn('[homeBriefing] open-meteo fetch failed', { err: (err as Error)?.message });
       }
-      const delay = RETRY_DELAYS[attempt];
-      if (delay != null) await new Promise((r) => setTimeout(r, delay));
     }
 
-    if (!res) {
+    // 2. NWS fallback when Open-Meteo failed or was rate-limited.
+    if (!j) {
+      j = await fetchNwsFallback(lat, lon);
+    }
+
+    // 3. Stale-cache fallback when both upstream sources failed.
+    if (!j && hit && hit.staleUntil > Date.now()) {
+      console.warn('[homeBriefing] serving stale cache');
+      j = hit.value;
+    }
+
+    if (!j) {
       const fallbackSentence = language.startsWith('es')
         ? 'No se pudo cargar el clima ahora mismo. Intenta de nuevo en un momento.'
         : "Couldn't load weather right now. Try again in a moment.";
-      console.error('[homeBriefing] giving up after retries', { lastErr });
       return {
         word: null,
         sentence: fallbackSentence,
@@ -117,7 +216,12 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         error: 'upstream_unavailable',
       } satisfies HomeBriefing;
     }
-    const j = await res.json();
+    // Save cache (fresh 5 min, stale up to 1 h).
+    CACHE.set(ck, {
+      value: j,
+      expires: Date.now() + CACHE_FRESH_MS,
+      staleUntil: Date.now() + CACHE_STALE_MS,
+    });
 
     const curCode: number = j.current?.weather_code ?? 0;
     const curPrecip: number = j.current?.precipitation ?? 0;

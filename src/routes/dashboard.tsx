@@ -564,6 +564,10 @@ function DashboardPage() {
                       color: MUTED,
                       lineHeight: 1.4,
                       marginTop: '4px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
                     }}
                   >
                     {event.current_summary}
