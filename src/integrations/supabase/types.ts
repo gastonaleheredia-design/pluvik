@@ -223,6 +223,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_checked_at: string | null
+          last_refresh_attempt_at: string | null
           last_significant_change_at: string | null
           lat: number | null
           lon: number | null
@@ -253,6 +254,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_refresh_attempt_at?: string | null
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
@@ -283,6 +285,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_refresh_attempt_at?: string | null
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
