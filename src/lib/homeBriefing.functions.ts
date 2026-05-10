@@ -379,20 +379,76 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     } catch { /* keep current verdict */ }
 
-    // Nearby (non-imminent) cell — only render when verdict isn't already STORMS/RAINING.
+    // Nearby cell probe — always run when there's no radar/alert override
+    // yet, so we can EITHER promote a quiet point to STORMS/RAIN SOON, OR
+    // confirm/downgrade a point-only thunder/precip verdict against the
+    // actual radar picture. This is what stops "STORMS · thunder at your
+    // point" from showing when the only cell on radar is 100 mi north.
     let nearbyCell: HomeBriefing['nearby_cell'] = null;
     let nearbyProbe: NearbyCellProbe | null = null;
-    if (word === 'DRY' || word === 'CLOUDY' || word === 'RAIN SOON') {
+    if (!stormOverride && !activeAlert) {
       try {
         nearbyProbe = await probeNearbyCell(lat, lon);
-        if (nearbyProbe) {
-          nearbyCell = {
-            distance_mi: nearbyProbe.distanceMiles,
-            bearing: nearbyProbe.bearingFromUser,
-            motion: nearbyProbe.motionRelativeToUser,
-          };
-        }
       } catch { /* ignore */ }
+    }
+
+    // Radar-confirmation guard for point-only verdicts. Open-Meteo's
+    // current.weather_code reports a thunderstorm whenever the model thinks
+    // any convection is occurring inside the grid cell — which can be tens
+    // of miles wide. Cross-check with radar before committing to STORMS or
+    // RAINING from the point signal alone.
+    if (!stormOverride && !activeAlert) {
+      const radarConfirmsStorm = !!nearbyProbe && (nearbyProbe.dbz ?? 0) >= 45 && nearbyProbe.distanceMiles <= 15;
+      const radarConfirmsRain = !!nearbyProbe && (nearbyProbe.dbz ?? 0) >= 25 && nearbyProbe.distanceMiles <= 10;
+
+      // Point said STORMS but radar disagrees → downgrade.
+      if (word === 'STORMS' && reasonCode === 'point_thunder' && !radarConfirmsStorm) {
+        if (radarConfirmsRain) {
+          word = 'RAINING';
+        } else if (hoursUntilRain != null && hoursUntilRain <= 6) {
+          word = 'RAIN SOON';
+        } else if (cloudCover >= 70) {
+          word = 'CLOUDY';
+        } else {
+          word = 'DRY';
+        }
+        reasonCode = 'forecast_clear';
+        reasonDetail = isEs
+          ? 'Sin tormenta confirmada en el radar cercano'
+          : 'No storm confirmed on nearby radar';
+      }
+
+      // Point said RAINING but neither minutely_15 nor radar agrees → downgrade.
+      const minutelyAgrees = !!minutely && minutely.first15 > 0.005;
+      if (word === 'RAINING' && reasonCode === 'point_precip' && !minutelyAgrees && !radarConfirmsRain && !snowNow) {
+        if (hoursUntilRain != null && hoursUntilRain <= 6) word = 'RAIN SOON';
+        else if (cloudCover >= 70) word = 'CLOUDY';
+        else word = 'DRY';
+        reasonCode = 'forecast_clear';
+        reasonDetail = isEs
+          ? 'Sin lluvia confirmada en el radar cercano'
+          : 'No rain confirmed on nearby radar';
+      }
+
+      // If we kept STORMS via radar confirmation (instead of imminent override),
+      // upgrade the reason from generic "thunder at your point" to honest copy.
+      if (word === 'STORMS' && reasonCode === 'point_thunder' && radarConfirmsStorm && nearbyProbe) {
+        reasonCode = 'nearby_strong_cell';
+        reasonDetail = nearbyProbe.distanceMiles <= 5
+          ? (isEs ? 'Celda de tormenta encima' : 'Storm cell overhead')
+          : (isEs
+              ? `Celda de tormenta a ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}`
+              : `Storm cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}`);
+      }
+    }
+
+    // Populate the nearby_cell payload only for the verdicts that render it.
+    if (nearbyProbe && (word === 'DRY' || word === 'CLOUDY' || word === 'RAIN SOON')) {
+      nearbyCell = {
+        distance_mi: nearbyProbe.distanceMiles,
+        bearing: nearbyProbe.bearingFromUser,
+        motion: nearbyProbe.motionRelativeToUser,
+      };
     }
 
     // A close, intense cell IS the story — promote the verdict regardless of
