@@ -12,6 +12,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { supabaseAdmin } from '@/integrations/supabase/client.server';
 import { askWeather } from '@/lib/askWeather.functions';
+import { extractEventTimeFromQuestion } from '@/lib/extractEventTimeFromQuestion';
 import {
   classifyChange,
   type PreviousSnapshot,
@@ -50,9 +51,19 @@ async function refreshOne(
     return { id: event.id, ok: false, error: 'missing_coords' };
   }
 
-  const eventAtMs = event.event_at ? new Date(event.event_at).getTime() : NaN;
-  const hoursAhead = Number.isFinite(eventAtMs)
-    ? Math.max(0, (eventAtMs - Date.now()) / 3_600_000)
+  // Re-parse the question every refresh so old rows that were saved before
+  // the date parser shipped get the right hoursAhead. If parsing produces a
+  // time that disagrees with stored event_at by >6h, trust the parse.
+  const parsedTime = extractEventTimeFromQuestion(event.question);
+  let resolvedEventAtMs = event.event_at ? new Date(event.event_at).getTime() : NaN;
+  if (parsedTime) {
+    const parsedMs = parsedTime.eventAt.getTime();
+    if (!Number.isFinite(resolvedEventAtMs) || Math.abs(parsedMs - resolvedEventAtMs) > 6 * 3_600_000) {
+      resolvedEventAtMs = parsedMs;
+    }
+  }
+  const hoursAhead = Number.isFinite(resolvedEventAtMs)
+    ? Math.max(0, (resolvedEventAtMs - Date.now()) / 3_600_000)
     : 24;
 
   let answer: Awaited<ReturnType<typeof askWeather>>;
@@ -85,6 +96,9 @@ async function refreshOne(
   };
 
   const nowIso = new Date().toISOString();
+  const resolvedEventAtIso = Number.isFinite(resolvedEventAtMs)
+    ? new Date(resolvedEventAtMs).toISOString()
+    : null;
   const { error: updErr } = await supabaseAdmin
     .from('tracked_events')
     .update({
@@ -94,8 +108,10 @@ async function refreshOne(
       current_confidence: a.confidence ?? null,
       current_verdict_word: a.verdict_word ?? null,
       current_verdict_sentence: a.verdict_sentence ?? null,
+      current_forecast_stage: a.forecast_stage ?? null,
       last_checked_at: nowIso,
-      event_at: a.event_at ?? event.event_at ?? null,
+      event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
+      event_phrase: parsedTime?.sourcePhrase ?? null,
     })
     .eq('id', event.id);
   if (updErr) return { id: event.id, ok: false, error: updErr.message };
