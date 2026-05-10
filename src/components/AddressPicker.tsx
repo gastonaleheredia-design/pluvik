@@ -627,28 +627,11 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                 color: '#0b1018',
               }}
             />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => { setShowSaveModal(false); onClose(); }}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  borderRadius: '100px',
-                  border: '1px solid rgba(11,16,24,0.1)',
-                  backgroundColor: '#f0ebde',
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                }}
-              >
-                {t('picker.save_place_cancel')}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button
                 onClick={handleSavePlace}
                 disabled={savingPlace || !nickname.trim()}
                 style={{
-                  flex: 1,
                   padding: '12px',
                   borderRadius: '100px',
                   border: 'none',
@@ -664,6 +647,48 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                 }}
               >
                 {savingPlace ? '...' : t('picker.save_place_cta')}
+              </button>
+              <button
+                onClick={() => {
+                  setShowSaveModal(false);
+                  setNickname('');
+                  onClose();
+                }}
+                style={{
+                  padding: '12px',
+                  borderRadius: '100px',
+                  border: '1px solid rgba(11,16,24,0.18)',
+                  backgroundColor: 'transparent',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  color: '#0b1018',
+                }}
+              >
+                {t('picker.save_place_skip', { defaultValue: 'Use without saving' })}
+              </button>
+              <button
+                onClick={() => {
+                  // Revert location change and dismiss
+                  if (prevAddress) setAddress(prevAddress);
+                  setShowSaveModal(false);
+                  setNickname('');
+                  setSelectedFeature(null);
+                }}
+                style={{
+                  padding: '10px',
+                  borderRadius: '100px',
+                  border: 'none',
+                  background: 'transparent',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.16em',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                }}
+              >
+                {t('picker.save_place_cancel')}
               </button>
             </div>
           </div>
