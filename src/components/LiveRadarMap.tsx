@@ -10,6 +10,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN } from "@/config/keys";
 import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
+import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -57,9 +58,14 @@ async function fetchFrames(): Promise<PreparedFrames | null> {
   }
 }
 
-// Palette 2 = NWS Reflectivity (classic green→yellow→orange→red→magenta).
-function tileUrlFor(host: string, frame: RVFrame) {
-  return `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+// RainViewer color schemes: 2 = NWS Reflectivity, 3 = Universal Blue (snow).
+function rvTileUrl(host: string, frame: RVFrame, colorScheme: number) {
+  return `${host}${frame.path}/256/{z}/{x}/{y}/${colorScheme}/1_1.png`;
+}
+
+// Iowa State IEM single-station N0Q reflectivity, latest scan.
+function iemStationTileUrl(siteId: string) {
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::${siteId}-N0Q-0/{z}/{x}/{y}.png`;
 }
 
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
@@ -142,6 +148,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const [basemap, setBasemap] = useState<"streets" | "satellite">("streets");
   const [legendOpen, setLegendOpen] = useState(true);
   const [miniCard, setMiniCard] = useState<MiniCardData | null>(null);
+  const [mode, setMode] = useState<"rain" | "mix" | "snow">("rain");
+  const [source, setSource] = useState<"mosaic" | "station">("mosaic");
+  const [stationId, setStationId] = useState<string | null>(null);
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   const [gpsCoord, setGpsCoord] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -153,10 +163,15 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const meLat = gpsCoord?.lat ?? lat;
   const meLon = gpsCoord?.lon ?? lon;
 
+  // Color scheme by mode (RainViewer): rain & mix use NWS palette; snow uses blues.
+  const colorScheme = mode === "snow" ? 3 : 2;
+
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const url = tileUrlFor(host, frame);
+    const url = source === "station" && stationId
+      ? iemStationTileUrl(stationId)
+      : rvTileUrl(host, frame, colorScheme);
     const src = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
     if (src) {
       (src as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
@@ -182,7 +197,16 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     if (fr && fr.frames.length > 1) {
       setFrameProgress(fr.frames.indexOf(frame) / (fr.frames.length - 1));
     }
-  }, [showRadar]);
+  }, [showRadar, colorScheme, source, stationId]);
+
+  // When mode/source/station changes, force a re-tile of the current frame.
+  useEffect(() => {
+    const fr = framesRef.current;
+    if (!fr) return;
+    setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
+    // Pause looping in single-station mode (latest scan only).
+    if (source === "station") setPlaying(false);
+  }, [mode, source, stationId, setRadarTile]);
 
   const advanceFrame = useCallback(() => {
     const fr = framesRef.current;
@@ -321,7 +345,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       minZoom: 3,
       maxZoom: 12,
       attributionControl: false,
-      cooperativeGestures: true,
+      cooperativeGestures: !isFullscreen,
     });
     mapRef.current = map;
 
@@ -521,7 +545,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       {/* Top-left: live indicator only */}
       <div style={pillTopLeft}>
         <span style={liveDot} />
-        Live radar
+        {source === "station" && stationId
+          ? `Live · ${stationId}`
+          : "Live · Mosaic"}
       </div>
 
       {/* Right toolbar */}
@@ -531,6 +557,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
         <ToolBtn label="◎" title="Recenter" onClick={recenter} />
         <ToolBtn label={gpsBusy ? "…" : "📍"} title="My location (GPS)" onClick={useMyLocation} />
+        <ToolBtn
+          label="📡"
+          title="Radar source"
+          onClick={() => setSourceMenuOpen((o) => !o)}
+        />
         {isFullscreen && (
           <>
             <ToolBtn
@@ -546,6 +577,36 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           </>
         )}
       </div>
+
+      {/* Source picker panel */}
+      {sourceMenuOpen && (
+        <div style={sourcePanelStyle}>
+          <div style={sourcePanelHeader}>RADAR SOURCE</div>
+          <button
+            type="button"
+            onClick={() => { setSource("mosaic"); setStationId(null); setSourceMenuOpen(false); }}
+            style={{ ...sourceItem, ...(source === "mosaic" ? sourceItemActive : {}) }}
+          >
+            <span style={sourceItemTitle}>MRMS Mosaic</span>
+            <span style={sourceItemSub}>National blend · loops</span>
+          </button>
+          <div style={sourcePanelDivider}>NEAREST STATIONS</div>
+          {nearestSites(meLat, meLon, 6).map((s: NexradSite & { distMi: number }) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => { setSource("station"); setStationId(s.id); setSourceMenuOpen(false); }}
+              style={{
+                ...sourceItem,
+                ...(source === "station" && stationId === s.id ? sourceItemActive : {}),
+              }}
+            >
+              <span style={sourceItemTitle}>{s.id} · {s.kind}</span>
+              <span style={sourceItemSub}>{s.name} · {s.distMi.toFixed(0)} mi</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {gpsError && (
         <div style={gpsErrorStyle}>{gpsError}</div>
@@ -584,16 +645,37 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           style={legendHeaderStyle}
           aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
         >
-          dBZ {legendOpen ? "▾" : "▸"}
+          {mode === "rain" ? "RAIN · dBZ" : mode === "mix" ? "MIX · dBZ" : "SNOW"} {legendOpen ? "▾" : "▸"}
         </button>
         {legendOpen && (
           <div style={legendBodyStyle}>
-            {DBZ_STOPS.map((s) => (
+            {/* Mode switcher */}
+            <div style={modeSwitchRow}>
+              {(["rain", "mix", "snow"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  style={{
+                    ...modeChip,
+                    ...(mode === m ? modeChipActive : {}),
+                  }}
+                >
+                  {m.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {(mode === "rain" ? RAIN_STOPS : mode === "mix" ? MIX_STOPS : SNOW_STOPS).map((s) => (
               <div key={s.label} style={legendRow}>
                 <span style={{ ...legendSwatch, backgroundColor: s.color }} />
-                <span style={legendLabel}>{s.dbz}+ · {s.label}</span>
+                <span style={legendLabel}>{s.tag} · {s.label}</span>
               </div>
             ))}
+            {mode === "mix" && (
+              <div style={legendNoteStyle}>
+                Reflectivity from rain palette. Likely mix when surface temp 28–36°F.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -722,14 +804,28 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-// NWS Reflectivity color stops (approx, for legend display only).
-const DBZ_STOPS = [
-  { dbz: 5,  color: "#7cfc8d", label: "Light" },
-  { dbz: 20, color: "#15c40a", label: "Moderate" },
-  { dbz: 35, color: "#fef000", label: "Heavy" },
-  { dbz: 50, color: "#fd7e00", label: "Intense" },
-  { dbz: 60, color: "#fc0000", label: "Severe" },
-  { dbz: 70, color: "#fc00ff", label: "Hail" },
+// Color stops per mode (display only — actual pixels come from RainViewer tiles).
+const RAIN_STOPS = [
+  { tag: "5+",  color: "#7cfc8d", label: "Light" },
+  { tag: "20+", color: "#15c40a", label: "Moderate" },
+  { tag: "35+", color: "#fef000", label: "Heavy" },
+  { tag: "50+", color: "#fd7e00", label: "Intense" },
+  { tag: "60+", color: "#fc0000", label: "Severe" },
+  { tag: "70+", color: "#fc00ff", label: "Hail" },
+];
+const MIX_STOPS = [
+  { tag: "5+",  color: "#7cfc8d", label: "Light mix" },
+  { tag: "20+", color: "#15c40a", label: "Sleet" },
+  { tag: "35+", color: "#fef000", label: "Freezing rain" },
+  { tag: "50+", color: "#fd7e00", label: "Heavy mix" },
+  { tag: "60+", color: "#fc0000", label: "Ice storm" },
+];
+const SNOW_STOPS = [
+  { tag: "5+",  color: "#cfe8ff", label: "Trace" },
+  { tag: "15+", color: "#9ec8ff", label: "Light snow" },
+  { tag: "25+", color: "#5a9bff", label: "Moderate" },
+  { tag: "35+", color: "#1f6fe0", label: "Heavy" },
+  { tag: "45+", color: "#0a3aa0", label: "Blizzard" },
 ];
 
 const overlayStyle: React.CSSProperties = {
@@ -922,4 +1018,71 @@ const scrubStyle: React.CSSProperties = {
   accentColor: "#ef4444",
   pointerEvents: "auto",
   cursor: "pointer",
+};
+
+const sourcePanelStyle: React.CSSProperties = {
+  position: "absolute", top: 10, right: 50,
+  width: 220,
+  backgroundColor: "rgba(11,16,24,0.92)",
+  border: "1px solid rgba(255,255,255,0.15)",
+  borderRadius: 12,
+  padding: 8,
+  display: "flex", flexDirection: "column", gap: 4,
+  zIndex: 7,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+  backdropFilter: "blur(8px)",
+};
+const sourcePanelHeader: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.55rem", letterSpacing: "0.16em", fontWeight: 700,
+  color: "#9aa0aa", padding: "4px 6px",
+};
+const sourcePanelDivider: React.CSSProperties = {
+  ...sourcePanelHeader,
+  borderTop: "1px solid rgba(255,255,255,0.08)",
+  marginTop: 4, paddingTop: 8,
+};
+const sourceItem: React.CSSProperties = {
+  display: "flex", flexDirection: "column", gap: 2,
+  padding: "6px 8px", borderRadius: 8,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "#faf7f0",
+  textAlign: "left", cursor: "pointer",
+};
+const sourceItemActive: React.CSSProperties = {
+  background: "rgba(239,68,68,0.18)",
+  border: "1px solid rgba(239,68,68,0.5)",
+};
+const sourceItemTitle: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.62rem", letterSpacing: "0.1em", fontWeight: 700,
+};
+const sourceItemSub: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.52rem", letterSpacing: "0.06em", color: "#9aa0aa",
+};
+
+const modeSwitchRow: React.CSSProperties = {
+  display: "flex", gap: 4, marginBottom: 4,
+};
+const modeChip: React.CSSProperties = {
+  flex: 1, padding: "3px 0",
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "transparent",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.5rem", letterSpacing: "0.12em", fontWeight: 700,
+  borderRadius: 6, cursor: "pointer",
+};
+const modeChipActive: React.CSSProperties = {
+  background: "rgba(239,68,68,0.85)",
+  borderColor: "#ef4444",
+};
+
+const legendNoteStyle: React.CSSProperties = {
+  marginTop: 4,
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.6rem", color: "#cfd2d9", lineHeight: 1.3,
+  maxWidth: 140,
 };

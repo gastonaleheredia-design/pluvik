@@ -10,6 +10,7 @@ import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
+import { WhySheet } from '../components/WhySheet';
 import { transcribeVoice } from '../lib/transcribeVoice.functions';
 import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
@@ -57,6 +58,7 @@ function HomePage() {
   const [recordElapsed, setRecordElapsed] = useState(0);
   const [recordCappedNotice, setRecordCappedNotice] = useState(false);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
+  const [whyOpen, setWhyOpen] = useState(false);
   // Question chips: detected / picked event time + place. Picked values
   // override detection; null means "use the default" (now / here).
   const [pickedTime, setPickedTime] = useState<TimeRange | null>(null);
@@ -744,10 +746,10 @@ function HomePage() {
                   {briefing.verdict_reason && (
                     <button
                       type="button"
-                      onClick={() => setSheetMode('radar')}
+                      onClick={() => setWhyOpen(true)}
                       aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
                       title={briefing.verdict_reason.detail}
-                      style={{ ...chipBase, color: MUTED }}
+                      style={{ ...chipBase, color: INK }}
                     >
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>ⓘ</span>
                       {t('home.why', { defaultValue: 'WHY' })}
@@ -923,6 +925,13 @@ function HomePage() {
 
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
+      {whyOpen && briefing && (
+        <WhySheet
+          briefing={briefing}
+          onOpenRadar={() => { setWhyOpen(false); setSheetMode('radar'); }}
+          onClose={() => setWhyOpen(false)}
+        />
+      )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
         <AlertSheet
           lat={selectedAddress.lat}
