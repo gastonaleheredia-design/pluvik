@@ -19,6 +19,7 @@ import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchCl
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
+import { isRainYesNoQuestion } from './headlineAnswer';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -746,6 +747,32 @@ export const askWeather = createServerFn({ method: 'POST' })
           `Storm core arrives in ~${eta} min, lasting ~${dur} min — take shelter.`;
       }
       validated.data.intercept_eta_minutes = eta;
+    }
+
+    // Coherence guard for rain yes/no questions: when there is no imminent
+    // storm intercept, derive the plan verdict deterministically from the
+    // rain probability so the recommendation can never contradict the
+    // literal answer ("NO rain · plan: NO-GO" was the bug we are fixing).
+    if (!imminent && isRainYesNoQuestion(question)) {
+      const popRaw =
+        typeof validated.data.percentage === 'number'
+          ? validated.data.percentage
+          : typeof (validated.data as any).impact_percent === 'number'
+            ? (validated.data as any).impact_percent
+            : null;
+      if (popRaw != null && Number.isFinite(popRaw)) {
+        const pop = Math.max(0, Math.min(100, popRaw));
+        if (pop < 30) {
+          validated.data.verdict = 'GO';
+          (validated.data as any).verdict_word = 'NO';
+        } else if (pop < 60) {
+          validated.data.verdict = 'CAUTION';
+          (validated.data as any).verdict_word = 'MAYBE';
+        } else {
+          validated.data.verdict = 'NO-GO';
+          (validated.data as any).verdict_word = 'YES';
+        }
+      }
     }
 
     return {

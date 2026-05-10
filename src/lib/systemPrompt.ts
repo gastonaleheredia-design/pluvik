@@ -138,5 +138,7 @@ The user sees these THREE fields BIG and FIRST, before anything else.
 - Always anchor the answer to the exact location and exact time of the plan
 - If confidence is VERY_LOW, say so and recommend checking back
 - If verdict_word is "MAYBE" AND the briefing contains "PERIOD COVERING THE USER'S PLAN", maybe_explanation is REQUIRED. If verdict_word is "YES" or "NO", maybe_explanation MUST be null.
+- verdict and verdict_word MUST be coherent. For rain questions: verdict_word="NO" pairs with verdict="GO"; verdict_word="MAYBE" pairs with verdict="CAUTION"; verdict_word="YES" pairs with verdict="NO-GO" (or "CAUTION" only when impact is light). Never set verdict="NO-GO" while verdict_word="NO".
+- For pure "will it rain?" questions with no named activity, derive verdict from rain probability bands: <30% -> GO, 30-59% -> CAUTION, >=60% -> NO-GO. A storm intercept overrides this rule.
 `;
 }

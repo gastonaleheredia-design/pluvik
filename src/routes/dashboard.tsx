@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { BottomNav } from '../components/BottomNav';
-import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
+import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
 
 interface TrackedEvent {
   id: string;
@@ -582,16 +582,31 @@ function DashboardPage() {
           const pctLine = (() => {
             if (isClimate) return null;
             if (isOutlook) return latest?.decision_label ?? 'Long-range trend';
+            // Derive the plan recommendation coherently with the literal
+            // answer for rain yes/no questions, so legacy rows that still
+            // carry a contradictory verdict (e.g. NO answer + NO-GO plan)
+            // render a sensible suggestion until the next refresh writes
+            // the corrected verdict back to the database.
+            const coherentVerdict = (() => {
+              if (!isRainQ) return event.current_verdict;
+              const pop = event.current_percentage;
+              if (typeof pop !== 'number' || !Number.isFinite(pop)) return event.current_verdict;
+              if (pop < 30) return 'GO';
+              if (pop < 60) return 'CAUTION';
+              return 'NO-GO';
+            })();
+            const planLabel = verdictToPlanLabel(coherentVerdict);
+            const planSuffix = planLabel ? ` · ${planLabel}` : '';
             if (isModelTrend && typeof event.current_percentage === 'number') {
               const lo = Math.max(0, event.current_percentage - 10);
               const hi = Math.min(100, event.current_percentage + 10);
               return isRainQ
-                ? `${lo}–${hi}% chance of rain · plan: ${event.current_verdict}`
-                : `${lo}–${hi}% · ${event.current_verdict}`;
+                ? `${lo}–${hi}% chance of rain${planSuffix}`
+                : `${lo}–${hi}%${planSuffix}`;
             }
             return isRainQ
-              ? `${event.current_percentage}% chance of rain · plan: ${event.current_verdict}`
-              : `${event.current_percentage}% · ${event.current_verdict}`;
+              ? `${event.current_percentage}% chance of rain${planSuffix}`
+              : `${event.current_percentage}%${planSuffix}`;
           })();
           const previousVerdict = eventSnaps
             .slice(1)
