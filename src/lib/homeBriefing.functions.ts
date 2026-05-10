@@ -23,6 +23,8 @@ export interface HomeBriefing {
   } | null;
   /** Local-time string like "8:06 PM" of when this briefing was generated. */
   updated_at_local: string;
+  /** Current temperature in Fahrenheit (rounded), or null if unavailable. */
+  temp_f: number | null;
   /** Active NWS warning (Tornado / Flash Flood / Severe Thunderstorm), or null. */
   alert: {
     event: string;
@@ -58,7 +60,7 @@ const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 /* ---------------------------------------------------------------- */
 
 interface OpenMeteoLite {
-  current: { weather_code: number; precipitation: number; cloud_cover: number };
+  current: { weather_code: number; precipitation: number; cloud_cover: number; temperature_2m?: number };
   hourly: {
     time: string[];
     precipitation_probability: number[];
