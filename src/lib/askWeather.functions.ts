@@ -15,10 +15,11 @@ import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
-import { fetchClimateNormals } from './fetchers/fetchClimateNormals';
+import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchClimateNormals';
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildPlainLanguageContext } from './plainLanguage';
+import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 
 interface WeatherRequest {
   question: string;
