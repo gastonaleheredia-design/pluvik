@@ -27,12 +27,13 @@ interface AddressPickerProps {
 
 export function AddressPicker({ onClose }: AddressPickerProps) {
   const { t } = useTranslation();
-  const { setAddress } = useAddress();
+  const { setAddress, resumeFollowing } = useAddress();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MapboxFeature[]>([]);
   const [searching, setSearching] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<MapboxFeature | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -81,50 +82,72 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
 
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported in this browser.');
+      setDetectError('Geolocation is not supported in this browser.');
       return;
     }
     setDetectingLocation(true);
+    setDetectError(null);
+
+    let settled = false;
+    // 4s race: if high-accuracy hangs, retry with low-accuracy.
+    const fallbackTimer = setTimeout(() => {
+      if (settled) return;
+      navigator.geolocation.getCurrentPosition(onSuccess, onError,
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
+    }, 4000);
+
+    const onSuccess: PositionCallback = async (pos) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallbackTimer);
+      const { latitude: lat, longitude: lon } = pos.coords;
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1`
+        );
+        const place = res.ok ? (await res.json())?.features?.[0] : null;
+        setAddress({
+          label: place?.place_name ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+          meta: 'FOLLOWING',
+          lat,
+          lon,
+        });
+        // Re-enable auto-follow since the user explicitly asked for "current".
+        resumeFollowing();
+        onClose();
+      } catch {
+        setAddress({
+          label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+          meta: 'FOLLOWING',
+          lat,
+          lon,
+        });
+        resumeFollowing();
+        onClose();
+      }
+      setDetectingLocation(false);
+    };
+
+    const onError: PositionErrorCallback = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallbackTimer);
+      setDetectingLocation(false);
+      console.error('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
+      setDetectError(
+        err.code === 1 ? 'Location is blocked. Enable it in your browser/system settings, then try again.' :
+        err.code === 2 ? "Couldn't read your GPS. Try again in a moment." :
+        err.code === 3 ? 'Took too long to find you. Try again.' :
+        'Location error.'
+      );
+    };
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude: lat, longitude: lon } = pos.coords;
-        try {
-          const res = await fetch(
-            `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const place = data.features?.[0];
-            setAddress({
-              label: place?.place_name ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-              meta: t('picker.current_location').toUpperCase(),
-              lat,
-              lon,
-            });
-            onClose();
-          }
-        } catch {
-          setAddress({
-            label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-            meta: t('picker.current_location').toUpperCase(),
-            lat,
-            lon,
-          });
-          onClose();
-        }
-        setDetectingLocation(false);
+        await onSuccess(pos);
       },
-      (err) => {
-        setDetectingLocation(false);
-        console.error('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
-        const msg =
-          err.code === 1 ? 'Location is blocked. Enable it in Settings → Safari → Location, then try again.' :
-          err.code === 2 ? "Couldn't read your GPS. Try again in a moment." :
-          err.code === 3 ? 'Took too long to find you. Try again.' :
-          t('picker.location_error');
-        alert(msg);
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 }
+      onError,
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 }
     );
   };
 
