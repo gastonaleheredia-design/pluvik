@@ -324,6 +324,45 @@ function HomePage() {
     });
   };
 
+  // Debounced auto-detection of time + place from the question text.
+  // Manual picks (chip editor) are sticky — we only refresh auto-detection
+  // when the user hasn't taken over that chip yet.
+  useEffect(() => {
+    const text = questionText.trim();
+    if (text.length < 4) {
+      if (!pickedTimeManual) setPickedTime(null);
+      if (!pickedPlaceManual) { setPickedPlace(null); setPlaceResolving(false); }
+      return;
+    }
+    const id = setTimeout(() => {
+      // Time
+      if (!pickedTimeManual) {
+        const t0 = extractEventTimeFromQuestion(text);
+        setPickedTime(t0?.eventAt ?? null);
+      }
+      // Place — try the lightweight extractor first, then venue + geocode.
+      if (!pickedPlaceManual) {
+        const direct = extractPlaceFromQuestion(text);
+        const venue = direct ?? extractVenueCandidate(text);
+        if (!venue) { setPickedPlace(null); setPlaceResolving(false); return; }
+        setPlaceResolving(true);
+        const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
+          ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
+          : null;
+        let cancelled = false;
+        geocodeVenueNear(venue, proximity).then((p) => {
+          if (cancelled) return;
+          setPlaceResolving(false);
+          if (p) setPickedPlace(p);
+          else setPickedPlace(null);
+        });
+        return () => { cancelled = true; };
+      }
+    }, 450);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionText, pickedTimeManual, pickedPlaceManual, selectedAddress.lat, selectedAddress.lon]);
+
   // Translate motion enum and bearing for the nearby-cell line.
   const renderNearby = () => {
     if (!briefing?.nearby_cell) return null;
