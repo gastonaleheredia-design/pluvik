@@ -378,13 +378,15 @@ export const askWeather = createServerFn({ method: 'POST' })
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       );
       const eventMonth = eventDate.getUTCMonth() + 1;
+      const eventDay = eventDate.getUTCDate();
       // Fetch CPC outlooks at BOTH climate and outlook stages — at climate
       // stage the seasonal horizon is the right tool. Pick the horizon that
       // matches the user's lead time so the LLM only sees the relevant one.
       const leadHours = typeof hoursAhead === 'number' ? hoursAhead : 24;
       const targetHorizon = selectHorizonForLead(leadHours);
-      const [normals, outlooksAll, discussion] = await Promise.all([
+      const [normals, dailyNormal, outlooksAll, discussion] = await Promise.all([
         fetchClimateNormals(lat, lon),
+        fetchDailyClimateNormal(lat, lon, eventMonth, eventDay),
         fetchCpcOutlooks(lat, lon),
         fetchCpcDiscussion(targetHorizon, lat, lon),
       ]);
@@ -397,6 +399,80 @@ export const askWeather = createServerFn({ method: 'POST' })
         : null;
       const usableOutlooks: CpcOutlooks | null =
         outlooks && outlooks.horizons.length > 0 ? outlooks : null;
+
+      // Build the deterministic digest and short-circuit the LLM. The model
+      // had been writing 1500-character monologues; we replace it with a
+      // glanceable, sourced digest. CPC is only included when the event date
+      // actually falls inside the matching horizon's valid window.
+      const eventIso = eventDate.toISOString();
+      const matchingHorizon = usableOutlooks?.horizons[0] ?? null;
+      const validHorizon = isCpcHorizonValidForEvent(matchingHorizon, eventIso)
+        ? matchingHorizon
+        : null;
+      // Friendly next-check phrase: ~15d before for climate, ~5d before for outlook.
+      const leadDays = stageInfo.stage === 'climate' ? 15 : 5;
+      const checkMs = Math.max(
+        eventDate.getTime() - leadDays * 24 * 3_600_000,
+        Date.now() + 24 * 3_600_000,
+      );
+      const checkDate = new Date(checkMs);
+      const nextCheckAt = checkDate.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        ...(checkDate.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+      });
+
+      const digest = buildLongRangeDigest({
+        stage: stageInfo.stage,
+        eventIso,
+        address,
+        daily: dailyNormal,
+        cpcHorizon: validHorizon,
+        nextCheckAt,
+      });
+
+      console.log('[askWeather:diag] long-range digest (LLM bypass)', {
+        stage: stageInfo.stage,
+        targetHorizon,
+        validHorizon: !!validHorizon,
+        hasDailyNormal: !!dailyNormal,
+        hasMonthlyNormals: !!normals,
+        hasDiscussion: !!discussion,
+      });
+
+      return {
+        mode,
+        verdict: null,
+        forecast_stage: stageInfo.stage,
+        decision_label: digest.decisionLabel,
+        chance_of_impact: null,
+        main_threat: '',
+        summary: digest.cardSummary,
+        plain_english_summary: digest.cardSummary,
+        verdict_word: 'MAYBE',
+        verdict_sentence: digest.cardSummary,
+        headline_number: null,
+        confidence: stageInfo.stage === 'climate' ? 'VERY_LOW' : 'LOW',
+        current_conditions: '',
+        recommended_action: digest.meteorologistTake,
+        meteorologist_take: digest.meteorologistTake,
+        next_check_at: digest.nextCheckAt,
+        cpc_narrative: digest.cpcNarrative,
+        stage_outro: digest.stageOutro,
+        hazards: null,
+        timeline: null,
+        event_window: null,
+        percentage: 0,
+        event_at: eventIso,
+        data_sources: [
+          ...(dailyNormal ? ['climate_normals_daily'] : normals ? ['climate_normals'] : []),
+          ...(validHorizon ? ['cpc_outlooks'] : []),
+        ],
+        scenario: scenarioProfile.scenario,
+        horizon: scenarioProfile.horizon,
+      } as unknown as ExtendedWeatherAnswer;
+
+      // (Legacy plain-language block kept below for non-bypass paths.)
+      // eslint-disable-next-line no-unreachable
       const ctx = buildPlainLanguageContext({
         stage: stageInfo.stage,
         eventMonth,
