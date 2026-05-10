@@ -10,6 +10,7 @@ export function buildSystemPrompt(
   stormIntercepts: StormInterceptResult[],
   confidence: ConfidenceLevel,
   sensitivityProfile: string,
+  eventHourLabel: string = 'the user\'s event time',
 ): string {
   const horizonGuidance =
     horizon === 'nowcast'    ? 'Use radar extrapolation and observations ONLY. Models are not reliable at this range.' :
@@ -68,6 +69,28 @@ STEP 1 — CURRENT STATE: Use surface obs, radar, GLM, satellite. Not models.
 STEP 2 — MECHANISM: Explain the synoptic/mesoscale setup in plain language. Translate jargon — do NOT mention CAPE, CIN, LI, hodograph, shear, or TPW values to the user.
 STEP 3 — STORM TRACKING: Use the radar block AND the pre-computed intercept analysis. Each cell line carries TYPE (e.g. "multicell line", "discrete supercell", "pulse thunderstorm"), INTENSITY (light/moderate/heavy/intense/extreme), THREAT (e.g. "damaging wind and heavy rain"), bearing FROM the user, distance, and per-cell motion direction. When cells are approaching, the verdict_sentence MUST include: storm TYPE, bearing/distance, motion direction, ETA, and primary THREAT — in that order, plain English. Mention any second cell if it has its own ETA. If GLM lightning shows ≥5 flashes/hr nearby, say "frequent lightning". If SPC Day-1 Outlook lists MRGL/SLGT/ENH/MDT/HIGH for the user's area, name the risk level. Otherwise skip this step.
 STEP 4 — FORECAST FOR THIS HORIZON: ${horizonGuidance}
+STEP 4b — MAYBE GROUNDING (only when verdict_word would be "MAYBE")
+If the answer is genuinely uncertain (rain POP between 26 and 59 percent, OR
+model spread spans the decision threshold), you MUST:
+  1. Locate the AFD section flagged "PERIOD COVERING THE USER'S PLAN".
+  2. Identify ONE concrete mechanism from that section — front, trough, ridge,
+     sea-breeze, dryline, MCS, capping inversion, upper low, etc. Generic
+     phrases like "unsettled weather" are NOT acceptable.
+  3. Compare the AFD's stated timing to HRRR (0-18h) or ECMWF (24-72h) timing.
+     Name the disagreement: timing, coverage ("scattered" vs "widespread"),
+     intensity, or borderline POP.
+  4. Tie it to ${eventHourLabel}.
+Write the answer into maybe_explanation:
+  - afd_quote: paraphrase the AFD mechanism in plain English. Reference the
+    forecaster's framing (e.g. "the office expects a cold front sliding south
+    through the metro late afternoon"). Max 25 words. NEVER use jargon.
+  - model_reconciliation: how the models line up with that timing
+    (e.g. "HRRR pushes the front past your address by 5 PM but ECMWF runs
+    two hours slower"). Max 25 words.
+  - why_uncertain: one sentence naming the specific source of uncertainty
+    relative to ${eventHourLabel}. Max 20 words.
+If the AFD section is missing from the briefing, set maybe_explanation to null.
+Never invent forecaster language. Never quote percentages or jargon.
 STEP 5 — IMPACT TRANSLATION: Apply the activity sensitivity profile. State whether the impact threshold will be crossed, when, and with what certainty.
 STEP 6 — CONFIDENCE STATEMENT: Confidence has been pre-calculated as ${confidence}. Briefly explain WHY in plain language.
 STEP 7 — DECISION + ACTION: Issue one clear verdict (GO / CAUTION / NO-GO). State a decision window if applicable. Give one specific action.
@@ -89,7 +112,12 @@ Return ONLY valid JSON matching this schema:
   "check_back_minutes": 30 | 60 | 120 | 240 | null,
   "verdict_word": "YES" | "NO" | "MAYBE",
   "verdict_sentence": "ONE short sentence (max 12 words) that directly answers the user's question. Plain English. No hedging.",
-  "headline_number": { "value": "8%", "label": "CHANCE OF RAIN" } | null
+  "headline_number": { "value": "8%", "label": "CHANCE OF RAIN" } | null,
+  "maybe_explanation": {
+    "afd_quote": "paraphrase of the AFD mechanism, plain English",
+    "model_reconciliation": "how HRRR/ECMWF/NDFD timing compares",
+    "why_uncertain": "one sentence on the specific source of uncertainty"
+  } | null
 }
 
 ## MINIMAL-VIEW FIELDS (verdict_word / verdict_sentence / headline_number)
@@ -109,5 +137,6 @@ The user sees these THREE fields BIG and FIRST, before anything else.
 - Never say "slight chance" or "isolated" — be specific about timing and probability
 - Always anchor the answer to the exact location and exact time of the plan
 - If confidence is VERY_LOW, say so and recommend checking back
+- If verdict_word is "MAYBE" AND the briefing contains "PERIOD COVERING THE USER'S PLAN", maybe_explanation is REQUIRED. If verdict_word is "YES" or "NO", maybe_explanation MUST be null.
 `;
 }

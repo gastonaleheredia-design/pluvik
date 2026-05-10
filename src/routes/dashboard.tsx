@@ -22,6 +22,11 @@ interface TrackedEvent {
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
+  current_maybe_explanation?: {
+    afd_quote: string;
+    model_reconciliation: string;
+    why_uncertain: string;
+  } | null;
 }
 
 interface SnapshotMini {
@@ -713,6 +718,48 @@ function DashboardPage() {
                     }}
                   >
                     Auto-archives {relFuture(archivesAtIso)}
+                  </div>
+                )}
+
+                {/* Why MAYBE block — only on uncertain answers with rationale */}
+                {displayWord === 'MAYBE' && event.current_maybe_explanation && (
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      paddingTop: '10px',
+                      borderTop: `1px solid ${INK}10`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.14em',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        color: ACCENT,
+                        marginBottom: '4px',
+                      }}
+                    >
+                      Why maybe
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '0.85rem',
+                        lineHeight: 1.4,
+                        color: INK,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 5,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {event.current_maybe_explanation.afd_quote}{' '}
+                      {event.current_maybe_explanation.model_reconciliation}{' '}
+                      <span style={{ color: MUTED }}>
+                        {event.current_maybe_explanation.why_uncertain}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

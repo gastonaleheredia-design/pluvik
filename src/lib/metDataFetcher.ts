@@ -854,14 +854,99 @@ async function fetchEnsemble(lat: number, lon: number): Promise<string> {
   }
 }
 
-async function fetchAFD(lat: number, lon: number): Promise<string> {
+/**
+ * Parse an Area Forecast Discussion into labeled sections.
+ * AFDs use lines like ".SHORT TERM (Today through Monday Night)..." for
+ * each period block, terminated by `&&` or the next ".LABEL...".
+ */
+interface AfdSection { label: string; periodLabel: string; body: string }
+
+function parseAfdSections(productText: string): AfdSection[] {
+  if (!productText) return [];
+  const out: AfdSection[] = [];
+  // Match a section header like ".SHORT TERM..." optionally followed by
+  // "(Today through Monday Night)" before the closing `...`.
+  const headerRe = /^\.([A-Z][A-Z0-9 \/-]{1,40})(?:\s*\(([^)]+)\))?\s*\.{2,}/gm;
+  const matches: Array<{ label: string; periodLabel: string; start: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = headerRe.exec(productText)) !== null) {
+    matches.push({
+      label: m[1].trim(),
+      periodLabel: (m[2] ?? '').trim(),
+      start: m.index,
+      end: m.index + m[0].length,
+    });
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const next = matches[i + 1];
+    let body = productText.substring(cur.end, next ? next.start : productText.length);
+    // AFD bodies are terminated with `&&` markers.
+    const ampIdx = body.indexOf('&&');
+    if (ampIdx >= 0) body = body.substring(0, ampIdx);
+    out.push({ label: cur.label, periodLabel: cur.periodLabel, body: body.trim() });
+  }
+  return out;
+}
+
+/**
+ * Pick the AFD section whose period covers the user's plan time.
+ * Heuristic: match the day-of-week name from the event date (in office TZ)
+ * inside the period label. Fall back to SHORT TERM, then SYNOPSIS.
+ */
+function pickRelevantAfdSection(
+  sections: AfdSection[],
+  eventAt: Date,
+  officeTz: string,
+): AfdSection | null {
+  if (sections.length === 0) return null;
+  let dayName = '';
+  try {
+    dayName = new Intl.DateTimeFormat('en-US', {
+      timeZone: officeTz || 'UTC',
+      weekday: 'long',
+    }).format(eventAt).toUpperCase();
+  } catch {
+    dayName = '';
+  }
+  const eventMs = eventAt.getTime();
+  const nowMs = Date.now();
+  const isToday = Math.abs(eventMs - nowMs) < 18 * 3600_000 && eventMs >= nowMs - 6 * 3600_000;
+  const isTonight = isToday && new Intl.DateTimeFormat('en-US', { timeZone: officeTz || 'UTC', hour: 'numeric', hour12: false }).format(eventAt).match(/^(1[8-9]|2[0-3]|0?\d)$/) ? true : isToday;
+
+  // Score each section by how well its periodLabel matches.
+  let best: { sec: AfdSection; score: number } | null = null;
+  for (const sec of sections) {
+    const lbl = sec.periodLabel.toUpperCase();
+    let score = 0;
+    if (dayName && lbl.includes(dayName)) score += 5;
+    if (isToday && /\bTODAY\b|\bTONIGHT\b/.test(lbl)) score += 4;
+    if (isTonight && /\bTONIGHT\b/.test(lbl)) score += 1;
+    // Period sections (SHORT TERM, LONG TERM) outrank meta sections.
+    if (/SHORT TERM|LONG TERM/.test(sec.label.toUpperCase())) score += 2;
+    if (/SYNOPSIS|KEY MESSAGES/.test(sec.label.toUpperCase())) score += 1;
+    if (best === null || score > best.score) best = { sec, score };
+  }
+  // Require at least a label-period match OR a SHORT/LONG TERM bucket.
+  if (best && best.score >= 2) return best.sec;
+  // Fall back to the first SHORT TERM or first section.
+  return sections.find(s => /SHORT TERM/.test(s.label.toUpperCase())) ?? sections[0] ?? null;
+}
+
+async function fetchAFD(
+  lat: number,
+  lon: number,
+  hoursAhead: number = 0,
+): Promise<string> {
   try {
     const pointsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
       { headers: NWS }
     );
     if (!pointsRes.ok) return '';
-    const { cwa } = (await pointsRes.json()).properties;
+    const pointsProps = (await pointsRes.json()).properties as { cwa: string; timeZone?: string };
+    const cwa = pointsProps.cwa;
+    const officeTz = pointsProps.timeZone ?? 'UTC';
 
     const listRes = await fetch(
       `https://api.weather.gov/products?type=AFD&location=${cwa}&limit=1`,
@@ -874,7 +959,34 @@ async function fetchAFD(lat: number, lon: number): Promise<string> {
     const afdRes = await fetch(list['@graph'][0]['@id'], { headers: NWS });
     if (!afdRes.ok) return '';
     const afd = await afdRes.json();
-    return `NWS FORECAST DISCUSSION (${cwa}):\n${afd.productText?.slice(0, 2000) ?? ''}`;
+    const productText: string = afd.productText ?? '';
+    if (!productText) return '';
+    const issuedAt: string = afd.issuanceTime ?? '';
+
+    const sections = parseAfdSections(productText);
+    const eventAt = new Date(Date.now() + Math.max(0, hoursAhead) * 3600_000);
+    const relevant = pickRelevantAfdSection(sections, eventAt, officeTz);
+
+    const header = `NWS FORECAST DISCUSSION — ${cwa}${issuedAt ? ` (issued ${issuedAt})` : ''}`;
+
+    if (relevant) {
+      const periodLine = relevant.periodLabel
+        ? `${relevant.label} (${relevant.periodLabel})`
+        : relevant.label;
+      // Cap relevant body at 2500 chars; rest of product at 3500 chars.
+      const relBody = relevant.body.slice(0, 2500);
+      const restText = productText.slice(0, 3500);
+      return [
+        header,
+        `PERIOD COVERING THE USER'S PLAN: ${periodLine}`,
+        `"""`,
+        relBody,
+        `"""`,
+        `(Full discussion follows for context.)`,
+        restText,
+      ].join('\n');
+    }
+    return `${header}\n${productText.slice(0, 4000)}`;
   } catch {
     return '';
   }
@@ -1253,7 +1365,7 @@ export async function buildMetBriefing(
   const tasks: Array<() => Promise<void>> = [
     () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }),
     () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }),
-    () => fetchAFD(lat, lon).then(v => { result.afd = v; }),
+    () => fetchAFD(lat, lon, parsed.hoursAhead).then(v => { result.afd = v; }),
     () => fetchAlerts(lat, lon).then(v => { result.alerts = v; }),
     () => fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }),
     () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }),
