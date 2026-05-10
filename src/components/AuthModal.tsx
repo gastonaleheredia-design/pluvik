@@ -18,6 +18,17 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [signupSent, setSignupSent] = useState(false);
+
+  const friendlyError = (msg: string | undefined): string => {
+    const m = (msg ?? '').toLowerCase();
+    if (!m) return t('auth.err_generic');
+    if (m.includes('invalid login') || m.includes('invalid credentials')) return t('auth.err_invalid_credentials');
+    if (m.includes('already registered') || m.includes('already exists') || m.includes('user already')) return t('auth.err_email_taken');
+    if (m.includes('password') && (m.includes('short') || m.includes('weak') || m.includes('6'))) return t('auth.err_weak_password');
+    if (m.includes('email') && m.includes('invalid')) return t('auth.err_invalid_email');
+    return msg ?? t('auth.err_generic');
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -29,7 +40,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       setLoading(false);
-      if (error) setError(error.message);
+      if (error) setError(friendlyError(error.message));
       else setInfo(t('auth.reset_sent'));
       return;
     }
@@ -44,7 +55,13 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      setError(friendlyError(error.message));
+      return;
+    }
+
+    if (tab === 'signup') {
+      // Email confirmation is on — don't auto-close, show check-email state.
+      setSignupSent(true);
     } else {
       onSuccess();
     }
@@ -53,15 +70,15 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const isDisabled =
     loading || !email || (tab !== 'forgot' && !password);
 
-  const handleGoogle = async () => {
+  const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth('google', {
+    const result = await lovable.auth.signInWithOAuth(provider, {
       redirect_uri: window.location.origin,
     });
     if (result.error) {
       setLoading(false);
-      setError(result.error.message ?? String(result.error));
+      setError(friendlyError(result.error.message ?? String(result.error)));
       return;
     }
     if (result.redirected) return; // browser will navigate
