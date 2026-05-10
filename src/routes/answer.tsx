@@ -683,16 +683,22 @@ function AnswerPage() {
 
           {/* Why? + Save */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <button
-              onClick={() => setShowWhy(true)}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.75rem', letterSpacing: '0.1em', color: ACCENT,
-              }}
-            >
-              {t('answer.why', { defaultValue: 'Why?' })} →
-            </button>
+            {isClimate ? (
+              <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
+                NO FORECAST YET
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowWhy(true)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.75rem', letterSpacing: '0.1em', color: ACCENT,
+                }}
+              >
+                {t('answer.why', { defaultValue: 'Why?' })} →
+              </button>
+            )}
             <button
               onClick={handleSaveTrack}
               disabled={saving}
