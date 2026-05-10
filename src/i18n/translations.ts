@@ -136,9 +136,10 @@ export const translations = {
         edit_modal_title: 'Edit your question',
         edit_modal_save: 'Save',
         edit_modal_cancel: 'Cancel',
-        complete_confirm: 'Mark this plan as complete? It will be removed from your tracked list.',
+        complete_confirm: 'Mark this question as complete? It will move to Archive.',
         delete_confirm: 'Delete this tracked plan? This cannot be undone.',
         completed_badge: 'COMPLETED',
+        time_passed: 'This time has already passed. Tap Mark complete to move it to Archive.',
       },
       // Settings
       settings: {
@@ -442,9 +443,10 @@ export const translations = {
         edit_modal_title: 'Edita tu pregunta',
         edit_modal_save: 'Guardar',
         edit_modal_cancel: 'Cancelar',
-        complete_confirm: '¿Marcar este plan como completo? Se quitará de tu lista.',
+        complete_confirm: '¿Marcar esta pregunta como completa? Se moverá al Archivo.',
         delete_confirm: '¿Eliminar este plan? No se puede deshacer.',
         completed_badge: 'COMPLETADO',
+        time_passed: 'Esta hora ya pasó. Toca "Marcar completa" para moverla al Archivo.',
       },
       // Settings
       settings: {
