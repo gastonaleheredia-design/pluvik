@@ -30,10 +30,10 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
   const isFull = snap === 1;
   const isRadarOnly = !alert;
 
-  // Radar fills the whole viewport at full snap (truly edge-to-edge);
+  // Radar fills the whole viewport at full snap (flex-fills its container);
   // otherwise leaves room for text in the half-sheet.
   const radarHeight = isFull
-    ? '100dvh'
+    ? '100%'
     : isRadarOnly
       ? 'calc(70vh - 140px)'
       : 320;
@@ -88,6 +88,8 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               overflowY: isFull ? 'hidden' : 'auto',
               padding: isFull ? 0 : '8px 20px 32px',
               position: 'relative',
+              display: isFull ? 'flex' : undefined,
+              flexDirection: isFull ? 'column' : undefined,
             }}
           >
             {!isFull && alert ? (
@@ -137,8 +139,9 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 marginTop: isFull ? 0 : 14,
                 borderRadius: isFull ? 0 : 12,
                 overflow: 'hidden',
-                position: isFull ? 'absolute' : 'relative',
-                inset: isFull ? 0 : undefined,
+                position: 'relative',
+                flex: isFull ? 1 : undefined,
+                minHeight: isFull ? 0 : undefined,
               }}
             >
               <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} />
