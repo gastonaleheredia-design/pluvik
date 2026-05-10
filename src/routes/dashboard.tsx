@@ -582,7 +582,20 @@ function DashboardPage() {
           const pctLine = (() => {
             if (isClimate) return null;
             if (isOutlook) return latest?.decision_label ?? 'Long-range trend';
-            const planLabel = verdictToPlanLabel(event.current_verdict);
+            // Derive the plan recommendation coherently with the literal
+            // answer for rain yes/no questions, so legacy rows that still
+            // carry a contradictory verdict (e.g. NO answer + NO-GO plan)
+            // render a sensible suggestion until the next refresh writes
+            // the corrected verdict back to the database.
+            const coherentVerdict = (() => {
+              if (!isRainQ) return event.current_verdict;
+              const pop = event.current_percentage;
+              if (typeof pop !== 'number' || !Number.isFinite(pop)) return event.current_verdict;
+              if (pop < 30) return 'GO';
+              if (pop < 60) return 'CAUTION';
+              return 'NO-GO';
+            })();
+            const planLabel = verdictToPlanLabel(coherentVerdict);
             const planSuffix = planLabel ? ` · ${planLabel}` : '';
             if (isModelTrend && typeof event.current_percentage === 'number') {
               const lo = Math.max(0, event.current_percentage - 10);
