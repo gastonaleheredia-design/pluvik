@@ -29,6 +29,11 @@ interface TrackedEvent {
   current_climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
   current_climate_interpretation?: string | null;
   current_climate_framing?: string | null;
+  current_maybe_explanation?: {
+    afd_quote: string;
+    model_reconciliation: string;
+    why_uncertain: string;
+  } | null;
 }
 
 export const Route = createFileRoute('/event/$id')({
@@ -167,6 +172,7 @@ function EventPage() {
       const a = result as typeof result & {
         verdict_word?: 'YES' | 'NO' | 'MAYBE';
         verdict_sentence?: string;
+        maybe_explanation?: TrackedEvent['current_maybe_explanation'];
       };
       const verdictWord =
         a.verdict_word ??
@@ -194,6 +200,7 @@ function EventPage() {
             ((a as { climate_interpretation?: unknown }).climate_interpretation as never) ?? null,
           current_climate_framing:
             ((a as { climate_framing?: unknown }).climate_framing as never) ?? null,
+          current_maybe_explanation: (a.maybe_explanation ?? null) as never,
         })
         .eq('id', event.id);
 
@@ -236,6 +243,7 @@ function EventPage() {
           ((a as { climate_framing?: string | null }).climate_framing) ??
           event.current_climate_framing ??
           null,
+        current_maybe_explanation: a.maybe_explanation ?? event.current_maybe_explanation ?? null,
       });
       setSnapshots((prev) => [snap as unknown as TimelineSnapshot, ...prev]);
     } catch (err) {
