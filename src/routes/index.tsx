@@ -185,7 +185,21 @@ function HomePage() {
         data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
       })
         .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
-        .catch(() => { if (!cancelled) setBriefingLoading(false); });
+        .catch(() => {
+          if (cancelled) return;
+          setBriefing({
+            word: null,
+            sentence: i18n.language.startsWith('es')
+              ? 'No se pudo cargar el clima ahora mismo. Intenta de nuevo en un momento.'
+              : "Couldn't load weather right now. Try again in a moment.",
+            next_rain_caption: null,
+            nearby_cell: null,
+            updated_at_local: '',
+            alert: null,
+            error: 'upstream_unavailable',
+          });
+          setBriefingLoading(false);
+        });
     };
     fetchOnce(true);
     const onVis = () => { if (!document.hidden) fetchOnce(false); };
