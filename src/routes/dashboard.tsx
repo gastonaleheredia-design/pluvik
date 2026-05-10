@@ -488,7 +488,11 @@ function DashboardPage() {
 
         {/* Event cards */}
         {events.map((event) => {
-          const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
+          // Prefer the persisted verdict_word the model wrote (single source
+          // of truth shared with the event detail page). Fall back to the
+          // GO/WAIT/NO-GO plan-label map only when verdict_word is missing.
+          const planWord = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
+          const word = event.current_verdict_word ?? planWord;
           const eventSnaps = snapshots.filter((s) => s.event_id === event.id);
           const latest = eventSnaps[0];
           // Trust the row's current_forecast_stage first (always fresh after refresh),
@@ -524,7 +528,7 @@ function DashboardPage() {
             ? pickHeadlineWord({
                 question: event.question,
                 percentage: event.current_percentage,
-                fallbackWord: word,
+                fallbackWord: event.current_verdict_word ?? planWord,
               })
             : null;
           const baseWord = literalRainWord ?? word;
