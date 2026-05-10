@@ -9,7 +9,7 @@ interface HomeBriefingRequest {
 
 export interface HomeBriefing {
   /** Big condition word: DRY, RAIN SOON, RAINING, STORMS, SNOW, CLOUDY */
-  word: 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY';
+  word: 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY' | null;
   /** Italic sentence under the word */
   sentence: string;
   /** Caption like "NEXT RAIN · TUE 4 PM", or null when no rain in 7 days */
@@ -32,6 +32,8 @@ export interface HomeBriefing {
     expires_local: string | null;
     expires_iso: string | null;
   } | null;
+  /** Set when the upstream weather provider could not be reached. */
+  error?: 'upstream_unavailable';
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -71,19 +73,46 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       `&hourly=precipitation_probability,precipitation,weather_code` +
       `&forecast_days=7&timezone=auto`;
 
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn(`[homeBriefing] open-meteo ${res.status} — returning fallback`);
+    // Resilient fetch: 8s timeout + one retry on network/5xx errors.
+    const fetchOnce = async (): Promise<Response> => {
+      const ctl = new AbortController();
+      const tid = setTimeout(() => ctl.abort(), 8000);
+      try {
+        return await fetch(url, { signal: ctl.signal });
+      } finally {
+        clearTimeout(tid);
+      }
+    };
+
+    let res: Response | null = null;
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetchOnce();
+        if (r.ok) { res = r; break; }
+        lastErr = `status_${r.status}`;
+        console.error('[homeBriefing] open-meteo non-ok', { attempt, status: r.status });
+        if (r.status < 500 && r.status !== 429) break; // don't retry 4xx (except rate limit)
+      } catch (err) {
+        lastErr = err;
+        console.error('[homeBriefing] open-meteo fetch failed', { attempt, err: (err as Error)?.message });
+      }
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+    }
+
+    if (!res) {
       const fallbackSentence = language.startsWith('es')
         ? 'No se pudo cargar el clima ahora mismo. Intenta de nuevo en un momento.'
         : "Couldn't load weather right now. Try again in a moment.";
+      console.error('[homeBriefing] giving up after retries', { lastErr });
       return {
-        word: 'DRY',
+        word: null,
         sentence: fallbackSentence,
         next_rain_caption: null,
         nearby_cell: null,
         updated_at_local: '',
         alert: null,
+        error: 'upstream_unavailable',
       } satisfies HomeBriefing;
     }
     const j = await res.json();

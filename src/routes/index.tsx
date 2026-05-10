@@ -185,7 +185,21 @@ function HomePage() {
         data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
       })
         .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
-        .catch(() => { if (!cancelled) setBriefingLoading(false); });
+        .catch(() => {
+          if (cancelled) return;
+          setBriefing({
+            word: null,
+            sentence: i18n.language.startsWith('es')
+              ? 'No se pudo cargar el clima ahora mismo. Intenta de nuevo en un momento.'
+              : "Couldn't load weather right now. Try again in a moment.",
+            next_rain_caption: null,
+            nearby_cell: null,
+            updated_at_local: '',
+            alert: null,
+            error: 'upstream_unavailable',
+          });
+          setBriefingLoading(false);
+        });
     };
     fetchOnce(true);
     const onVis = () => { if (!document.hidden) fetchOnce(false); };
@@ -388,6 +402,62 @@ function HomePage() {
             }}
           />
         ) : briefing ? (
+          briefing.error === 'upstream_unavailable' || briefing.word === null ? (
+            <>
+              <div
+                style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontWeight: 400,
+                  fontSize: 'clamp(2rem, 8vw, 3rem)',
+                  lineHeight: 1.05,
+                  letterSpacing: '-0.01em',
+                  color: MUTED,
+                }}
+              >
+                {t('home.unavailable', { defaultValue: 'WEATHER UNAVAILABLE' })}
+              </div>
+              <div
+                style={{
+                  marginTop: '16px',
+                  fontFamily: 'Fraunces, serif',
+                  fontStyle: 'italic',
+                  fontSize: '1.05rem',
+                  color: INK,
+                  maxWidth: '420px',
+                }}
+              >
+                {briefing.sentence}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+                  setBriefingLoading(true);
+                  getHomeBriefing({
+                    data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language },
+                  })
+                    .then((b) => { setBriefing(b); setBriefingLoading(false); })
+                    .catch(() => setBriefingLoading(false));
+                }}
+                style={{
+                  marginTop: '20px',
+                  padding: '8px 18px',
+                  borderRadius: '100px',
+                  border: `1px solid ${INK}33`,
+                  background: 'transparent',
+                  color: INK,
+                  fontFamily: 'inherit',
+                  fontSize: '0.78rem',
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('home.try_again', { defaultValue: 'Try again' })}
+              </button>
+            </>
+          ) : (
           <>
             <div
               style={{
@@ -455,6 +525,7 @@ function HomePage() {
               </div>
             )}
           </>
+          )
         ) : (
           <div
             style={{

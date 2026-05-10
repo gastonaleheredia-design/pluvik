@@ -155,22 +155,29 @@ async function refreshOne(
   return { id: event.id, ok: true, tag };
 }
 
-async function runRefresh() {
+async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}) {
+  const { force = false, userId = null } = opts;
   const throttleCutoff = new Date(
     Date.now() - THROTTLE_MINUTES * 60_000,
   ).toISOString();
   const nowIso = new Date().toISOString();
 
-  const { data: events, error } = await supabaseAdmin
+  let q = supabaseAdmin
     .from('tracked_events')
     .select('id, question, address, lat, lon, event_at, last_checked_at')
     .is('archived_at', null)
     .eq('is_active', true)
     .not('event_at', 'is', null)
-    .gt('event_at', nowIso)
-    .or(`last_checked_at.is.null,last_checked_at.lt.${throttleCutoff}`)
+    .gt('event_at', nowIso);
+  if (!force) {
+    q = q.or(`last_checked_at.is.null,last_checked_at.lt.${throttleCutoff}`);
+  }
+  if (userId) {
+    q = q.eq('user_id', userId);
+  }
+  const { data: events, error } = await q
     .order('event_at', { ascending: true })
-    .limit(MAX_EVENTS_PER_RUN);
+    .limit(force ? 100 : MAX_EVENTS_PER_RUN);
   if (error) throw new Error(error.message);
 
   // Run sequentially to avoid hammering upstream weather sources.
@@ -195,7 +202,10 @@ export const Route = createFileRoute('/api/public/refresh-events')({
           return new Response('Unauthorized', { status: 401 });
         }
         try {
-          const result = await runRefresh();
+          const url = new URL(request.url);
+          const force = url.searchParams.get('force') === '1';
+          const userId = url.searchParams.get('user_id');
+          const result = await runRefresh({ force, userId });
           return new Response(JSON.stringify(result), {
             status: 200,
             headers: { 'content-type': 'application/json' },
@@ -212,7 +222,10 @@ export const Route = createFileRoute('/api/public/refresh-events')({
         if (!verifyApiKey(request)) {
           return new Response('Unauthorized', { status: 401 });
         }
-        const result = await runRefresh();
+        const url = new URL(request.url);
+        const force = url.searchParams.get('force') === '1';
+        const userId = url.searchParams.get('user_id');
+        const result = await runRefresh({ force, userId });
         return new Response(JSON.stringify(result), {
           status: 200,
           headers: { 'content-type': 'application/json' },
