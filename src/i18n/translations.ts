@@ -57,6 +57,11 @@ export const translations = {
         motion_unknown: 'nearby',
         warning_until: 'UNTIL',
         warning_active: 'ACTIVE',
+        following: 'FOLLOWING',
+        following_on: 'FOLLOWING MY LOCATION',
+        following_off: 'FOLLOW MY LOCATION',
+        because: 'BECAUSE',
+        because_aria: 'Why this verdict',
       },
       // Answer
       answer: {
