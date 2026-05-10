@@ -323,6 +323,13 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           {t('auth.continue_apple')}
         </button>
 
+        {/* OAuth error display (visible even when email panel collapsed) */}
+        {!showEmail && error && (
+          <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginTop: 4, marginBottom: 4 }}>
+            {error}
+          </div>
+        )}
+
         {/* Toggle email panel */}
         <button
           onClick={() => { setShowEmail((v) => !v); setError(''); setInfo(''); }}
