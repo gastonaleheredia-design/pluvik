@@ -23,6 +23,8 @@ export interface HomeBriefing {
   } | null;
   /** Local-time string like "8:06 PM" of when this briefing was generated. */
   updated_at_local: string;
+  /** Current temperature in Fahrenheit (rounded), or null if unavailable. */
+  temp_f?: number | null;
   /** Active NWS warning (Tornado / Flash Flood / Severe Thunderstorm), or null. */
   alert: {
     event: string;
@@ -58,7 +60,7 @@ const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 /* ---------------------------------------------------------------- */
 
 interface OpenMeteoLite {
-  current: { weather_code: number; precipitation: number; cloud_cover: number };
+  current: { weather_code: number; precipitation: number; cloud_cover: number; temperature_2m?: number };
   hourly: {
     time: string[];
     precipitation_probability: number[];
@@ -129,9 +131,15 @@ async function fetchNwsFallback(lat: number, lon: number): Promise<OpenMeteoLite
       /fog/.test(curSf) ? 45 :
       /cloud/.test(curSf) ? 3 : 0;
     const curCloud = /partly cloudy/.test(curSf) ? 50 : /cloud|overcast/.test(curSf) ? 90 : /clear|sunny/.test(curSf) ? 5 : 30;
+    // NWS hourly periods include `temperature` in `temperatureUnit` ('F' usually).
+    const curTempRaw = (cur as unknown as { temperature?: number; temperatureUnit?: string })?.temperature;
+    const curTempUnit = (cur as unknown as { temperatureUnit?: string })?.temperatureUnit ?? 'F';
+    const curTempF = typeof curTempRaw === 'number'
+      ? (curTempUnit === 'C' ? curTempRaw * 9 / 5 + 32 : curTempRaw)
+      : undefined;
 
     return {
-      current: { weather_code: curCode, precipitation: curCode >= 50 ? 0.1 : 0, cloud_cover: curCloud },
+      current: { weather_code: curCode, precipitation: curCode >= 50 ? 0.1 : 0, cloud_cover: curCloud, temperature_2m: curTempF },
       hourly: { time, precipitation_probability: probs, precipitation: precs, weather_code: codes },
       timezone: tz,
     };
@@ -209,9 +217,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // Open-Meteo: current + 168h hourly precipitation.
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=precipitation,weather_code,cloud_cover` +
+      `&current=precipitation,weather_code,cloud_cover,temperature_2m` +
       `&hourly=precipitation_probability,precipitation,weather_code` +
-      `&forecast_days=7&timezone=auto`;
+      `&forecast_days=7&timezone=auto&temperature_unit=fahrenheit`;
 
     // Resilient fetch: 8s timeout + one retry on network/5xx errors.
     const fetchOnce = async (): Promise<Response> => {
@@ -606,6 +614,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       next_rain_caption: activeAlert ? null : nextRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
+      temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
     } satisfies HomeBriefing;
