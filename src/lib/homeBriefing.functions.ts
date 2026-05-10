@@ -614,6 +614,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       next_rain_caption: activeAlert ? null : nextRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
+      temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
     } satisfies HomeBriefing;
