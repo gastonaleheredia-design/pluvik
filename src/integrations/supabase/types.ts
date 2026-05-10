@@ -208,18 +208,23 @@ export type Database = {
           archived_at: string | null
           created_at: string | null
           current_confidence: string | null
+          current_forecast_stage: string | null
           current_percentage: number | null
           current_summary: string | null
           current_verdict: string | null
           current_verdict_sentence: string | null
           current_verdict_word: string | null
           event_at: string | null
+          event_phrase: string | null
           id: string
           is_active: boolean | null
           last_checked_at: string | null
           lat: number | null
           lon: number | null
           question: string
+          resolved_address: string | null
+          resolved_lat: number | null
+          resolved_lon: number | null
           user_id: string
         }
         Insert: {
@@ -227,18 +232,23 @@ export type Database = {
           archived_at?: string | null
           created_at?: string | null
           current_confidence?: string | null
+          current_forecast_stage?: string | null
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
           current_verdict_sentence?: string | null
           current_verdict_word?: string | null
           event_at?: string | null
+          event_phrase?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
           lat?: number | null
           lon?: number | null
           question: string
+          resolved_address?: string | null
+          resolved_lat?: number | null
+          resolved_lon?: number | null
           user_id: string
         }
         Update: {
@@ -246,18 +256,23 @@ export type Database = {
           archived_at?: string | null
           created_at?: string | null
           current_confidence?: string | null
+          current_forecast_stage?: string | null
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
           current_verdict_sentence?: string | null
           current_verdict_word?: string | null
           event_at?: string | null
+          event_phrase?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
           lat?: number | null
           lon?: number | null
           question?: string
+          resolved_address?: string | null
+          resolved_lat?: number | null
+          resolved_lon?: number | null
           user_id?: string
         }
         Relationships: [
