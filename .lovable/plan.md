@@ -1,51 +1,46 @@
-## Three fixes
+## Why Louisiana warnings are showing on a Houston map
 
-### 1. "Save this place" modal — add a third option
-**File:** `src/components/AddressPicker.tsx` (around lines 564–668 + handler at 166–184)
+Looking at the screenshot: the header reads **"Houston, TX"**, but the warning body says *"issued by NWS Shreveport LA … 10 miles southwest of Natchitoches"* and the polygon drawn on the map is over central Louisiana — about **220 mi** from Houston. That should never happen.
 
-Right now after picking a city, signed-in users get a modal with only **Cancel** (which throws away the location change too) and **Save place** (disabled until you type a nickname). There's no way to say "use this location, just don't save it."
+There are two independent code paths that fetch alerts, and **both query the NWS API the same way**:
 
-Change to **three actions**, stacked or in a row:
-- **Save place** — primary, only enabled with a nickname (existing behavior).
-- **Use without saving** — secondary, dismisses the modal but keeps the new address (calls `onClose()` only, leaves `setAddress(...)` intact).
-- **Cancel** — quiet text/ghost button, dismisses the modal AND reverts the address back to whatever it was before the pick.
+```ts
+https://api.weather.gov/alerts/active?point={lat},{lon}&status=actual
+```
 
-Implementation notes:
-- Capture `prevAddress` before `setAddress` in `handleSelectResult`. Cancel restores it; "Use without saving" leaves the new one. Save place persists + closes.
-- Three buttons: stack on small widths so labels don't truncate.
+- `getActiveWarning(lat, lon)` in `src/lib/metDataFetcher.ts` → drives the briefing banner / verdict.
+- `fetchActiveWarningPolygons(lat, lon)` in `src/components/LiveRadarMap.tsx` → draws the red polygons on the radar.
 
-### 2. Radar disappears when dragged full-screen
-**Files:** `src/components/AlertSheet.tsx`, `src/components/LiveRadarMap.tsx`
+NWS's `point=` query is **NOT** strict polygon-in-point. It returns any alert whose `affectedZones` include the forecast/county zone the point sits in. A few Texas Gulf coast zones share boundaries with Louisiana parishes via marine/inland flood zones, and NWS occasionally cross-tags fire-weather and SPS products into neighboring zones. The result: an LA Severe Thunderstorm Warning sometimes comes back for a Houston point.
 
-Symptom: on the half-snap the radar shows; dragging to the full snap point (or tapping RADAR tab) leaves the canvas blank/black.
+There's also a secondary suspect — **stale address coords**. If `selectedAddress.label` updates to "Houston, TX" before `lat/lon` settles (e.g. during the picker's Save modal flow we just changed), the briefing still gets fetched against the Natchitoches coordinates. We'll add one guard log to confirm and then close it off.
 
-Root cause is the layout flip in `AlertSheet`: at `isFull`, the wrapper around `<LiveRadarMap>` becomes `position: absolute; inset: 0`, while `LiveRadarMap`'s own root still has an explicit `height: '100dvh'`. Inside a transformed vaul `Drawer.Content`, that combination produces a 0-height parent on some browsers (the absolute child has no resolved height for the `100dvh` to inherit against during the snap animation), so Mapbox `resize()` reads 0 and stops rendering.
+## Fix
 
-Fix:
-- In `AlertSheet`, when `isFull`, render the radar wrapper as a normal `flex: 1` block (no `position: absolute`), and pass `height="100%"` to `LiveRadarMap`.
-- Make the inner scroll container `display: flex; flex-direction: column` when `isFull` so the map flexes to fill.
-- Keep the floating MIN/CLOSE pills positioned over the map (their parent already has `position: relative`).
-- In `LiveRadarMap`, when `isFullscreen`, root container height becomes `100%` (not `100dvh`) and we keep the existing ResizeObserver — that's what actually keeps Mapbox in sync during the vaul snap animation.
+### 1. Distance filter on every alert (both fetchers)
+After NWS returns features, **drop any polygon whose centroid is more than 100 miles from the user**. Tornado/Severe Thunderstorm/Flash Flood warnings are inherently small — a real warning over the user is always within tens of miles of them. 100 mi is a generous safety net that still catches all legitimate local warnings while killing the cross-zone false positives.
 
-### 3. Wrong RainViewer color scheme
-**File:** `src/components/LiveRadarMap.tsx` line 167 + comment at 61
+Apply in two places:
+- `getActiveWarning` (`src/lib/metDataFetcher.ts` ~line 762): inside the scoring loop, compute centroid (already done) and skip the candidate when `haversineMi(userLat, userLon, centroid) > 100`.
+- `fetchActiveWarningPolygons` (`src/components/LiveRadarMap.tsx` ~line 78): after pulling features, filter out any whose polygon centroid is > 100 mi from `(lat, lon)`.
 
-Today the code does `colorScheme = mode === "snow" ? 3 : 2;` — but in the RainViewer API:
-- scheme **2** = Universal Blue (the bluish snow palette)
-- scheme **3** = TITAN (not what we want)
-- scheme **6** = **NEXRAD Level III** — the classic NWS green → yellow → orange → red → magenta reflectivity palette the user wants for rain
+Reuse the existing `haversineMi` helper in `LiveRadarMap.tsx`; add a small one in `metDataFetcher.ts` (or import it).
 
-So our "rain" mode is currently rendering the snow palette, and "snow" is rendering TITAN. Fix:
-- Rain & Mix → scheme **6** (NEXRAD Level III, NWS reflectivity).
-- Snow → scheme **2** (Universal Blue).
-- Update the inline comment and the `RAIN_STOPS` / `SNOW_STOPS` colors to match the actual tiles being rendered (the swatches today are already roughly right for NEXRAD III rain and Universal Blue snow, so only minor tweaks).
+### 2. Atomic address update in the picker
+In `src/components/AddressPicker.tsx`, `handleSelectResult` calls `setAddress(...)` with a new label + lat + lon in one object — that part is already atomic. But verify the `addressContext` reducer doesn't merge fields independently. Quick read of `src/lib/addressContext.tsx` to confirm; no code change expected.
 
-### Out of scope
-- Severe Thunderstorm tab opening the radar — user said that's fine, leaving as-is.
-- Bottom nav, WHY sheet, briefing logic.
+### 3. One-shot debug log (temporary, removed after verification)
+Add a single `console.log('[briefing] fetching for', { label, lat, lon })` at the top of the briefing `fetchOnce` in `src/routes/index.tsx`. After the user reloads we'll inspect the console and confirm coords match the label, then remove the log.
 
-### Files touched
-- `src/components/AddressPicker.tsx`
-- `src/components/AlertSheet.tsx`
-- `src/components/LiveRadarMap.tsx`
-- `src/i18n/translations.ts` (one new label: "Use without saving")
+## Out of scope
+
+- Briefing wording / WHY sheet — unchanged.
+- Save-place modal — already shipped last turn.
+- Radar color palette / fullscreen layout — already shipped last turn.
+
+## Files touched
+
+- `src/lib/metDataFetcher.ts` — add 100 mi centroid filter in `getActiveWarning`.
+- `src/components/LiveRadarMap.tsx` — add 100 mi centroid filter in `fetchActiveWarningPolygons`.
+- `src/routes/index.tsx` — temporary debug log, removed after one verification cycle.
+- (Read-only) `src/lib/addressContext.tsx` — confirm atomic update.
