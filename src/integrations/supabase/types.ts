@@ -207,6 +207,7 @@ export type Database = {
           address: string
           archived_at: string | null
           created_at: string | null
+          current_climate_facts: Json | null
           current_confidence: string | null
           current_forecast_stage: string | null
           current_percentage: number | null
@@ -231,6 +232,7 @@ export type Database = {
           address: string
           archived_at?: string | null
           created_at?: string | null
+          current_climate_facts?: Json | null
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_percentage?: number | null
@@ -255,6 +257,7 @@ export type Database = {
           address?: string
           archived_at?: string | null
           created_at?: string | null
+          current_climate_facts?: Json | null
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_percentage?: number | null

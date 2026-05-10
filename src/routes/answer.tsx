@@ -230,6 +230,7 @@ function AnswerPage() {
           current_forecast_stage: a.forecast_stage ?? null,
           event_phrase: extractEventTimeFromQuestion(question)?.sourcePhrase ?? null,
           event_at: a.event_at ?? null,
+          current_climate_facts: a.climate_facts ?? null,
         })
         .select()
         .single();
@@ -533,6 +534,9 @@ function AnswerPage() {
   const climateBody =
     answer.summary ||
     (decisionLabel ? `${decisionLabel}.` : 'Too far out for a real forecast.');
+  const climateFacts =
+    (answer as { climate_facts?: Array<{ label: string; value: string; hint?: string }> | null })
+      .climate_facts ?? null;
   const climateOutro =
     stageOutro || 'We will start giving you a real forecast about 10 days before your date.';
   const saveCtaLabel =
@@ -654,6 +658,70 @@ function AnswerPage() {
               }}
             >
               {stageOutro || climateOutro}
+            </div>
+          )}
+
+          {/* climate / outlook structured facts */}
+          {(isClimate || isOutlook) && climateFacts && climateFacts.length > 0 && (
+            <div
+              style={{
+                border: `1px solid ${INK}14`,
+                borderRadius: '16px',
+                padding: '16px 16px 8px',
+                marginBottom: '32px',
+                maxWidth: '480px',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem',
+                  letterSpacing: '0.18em',
+                  color: MUTED,
+                  marginBottom: '12px',
+                }}
+              >
+                CLIMATE FOR THIS DATE
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '12px 16px',
+                }}
+              >
+                {climateFacts.map((f) => (
+                  <div key={f.label} style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.55rem',
+                        letterSpacing: '0.16em',
+                        color: MUTED,
+                        marginBottom: '4px',
+                      }}
+                    >
+                      {f.label}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '1.1rem',
+                        color: INK,
+                        lineHeight: 1.2,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {f.value}
+                    </div>
+                    {f.hint && (
+                      <div style={{ fontSize: '0.68rem', color: MUTED, marginTop: '2px' }}>
+                        {f.hint}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

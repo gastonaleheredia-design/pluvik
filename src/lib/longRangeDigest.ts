@@ -125,6 +125,61 @@ export interface LongRangeDigest {
   meteorologistTake: string;
   /** Stage outro line. */
   stageOutro: string;
+  /** Structured, glanceable climate facts for the detail screen. */
+  facts: ClimateFact[];
+}
+
+export interface ClimateFact {
+  /** Short uppercase label, e.g. "NORMAL HIGH". */
+  label: string;
+  /** Display value, e.g. "76°F". */
+  value: string;
+  /** Optional secondary line, e.g. "1991–2020 average". */
+  hint?: string;
+}
+
+function buildFacts(daily: DailyClimate | null): ClimateFact[] {
+  if (!daily) return [];
+  const d = daily.daily;
+  const out: ClimateFact[] = [];
+  if (d.maxTempF != null) {
+    out.push({ label: 'NORMAL HIGH', value: `${Math.round(d.maxTempF)}°F`, hint: '1991–2020 daily avg' });
+  }
+  if (d.minTempF != null) {
+    out.push({ label: 'NORMAL LOW', value: `${Math.round(d.minTempF)}°F`, hint: '1991–2020 daily avg' });
+  }
+  if (d.meanTempF != null && d.maxTempF == null && d.minTempF == null) {
+    out.push({ label: 'NORMAL TEMP', value: `${Math.round(d.meanTempF)}°F`, hint: '1991–2020 daily avg' });
+  }
+  if (d.precipPctMeasurable != null) {
+    out.push({
+      label: 'RAIN FREQUENCY',
+      value: `${Math.round(d.precipPctMeasurable)}% of years`,
+      hint: 'measurable rain on this date',
+    });
+  }
+  if (d.precipP75In != null && d.precipP75In > 0) {
+    out.push({
+      label: 'TYPICAL WET-DAY RAIN',
+      value: `${d.precipP75In.toFixed(2)}"`,
+      hint: '75th-percentile rainfall',
+    });
+  } else if (d.precipMedianIn != null && d.precipMedianIn > 0) {
+    out.push({
+      label: 'TYPICAL RAINFALL',
+      value: `${d.precipMedianIn.toFixed(2)}"`,
+      hint: 'median when it rains',
+    });
+  }
+  if (daily.stationName) {
+    const dist = Number.isFinite(daily.distanceMiles) ? ` · ${daily.distanceMiles} mi away` : '';
+    out.push({
+      label: 'STATION',
+      value: daily.stationName,
+      hint: `NOAA GHCN${dist}`,
+    });
+  }
+  return out;
 }
 
 export function buildLongRangeDigest(input: LongRangeDigestInput): LongRangeDigest {
@@ -167,5 +222,6 @@ export function buildLongRangeDigest(input: LongRangeDigestInput): LongRangeDige
     decisionLabel,
     meteorologistTake,
     stageOutro,
+    facts: buildFacts(input.daily),
   };
 }
