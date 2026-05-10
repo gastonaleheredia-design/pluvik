@@ -19,6 +19,7 @@ import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchCl
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
+import { isRainYesNoQuestion } from './headlineAnswer';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
