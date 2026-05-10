@@ -1,86 +1,65 @@
-## Goal
+# Three fixes: voice length, time ranges, venue names
 
-Make the question bar smart about **when** and **where**. After the user types or speaks a question, show two editable chips below the input — a Date/Time chip and a Place chip. Each chip has three states: **detected** (green-ish, tap to edit), **missing** (amber, tap to add), or **using your current location / now** (muted default). The app uses these chips — not the raw text — as the source of truth when sending to `askWeather`.
+## 1. Voice input — stop cutting people off
 
-## User-visible behavior
+**Problem:** the mic stops at 15 seconds and there is no warning, so a sentence like *"I have an event tomorrow at Univision 45 in Houston from 9 AM until noon and I want to know if it's going to rain during the event"* gets chopped.
 
-After typing/speaking, two chips appear under the input:
+**Changes (in `src/routes/index.tsx`, voice block only):**
+- Raise the hard cap from **15s → 60s**. Long enough for one full thought, short enough to keep transcription latency + cost reasonable.
+- Add a **live countdown** under the input while recording: "Recording 0:12 / 1:00 — tap mic to stop." Makes the limit visible instead of a surprise cutoff.
+- Add **silence auto-stop**: once the user has spoken at least 2s and then stays quiet for ~1.8s, stop automatically. Uses `AudioContext` + `AnalyserNode` on the same `MediaStream` (no extra permission, ~30 lines, runs only while recording). This is what makes it feel "natural" — you stop talking, it stops listening.
+- When the 60s cap is hit, append a short toast under the input: *"Stopped at 1 minute — tap the mic again to add more."* (Chunks concat into the existing `questionText` because we already use `prev + ' ' + text`, so the user can just keep going.)
+- Keep the existing tap-to-stop behavior; nothing else changes about the Gemini round-trip.
 
-```text
-┌────────────────────────────────────────────────────┐
-│ so I want to know if it's gonna rain tomorrow at   │ 🎙 →
-│ Bumpy Pickle's at 6:30pm                           │
-└────────────────────────────────────────────────────┘
-   📅 TUE, MAY 12 · 6:30 PM        📍 BUMPY PICKLE'S, HOUSTON
-   (tap to edit)                    (tap to edit)
-```
+**Out of scope:** streaming/partial transcripts. Not needed and adds a lot of plumbing.
 
-State rules:
-- **Detected** → filled chip with the parsed value, calendar/pin icon, tap opens a small editor sheet.
-- **Missing** → outlined amber chip: "📅 ADD A TIME" or "📍 ADD A PLACE". Tapping opens the same editor.
-- **Defaulted** → muted gray chip: "📅 RIGHT NOW" or "📍 HERE · HOUSTON, TX" (uses current location). Still tappable.
+## 2. Event time ranges (start + end, not just a single moment)
 
-Submit (`→`) is allowed in all states. Defaults are: time = `now`, place = current `selectedAddress`. The chips just make those defaults visible and overridable.
+**Problem:** "from 9 AM till noon" currently collapses to a single instant (whatever `extractEventTimeFromQuestion` picks first), so "during the event" loses meaning.
 
-## Detection logic (client-side, before submit)
+**Model change:** introduce an optional **end time** alongside the existing event time. Internally an event becomes `{ start: Date, end?: Date }`. A single instant is just `end` undefined.
 
-Re-use what already exists, then layer one geocoding pass for named venues:
+**Changes:**
+- `src/lib/extractEventTimeFromQuestion.ts`: extend the parser to recognize range patterns and return `{ eventAt, endAt? }`:
+  - `from 9am to/till/until noon`
+  - `9–11 AM`, `9 to 11 AM`, `between 2 and 4 pm`
+  - `tomorrow morning` → 8–11 AM, `tomorrow afternoon` → 12–5 PM, `tomorrow evening` → 5–9 PM (fuzzy windows treated as ranges)
+- `src/components/TimeEditorSheet.tsx`: add an **"Add an end time"** toggle. When on, render a second `datetime-local`. Presets get a couple of range options: *"Tomorrow morning (9 AM–noon)"*, *"Tomorrow afternoon (1–5 PM)"*. Save callback becomes `{ start, end? } | null`.
+- `src/components/QuestionChips.tsx`: when `endAt` exists, render the time chip as `THU · 9 AM → 12 PM` instead of a single time.
+- `src/routes/index.tsx`: state becomes `pickedRange: { start: Date; end?: Date } | null`. Submit passes both values via search params (`eventAtIso`, `eventEndIso`).
+- `src/routes/answer.tsx` + the weather server fn: accept `eventEndIso`. When present, the answer reasoning samples forecast points across the whole window (every hour from start→end) and answers about the *window* ("Light rain likely 10–11 AM, dry by noon") instead of a single hour. Single-instant questions behave exactly as today.
 
-1. **Time** — `extractEventTimeFromQuestion(question)` (already exists). Returns `{ eventAt, hoursAhead, sourcePhrase }` or `null` → "missing/now".
-2. **Place** — two-stage:
-   - First try `extractPlaceFromQuestion(question)` (existing) for "City, ST" / ZIP / "in/at <Capitalized>".
-   - If null, run a lightweight **named-venue extractor** (regex: capture noun phrase after "at", "@", "near", "by" — e.g. "Bumpy Pickle's", "Hermann Park", "Memorial Hermann"). Then call Mapbox **forward geocoding biased to current location** (`proximity=lon,lat` + `country=us` + `types=poi,address,place`). If a POI is returned within ~50 mi, treat as **detected** and store `{ label, lat, lon }`. If nothing comes back, chip stays **missing**.
+## 3. Place chip / address picker — accept venue names like "Univision 45"
 
-Detection runs **debounced 400 ms after typing stops** and **immediately after voice transcription completes**. Results live in local state, not in the question string — editing the text doesn't wipe a manually picked chip unless the user explicitly clears it.
+**Problem:** typing *"Univision 45 Houston"* in the address picker rarely returns a hit because the request is biased toward `address` first and Mapbox's POI matcher needs the right `types`.
 
-## Chip editors
+**Changes:**
+- `src/components/AddressPicker.tsx`: change the geocoding URL to put `poi` first and add `proximity` bias to the user's current GPS so local businesses rank higher:
+  - `types=poi,address,place,postcode`
+  - add `proximity=${lon},${lat}` when known
+  - add `autocomplete=true`
+  - lower the min-length trigger from 3 → 2 chars
+  - render a small **`POI`** / **`ADDRESS`** badge per result so users know what they picked
+- `src/components/PlaceEditorSheet.tsx`: already does POI-biased + proximity search — just bring the same badge labeling over so the chip-picker behaves consistently.
+- `src/lib/geocodeVenue.ts` (auto-detect from question text): broaden `extractVenueCandidate` to also catch all-caps acronyms followed by a number (`Univision 45`, `KHOU 11`, `ABC 13`) and brand-style proper nouns. Already proximity-biased, so once the regex catches it the chip auto-fills.
 
-Two small bottom sheets (re-use the AlertSheet wrapper styling).
-
-**Time editor** — native `<input type="datetime-local">` plus quick presets: `Now`, `Tonight 8pm`, `Tomorrow 9am`, `Sat 12pm`. "Clear → use now" button.
-
-**Place editor** — re-uses the existing `AddressPicker` component but in a "for this question only" mode (does NOT change the home `selectedAddress`, does NOT toggle follow). Includes the same Mapbox search, "Use my current location" link, and saved places list. "Clear → use my current location" button.
-
-## Submit pipeline
-
-`handleSubmit` now sends the resolved chip values, not just the text:
-
-```ts
-navigate({
-  to: '/answer',
-  search: {
-    q: questionText.trim(),
-    address: place?.label ?? selectedAddress.label,
-    lat: place?.lat ?? selectedAddress.lat,
-    lon: place?.lon ?? selectedAddress.lon,
-    eventAtIso: time?.eventAt.toISOString() ?? null, // null = "right now"
-  },
-});
-```
-
-`answer.tsx`:
-- Add `lat`, `lon`, `eventAtIso` to `validateSearch`.
-- Skip Mapbox geocoding when `lat`/`lon` are already in the URL.
-- Pass `hoursAhead` derived from `eventAtIso` (if present) into `askWeather` instead of re-extracting from the text.
-- Existing `extractPlaceFromQuestion` fallback inside `answer.tsx` becomes the last resort only.
-
-## Files to touch
-
-- `src/routes/index.tsx` — add chip state, debounced detection, submit changes, render chips under the input.
-- `src/routes/answer.tsx` — accept new search params, prefer them over re-extraction.
-- `src/lib/extractPlaceFromQuestion.ts` — add a `extractVenueCandidate(question)` helper (regex for "at/near/by/@ <Capitalized noun phrase>", filtered against time/weekday stop-words).
-- `src/lib/geocodeVenue.ts` — **new**: small client helper wrapping Mapbox forward geocoding with `proximity` + `country=us` + `types=poi,address,place`.
-- `src/components/QuestionChips.tsx` — **new**: renders the two chips + opens the two editor sheets.
-- `src/components/TimeEditorSheet.tsx` — **new**: datetime-local + preset buttons.
-- `src/components/PlaceEditorSheet.tsx` — **new**: thin wrapper around `AddressPicker` in "ephemeral pick" mode (no global state mutation).
-- `src/i18n/translations.ts` — chip labels (`ADD A TIME`, `ADD A PLACE`, `RIGHT NOW`, `HERE`, `(tap to edit)`, presets) in EN + ES.
+## Files touched
+- `src/routes/index.tsx` — voice timing + countdown + silence detection; event-range state on submit
+- `src/lib/extractEventTimeFromQuestion.ts` — range parsing, return `endAt`
+- `src/components/TimeEditorSheet.tsx` — end-time toggle + range presets
+- `src/components/QuestionChips.tsx` — render range label
+- `src/routes/answer.tsx` + relevant server fn (`askWeather.functions.ts`) — accept and reason over `eventEndIso`
+- `src/components/AddressPicker.tsx` — POI-first + proximity + 2-char trigger + result-type badge
+- `src/components/PlaceEditorSheet.tsx` — result-type badge for parity
+- `src/lib/geocodeVenue.ts` — broader venue regex (TV/radio call-letters, brand+number)
+- `src/i18n/translations.ts` — EN+ES strings for: countdown, "stopped at 1 minute", "Add an end time", range presets, "POI"/"ADDRESS" badges
 
 ## Out of scope
+No backend schema changes, no auth changes, no home-briefing changes, no new dependencies. Pure frontend + the existing Lovable AI Gateway transcription call.
 
-- No changes to the home briefing, radar, alerts, or address-context follow logic.
-- No DB migrations, no auth changes.
-- No NLP via the AI gateway for parsing — stays deterministic + Mapbox-backed (cheaper, faster, predictable). We can add an LLM fallback later if the regex misses too often.
+## Open question (worth a quick confirm before I start)
+For the answer page, when an event has a range (e.g. 9 AM–noon), do you want:
+- **(A)** one combined verdict for the whole window ("Mostly dry, brief shower around 10 AM"), or
+- **(B)** an hour-by-hour mini-timeline (9, 10, 11, 12) with a one-line summary on top?
 
-## Open question
-
-Should the detected **Place chip** also temporarily **switch the home screen's "RIGHT NOW AT" header** while the user is composing the question, or stay strictly local to the question (home header unchanged)? Recommended: **stay local** — the home header keeps showing where the user actually is; the question chips only affect the answer screen. This matches the "Here vs. a Place" mental model agreed in the previous round.
+Default if you don't pick: **A**, because it matches the app's "one clear answer" tone — but B is one extra component if you'd rather see the breakdown.
