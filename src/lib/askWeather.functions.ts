@@ -47,6 +47,20 @@ export interface ExtendedWeatherAnswer {
   event_at?: string;
   /** Source families that fed this answer — used as snapshot dataSources. */
   data_sources?: string[];
+  /** Range band for model_trend (low,high). */
+  chance_of_impact_range?: [number, number] | null;
+  /** Volatility note for trend stages. */
+  volatility_note?: string | null;
+  /** Person-to-person guidance line. */
+  meteorologist_take?: string | null;
+  /** Friendly date phrase telling the user when we'll start watching. */
+  next_check_at?: string | null;
+  /** Multi-hazard breakdown. */
+  hazards?: Record<string, { active: boolean; severity?: 'low' | 'med' | 'high'; note?: string | null }> | null;
+  /** Hour-by-hour mini timeline around the event window. */
+  timeline?: Array<{ hour_label: string; headline: string; severity?: 'ok' | 'watch' | 'bad' }> | null;
+  /** Before / during / after sentences. */
+  event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
