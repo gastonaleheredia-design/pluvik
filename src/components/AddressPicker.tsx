@@ -374,48 +374,56 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
           </div>
         )}
 
-        <button
-          onClick={handleCurrentLocation}
-          disabled={detectingLocation}
-          style={{
-            width: '100%',
-            padding: '14px 16px',
-            backgroundColor: '#0b1018',
-            color: '#faf7f0',
-            borderRadius: '12px',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            cursor: detectingLocation ? 'default' : 'pointer',
-            marginBottom: '20px',
-          }}
-        >
-          <span style={{ fontSize: '1.1rem' }}>📡</span>
-          <span
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 4px 18px' }}>
+          <button
+            onClick={handleCurrentLocation}
+            disabled={detectingLocation}
             style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '0.95rem',
-              flex: 1,
-              textAlign: 'left',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: detectingLocation ? 'default' : 'pointer',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '0.85rem',
+              color: '#c2410c',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            {detectingLocation
-              ? t('picker.detecting')
-              : t('picker.current_location')}
-          </span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            </svg>
+            {detectingLocation ? t('picker.detecting') : t('picker.current_location')}
+          </button>
           {detectingLocation && (
             <div
               className="pulse-dot"
               style={{
-                width: '8px',
-                height: '8px',
+                width: '6px',
+                height: '6px',
                 borderRadius: '50%',
-                backgroundColor: '#f59e0b',
+                backgroundColor: '#c2410c',
               }}
             />
           )}
-        </button>
+        </div>
+        {detectError && (
+          <div
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '0.78rem',
+              color: '#b91c1c',
+              marginTop: '-10px',
+              marginBottom: '14px',
+              padding: '0 4px',
+            }}
+          >
+            {detectError}
+          </div>
+        )}
 
         {user && (
           <>
