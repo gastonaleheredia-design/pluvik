@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
 import { transcribeVoice } from '../lib/transcribeVoice.functions';
 import { QuestionChips } from '../components/QuestionChips';
+import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
@@ -55,10 +56,12 @@ function HomePage() {
   const [showAddrHint, setShowAddrHint] = useState(false);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
+  const [recordElapsed, setRecordElapsed] = useState(0);
+  const [recordCappedNotice, setRecordCappedNotice] = useState(false);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
   // Question chips: detected / picked event time + place. Picked values
   // override detection; null means "use the default" (now / here).
-  const [pickedTime, setPickedTime] = useState<Date | null>(null);
+  const [pickedTime, setPickedTime] = useState<TimeRange | null>(null);
   const [pickedTimeManual, setPickedTimeManual] = useState(false);
   const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
@@ -66,8 +69,14 @@ function HomePage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxRecordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceRafRef = useRef<number | null>(null);
+  const recordStartRef = useRef<number>(0);
+  const heardSpeechRef = useRef<boolean>(false);
+  const lastVoiceAtRef = useRef<number>(0);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -134,8 +143,14 @@ function HomePage() {
 
   // ---- Voice input via MediaRecorder + Lovable AI Gateway (Gemini) ----
   const cleanupRecording = () => {
-    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     if (maxRecordTimerRef.current) { clearTimeout(maxRecordTimerRef.current); maxRecordTimerRef.current = null; }
+    if (tickTimerRef.current) { clearInterval(tickTimerRef.current); tickTimerRef.current = null; }
+    if (silenceRafRef.current != null) { cancelAnimationFrame(silenceRafRef.current); silenceRafRef.current = null; }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch { /* ignore */ }
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
@@ -157,6 +172,7 @@ function HomePage() {
       return;
     }
     setMicError(null);
+    setRecordCappedNotice(false);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -222,9 +238,63 @@ function HomePage() {
     mediaRecorderRef.current = rec;
     rec.start();
     setMicState('recording');
+    recordStartRef.current = Date.now();
+    setRecordElapsed(0);
+    heardSpeechRef.current = false;
+    lastVoiceAtRef.current = Date.now();
 
-    // Hard cap: stop after 15s no matter what.
-    maxRecordTimerRef.current = setTimeout(() => stopRecording(), 15_000);
+    // Tick the elapsed counter once per second for the UI.
+    tickTimerRef.current = setInterval(() => {
+      setRecordElapsed(Math.floor((Date.now() - recordStartRef.current) / 1000));
+    }, 250);
+
+    // Silence detection: stop after ~1.8s of silence once we've heard speech.
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (Ctx) {
+        const ctx: AudioContext = new Ctx();
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+        const buf = new Uint8Array(analyser.fftSize);
+        const VOICE_THRESHOLD = 0.025; // 0..1 RMS-ish
+        const SILENCE_MS = 1800;
+        const MIN_RECORD_MS = 1500;
+        const tick = () => {
+          const a = analyserRef.current;
+          if (!a) return;
+          a.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const v = (buf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / buf.length);
+          const now = Date.now();
+          if (rms > VOICE_THRESHOLD) {
+            heardSpeechRef.current = true;
+            lastVoiceAtRef.current = now;
+          }
+          const elapsed = now - recordStartRef.current;
+          const silenceFor = now - lastVoiceAtRef.current;
+          if (heardSpeechRef.current && elapsed > MIN_RECORD_MS && silenceFor > SILENCE_MS) {
+            stopRecording();
+            return;
+          }
+          silenceRafRef.current = requestAnimationFrame(tick);
+        };
+        silenceRafRef.current = requestAnimationFrame(tick);
+      }
+    } catch { /* silence detection is optional */ }
+
+    // Hard cap: stop after 60s no matter what.
+    maxRecordTimerRef.current = setTimeout(() => {
+      setRecordCappedNotice(true);
+      stopRecording();
+    }, 60_000);
   };
 
   const toggleMic = () => {
@@ -319,7 +389,8 @@ function HomePage() {
         address: finalPlace?.label ?? selectedAddress.label,
         lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
         lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
-        eventAtIso: finalTime ? finalTime.toISOString() : undefined,
+        eventAtIso: finalTime ? finalTime.start.toISOString() : undefined,
+        eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
       },
     });
   };
@@ -338,7 +409,7 @@ function HomePage() {
       // Time
       if (!pickedTimeManual) {
         const t0 = extractEventTimeFromQuestion(text);
-        setPickedTime(t0?.eventAt ?? null);
+        setPickedTime(t0 ? { start: t0.eventAt, end: t0.endAt } : null);
       }
       // Place — try the lightweight extractor first, then venue + geocode.
       if (!pickedPlaceManual) {
