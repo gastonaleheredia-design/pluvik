@@ -777,6 +777,20 @@ export async function getActiveWarning(lat: number, lon: number): Promise<Active
         centroid = polygonCentroid(geom.coordinates[0][0]);
       }
 
+      // Skip alerts whose polygon centroid is far from the user. NWS's
+      // `point=` query returns alerts whose affectedZones include the
+      // forecast/county zone the point sits in, which can be a zone
+      // hundreds of miles wide (or a neighboring-state zone via shared
+      // marine/inland boundaries). 100 mi keeps every legitimate local
+      // warning while killing cross-zone false positives.
+      if (centroid) {
+        const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+        const dy = (centroid.lat - lat) * 69;
+        const dx = (centroid.lon - lon) * 69 * cosLat;
+        const distMi = Math.hypot(dx, dy);
+        if (distMi > 100) continue;
+      }
+
       const movementParam = p.parameters?.movement;
       const movement = Array.isArray(movementParam) ? movementParam[0] : (movementParam ?? null);
 
