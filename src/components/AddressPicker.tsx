@@ -40,6 +40,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [nickname, setNickname] = useState('');
   const [savingPlace, setSavingPlace] = useState(false);
+  const [prevAddress, setPrevAddress] = useState<SelectedAddress | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -165,6 +166,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
 
   const handleSelectResult = (feature: MapboxFeature) => {
     const [lon, lat] = feature.center;
+    setPrevAddress(currentAddress ?? null);
     setAddress({
       label: feature.place_name,
       meta: 'US LOCATION',
