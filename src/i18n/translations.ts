@@ -272,6 +272,7 @@ export const translations = {
         save_place_placeholder: 'Nickname (e.g. Home, Job site)',
         save_place_cta: 'Save place',
         save_place_cancel: 'Cancel',
+       save_place_skip: "Use without saving",
         no_results: 'No results found.',
         location_error: 'Could not get your location. Try typing an address.',
         saved_success: 'Place saved.',
