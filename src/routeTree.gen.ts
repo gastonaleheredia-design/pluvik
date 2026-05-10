@@ -17,6 +17,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventIdRouteImport } from './routes/event.$id'
+import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
 
@@ -60,6 +61,11 @@ const EventIdRoute = EventIdRouteImport.update({
   path: '/event/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AlertIdRoute = AlertIdRouteImport.update({
+  id: '/alert/$id',
+  path: '/alert/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicSweepEventsRoute = ApiPublicSweepEventsRouteImport.update({
   id: '/api/public/sweep-events',
   path: '/api/public/sweep-events',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/reset-password'
     | '/settings'
+    | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/reset-password'
     | '/settings'
+    | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/reset-password'
     | '/settings'
+    | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
+  AlertIdRoute: typeof AlertIdRoute
   EventIdRoute: typeof EventIdRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
   ApiPublicSweepEventsRoute: typeof ApiPublicSweepEventsRoute
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/alert/$id': {
+      id: '/alert/$id'
+      path: '/alert/$id'
+      fullPath: '/alert/$id'
+      preLoaderRoute: typeof AlertIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/sweep-events': {
       id: '/api/public/sweep-events'
       path: '/api/public/sweep-events'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
+  AlertIdRoute: AlertIdRoute,
   EventIdRoute: EventIdRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
   ApiPublicSweepEventsRoute: ApiPublicSweepEventsRoute,
@@ -250,3 +271,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
