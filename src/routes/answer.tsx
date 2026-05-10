@@ -230,6 +230,7 @@ function AnswerPage() {
           current_forecast_stage: a.forecast_stage ?? null,
           event_phrase: extractEventTimeFromQuestion(question)?.sourcePhrase ?? null,
           event_at: a.event_at ?? null,
+          current_climate_facts: a.climate_facts ?? null,
         })
         .select()
         .single();
