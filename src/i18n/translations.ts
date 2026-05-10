@@ -57,6 +57,11 @@ export const translations = {
         motion_unknown: 'nearby',
         warning_until: 'UNTIL',
         warning_active: 'ACTIVE',
+        following: 'FOLLOWING',
+        following_on: 'FOLLOWING MY LOCATION',
+        following_off: 'FOLLOW MY LOCATION',
+        because: 'BECAUSE',
+        because_aria: 'Why this verdict',
       },
       // Answer
       answer: {
@@ -358,6 +363,11 @@ export const translations = {
         motion_unknown: 'cercana',
         warning_until: 'HASTA',
         warning_active: 'ACTIVO',
+        following: 'SIGUIENDO',
+        following_on: 'SIGUIENDO MI UBICACIÓN',
+        following_off: 'SEGUIR MI UBICACIÓN',
+        because: 'PORQUE',
+        because_aria: 'Por qué este veredicto',
       },
       // Answer
       answer: {

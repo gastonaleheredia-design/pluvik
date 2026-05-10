@@ -28,7 +28,7 @@ export const Route = createFileRoute('/')({
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const { address: selectedAddress } = useAddress();
+  const { address: selectedAddress, following, setFollowing, followActive, followError } = useAddress();
   const { user, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [questionText, setQuestionText] = useState('');
@@ -350,9 +350,28 @@ function HomePage() {
               fontSize: '0.6rem',
               letterSpacing: '0.22em',
               color: MUTED,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
             }}
           >
+            {following && (
+              <span
+                aria-hidden
+                style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  backgroundColor: followActive ? '#16a34a' : ACCENT,
+                  animation: 'homePulse 1.4s ease-in-out infinite',
+                  display: 'inline-block',
+                }}
+              />
+            )}
             {t('home.right_now_at', { defaultValue: 'RIGHT NOW AT' })}
+            {following && (
+              <span style={{ color: ACCENT }}>
+                · {t('home.following', { defaultValue: 'FOLLOWING' })}
+              </span>
+            )}
           </span>
           <span
             style={{
@@ -381,6 +400,45 @@ function HomePage() {
             </span>
           )}
         </button>
+
+        {/* Follow my location toggle */}
+        <button
+          type="button"
+          onClick={() => setFollowing(!following)}
+          style={{
+            marginTop: '-18px',
+            marginBottom: '24px',
+            padding: '4px 12px',
+            borderRadius: '100px',
+            border: `1px solid ${following ? ACCENT : 'rgba(11,16,24,0.12)'}`,
+            background: following ? `${ACCENT}14` : 'transparent',
+            cursor: 'pointer',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.55rem',
+            letterSpacing: '0.18em',
+            color: following ? ACCENT : MUTED,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+          aria-pressed={following}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
+          {following
+            ? t('home.following_on', { defaultValue: 'FOLLOWING MY LOCATION' })
+            : t('home.following_off', { defaultValue: 'FOLLOW MY LOCATION' })}
+        </button>
+        {followError && (
+          <div style={{
+            marginTop: '-12px', marginBottom: '16px',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.58rem', color: WARN, letterSpacing: '0.1em',
+            maxWidth: 320, textAlign: 'center',
+          }}>{followError}</div>
+        )}
 
         {/* Always-visible radar pill (works even with no active warning) */}
         {selectedAddress.lat != null &&
@@ -540,6 +598,29 @@ function HomePage() {
               >
                 {briefing.next_rain_caption}
               </div>
+            )}
+            {briefing.verdict_reason && (
+              <button
+                type="button"
+                onClick={() => setSheetMode('radar')}
+                style={{
+                  marginTop: '14px',
+                  background: 'none',
+                  border: 'none',
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem',
+                  letterSpacing: '0.16em',
+                  color: MUTED,
+                  textTransform: 'uppercase',
+                  maxWidth: 360,
+                  lineHeight: 1.5,
+                }}
+                aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
+              >
+                {t('home.because', { defaultValue: 'BECAUSE' })} · {briefing.verdict_reason.detail}
+              </button>
             )}
             {briefing.updated_at_local && (
               <div

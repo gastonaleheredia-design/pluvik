@@ -1,78 +1,59 @@
-## Goal
+# Two work streams
 
-Make signing in feel effortless: lead with Google/Apple, hide email/password behind a small link, fix Apple, and round out account management in Settings — all using free, built-in capabilities.
+## 1) Why the home screen says STORMS while you're driving
 
-## A note on cost
+### What I found in the code
 
-You asked to keep things free. Email-based features (signup confirmation, password reset, email change verification, resend verification) are **free** — they're handled by Lovable Cloud's built-in auth emails.
+**Location is NOT following you.** Today the app only knows one location at a time, and that location is whatever was last picked or detected:
 
-**Phone number / SMS 2FA is NOT free** — Twilio (or any SMS provider) charges per message and requires your own account + API key. **TOTP 2FA** (Google Authenticator / Authy app codes) is free and built into Lovable Cloud. So the plan below includes **TOTP 2FA** instead of SMS. We can add SMS later if you decide to budget for it.
+- `src/lib/addressContext.tsx` stores a single `SelectedAddress` in `localStorage` (defaults to Houston city center: 29.76, -95.37).
+- The only place geolocation runs is `src/components/AddressPicker.tsx` → the "detect my location" button calls `navigator.geolocation.getCurrentPosition` once.
+- There is no `watchPosition`, no periodic refresh, no re-resolve when you re-open the app.
 
----
+So as you drive across Houston, every briefing is being computed against the *same* lat/lon — usually downtown Houston — not where your phone actually is. That alone can explain disagreement with what you see out the windshield.
 
-## 1. Redesign the sign-in modal (`src/components/AuthModal.tsx`)
+**Why the verdict flipped to STORMS.** In `src/lib/homeBriefing.functions.ts`, the word is decided in this order (any one of these wins):
 
-New layout, top to bottom:
+1. Open-Meteo `current.weather_code >= 95` (thunderstorm code at the point).
+2. `probeImminentStorm()` — a radar probe says a cell is approaching within ~90 min.
+3. `getActiveWarning()` — any NWS active alert polygon covering the point (Severe T-storm, Flood, Marine, Special Weather Statement, etc.).
+4. A nearby radar cell ≥35 dBZ within 10 mi (≥50 dBZ → STORMS, otherwise RAINING).
 
-```text
-  Save your forecast                              ✕
-  ──────────────────────────────────────────────
-  [  G   Continue with Google              ]
-  [   Continue with Apple              ]
+The KHGX loop you sent shows mostly light returns SE of downtown over Galveston Bay — consistent with rule #4 firing on a 35–45 dBZ cell ~15–25 mi SE, OR rule #3 firing on a Marine/Special Weather Statement that covers the bay/coast. Today there is no UI to tell you *which* rule fired, so it just looks wrong.
 
-  Use email instead  ▾   ← collapsed link
-  ──────────────────────────────────────────────
-  (only when expanded:)
-  ─ Create account / Sign in tabs ─
-  Email
-  Password
-  Forgot password?
-  [ Create account → ]
-```
+### What to change
 
-- Social buttons rendered **first and large**.
-- "Use email instead" toggles a collapsed section containing today's tabs + email/password form.
-- Removes the OR divider in the default state — only appears when the email panel is expanded.
-- "Save your forecast" copy stays.
+**A. Live location tracking (opt-in, with a clear toggle).**
+- Add a "Follow my location" mode to `addressContext` (persisted preference). When on:
+  - Use `navigator.geolocation.watchPosition` with a 200 m / 60 s threshold so we only refresh the briefing when you've actually moved meaningfully.
+  - Reverse-geocode the new point through Mapbox to update the "Houston, TX" label to the current neighborhood/city.
+  - Show a small live indicator (pulsing dot + "Following") next to the location label so you know it's tracking.
+- When off (or permission denied), behave exactly as today (manual pick, default Houston).
+- Add a one-time permission primer ("Pluvik can follow you while you drive so the verdict matches where you actually are") before triggering the browser prompt.
 
-## 2. Fix Apple sign-in
+**B. "Why STORMS?" transparency.**
+- Extend the `HomeBriefing` server response with a `verdict_reason` field: `'point_thunder' | 'imminent_radar_cell' | 'active_alert' | 'nearby_strong_cell' | 'point_precip' | 'forecast'` plus a short human string (e.g. "45 dBZ cell 18 mi SE, drifting away" or "Marine Weather Statement covers your area").
+- Surface that string under the headline as a tiny justification line ("BECAUSE · 45 dBZ cell 18 mi SE"), tappable to open the radar with that cell highlighted.
+- This makes today's confusion debuggable in the future — you'll instantly see whether it's a real cell, a stale point forecast, or a coastal marine alert that triggered STORMS.
 
-Likely causes (will diagnose in this order):
-1. Apple provider is enabled in Cloud but the Services ID / redirect URL is mismatched.
-2. The OAuth redirect from Apple isn't landing back in the app (PWA service worker or a missing `/~oauth` denylist entry).
-3. The `lovable.auth.signInWithOAuth("apple", …)` call is throwing a silent error.
+**C. A small data-quality guardrail.**
+- If `verdict_reason === 'nearby_strong_cell'` AND that cell is moving *away* from the user AND >12 mi out, downgrade STORMS → CLOUDY/DRY (or "STORMS NEARBY" subtitle instead of the giant STORMS word). This stops the headline from screaming at you about a weakening cell over the bay.
 
-Steps:
-- Inspect the AuthModal Apple handler + auth-related console/network logs.
-- Verify Apple is enabled and routed through Lovable's managed Apple credentials (default — no setup needed unless you want custom branding).
-- If managed Apple is enabled and still failing, surface the actual error to the user with a friendly message instead of a silent failure, and report back to you with the exact error so we can decide whether to use BYOC Apple credentials.
+## 2) Custom icon set to replace the emojis
 
-## 3. Settings — account management (free features)
+The grid on the onboarding screen (Weddings 💍, Construction 🏗️, Parties 🎉, Sports 🏈, Fishing 🎣, Storm tracking 🌪️) currently renders OS emoji, which is why they look like Apple's set on your iPhone. They're not unique to Pluvik.
 
-Add to `src/routes/settings.tsx`:
+### What to change
+- Generate **6 bespoke icons** with `imagegen` (premium quality, transparent PNG, ~512×512), in a single coherent style that matches the app's editorial look (warm cream background, deep navy/ink line work, single amber accent — same palette as the headline and "NEXT RAIN" text).
+- One style direction (recommend): **hand-drawn ink linework with a single ochre/amber wash** — feels editorial, masthead-y, and pairs with the serif typography. Alternative styles I can offer if you prefer: (a) flat geometric monoline, (b) soft gouache/painted, (c) wood-block / risograph.
+- Save under `src/assets/icons/usecase-{weddings,construction,parties,sports,fishing,storms}.png` and import them in `src/routes/onboarding.tsx`, replacing the `emoji` field.
+- Audit other emoji usage in the app and, in the same pass, replace them with icons from the same family (so the app feels consistent — not just onboarding).
 
-- **Email change** — keep current flow but improve UX: show "Confirmation link sent to NEW email — click it to finish the change. Your old address still works until then." (Supabase already requires confirmation on the new email by default.)
-- **Forgot password** (signed-in) — small "Send password reset link" button that calls `resetPasswordForEmail(user.email)`. Useful when a user forgot their password but is still on a logged-in device.
-- **Resend verification email** — if the current user is signed in but `email_confirmed_at` is null, show a "Didn't get the confirmation email? Resend" button that calls `supabase.auth.resend({ type: 'signup', email })`.
-- **TOTP 2FA (free)** — new "Two-factor authentication" section:
-  - Status: On / Off
-  - "Enable 2FA" → shows QR code from `supabase.auth.mfa.enroll({ factorType: 'totp' })`, user scans with Google Authenticator / 1Password / Authy and enters a 6-digit code to verify.
-  - "Disable 2FA" → unenroll factor.
-  - Sign-in flow: if user has TOTP enabled, after password sign-in we show a 6-digit code prompt before granting access.
-- **Phone / SMS 2FA** — **not included** (paid). Mentioned in UI as "Available with SMS provider — coming later" or simply omitted.
+## Out of scope for this round
+- Building a full icon component library / sprite system. We'll just ship the 6 PNGs and the audit-driven replacements.
+- Background geolocation when the app is closed (browsers don't allow it; that's a native-app feature).
 
-## 4. Translations
-
-Add new keys to `src/i18n/translations.ts` (EN + ES) for: "Use email instead", "Hide email", resend verification text, 2FA section labels, QR instructions, "Enter 6-digit code", "Send password reset link", improved email-change copy.
-
-## Out of scope
-
-- SMS / phone verification (paid).
-- Custom Apple Developer credentials / BYOC Apple — only if managed Apple turns out to be unfixable.
-- Recovery codes for 2FA (can add later if you want a backup method).
-
-## Verification
-
-- Modal: Google + Apple visible by default, email/password collapsed; expanding works; signup + signin still functional.
-- Apple: tapping "Continue with Apple" either succeeds or shows a clear error message (no more silent failure).
-- Settings: change-email shows new copy; resend appears only for unconfirmed users; "Send reset link" sends email; enabling TOTP shows QR, verifies code, and a fresh sign-in then prompts for the 6-digit code.
+## Verification when done
+- With "Follow my location" on, drive (or simulate moving the device) and confirm the location label and the briefing update without you tapping anything.
+- Open the home screen and confirm the small "BECAUSE · …" line explains the verdict, and that tapping it opens radar focused on the responsible cell/alert.
+- Confirm the 6 onboarding tiles show your custom icons and that no native OS emoji are visible there anymore.
