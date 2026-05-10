@@ -422,7 +422,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       });
 
       const digest = buildLongRangeDigest({
-        stage: stageInfo.stage,
+        stage: stageInfo.stage as 'climate' | 'outlook',
         eventIso,
         address,
         daily: dailyNormal,
