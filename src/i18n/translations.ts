@@ -71,6 +71,11 @@ export const translations = {
         mode_follow: 'FOLLOW ME',
         because: 'BECAUSE',
         because_aria: 'Why this verdict',
+        why: 'WHY',
+        next_rain_short: 'NEXT RAIN',
+        radar_chip: 'RADAR',
+        resume_here: 'Use my location',
+        refresh: 'Refresh',
       },
       // Answer
       answer: {
