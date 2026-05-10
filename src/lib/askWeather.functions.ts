@@ -622,7 +622,8 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
-      `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}`;
+      `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
+      `RESPOND WITH A SINGLE JSON OBJECT ONLY. No prose, no markdown fences, no commentary. Start your reply with "{" and end with "}".`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
