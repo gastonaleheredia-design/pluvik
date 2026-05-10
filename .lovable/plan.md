@@ -1,28 +1,65 @@
-## General rule
+## What I found
 
-A warning banner, a radar warning overlay, and a STORMS-style headline should appear **only when the user's exact selected coordinates fall inside (or on the immediate boundary of) the warning polygon** returned by the weather service.
+The issue is not Houston-specific. The app has three general problems in the end-to-end flow:
 
-Houston / Natchez are just examples of the same rule:
-- Inside the polygon → show the banner, the radar polygon, and let STORMS be a valid label.
-- Outside the polygon → no banner, no radar warning shape, and the headline word must come from local weather evidence (rain/cloud/forecast), not from the alert.
+1. **The warning can remain stale on screen**
+   - The current live API check for Houston returns **no active warning**.
+   - The radar warning API check for the Louisiana point also returned **no active warning** after expiry.
+   - But the UI can keep showing an old briefing/warning while a new location or expired warning is being refreshed, because `briefing` is not cleared when a new location request starts and some refresh paths still apply results without the same request-coordinate guard.
 
-This applies regardless of which city the user picks, anywhere in the country.
+2. **The home page does too much before showing the first answer**
+   - The home briefing currently waits for extra radar probes and alert checks before rendering the main word/sentence.
+   - Those probes use large model grid calls and can slow first paint. The visible result can feel like the first page is stuck even when the basic city forecast is fast.
+
+3. **Location detection can leave the user in a bad loop**
+   - There are two geolocation flows: auto-follow in `addressContext` and manual “Use my current location” in `AddressPicker`.
+   - When browser location is blocked or slow, the picker can show “Detecting…” for too long, and the page continues showing the old city/weather behind it.
+   - If detection fails, we should stop immediately, show a clear permission/timeout message, and not leave follow mode trying to update in the background.
 
 ## Plan
 
-1. **Replace centroid-distance filter with a true point-in-polygon test**
-   - In both the home-screen warning lookup and the radar warning overlay, do a point-in-polygon check of the user's lat/lon against each alert's `Polygon` / `MultiPolygon` geometry.
-   - Keep the alert only when the point is inside (or within a tiny tolerance of) the polygon.
-   - Drop alerts that lack geometry, or whose geometry the user is not inside — even if the weather service returned them via a broad zone match.
+1. **Make location detection deterministic**
+   - In `AddressPicker`, add a single cleanup-safe detection flow with a hard total timeout.
+   - Stop the “Detecting…” state on every success, error, timeout, fallback, and component close path.
+   - If permission is denied, turn off follow mode and show a clear message instead of continuing to auto-follow in the background.
+   - Prevent overlapping high-accuracy/fallback geolocation calls from racing each other.
 
-2. **Stop letting an alert override the headline by itself**
-   - The "active alert ⇒ STORMS" shortcut on the home screen should only fire when the alert passes the point-in-polygon test above.
-   - When no qualifying alert is in effect, the headline word is determined the normal way (radar / minutely precip / forecast / cloud cover) — so a clear sky reads CLOUDY/DRY/RAIN SOON, never STORMS.
+2. **Clear stale weather immediately when the selected coordinates change**
+   - In `src/routes/index.tsx`, when a new address begins loading, clear the previous briefing/warning so an old banner cannot remain while the new city is loading.
+   - Apply the same request-coordinate stale guard to manual refresh, auto-retry, and expired-warning refresh, not only the first load.
+   - If a warning expires, clear it immediately in the UI while the refresh runs.
 
-3. **Make the home screen consistent with the selected address**
-   - Ensure the briefing result is only applied when it matches the coordinates that requested it (so a fresh address change can't be overwritten by a stale earlier response).
-   - Remove the temporary debug log added earlier.
+3. **Split fast home load from slower radar validation**
+   - Keep the first home briefing fast: current conditions, hourly forecast, minutely point precipitation, and point-in-polygon warning check.
+   - Run heavier radar/nearby-cell validation with short timeouts and do not block the first visible city answer on it.
+   - Only upgrade the headline to `STORMS` when either:
+     - the selected coordinates are inside a current warning polygon, or
+     - radar/minutely evidence near the selected coordinates confirms local storms.
+   - Do not let expired/stale alert data or a previous city’s radar result affect the current city.
 
-4. **Validation (general, not city-specific)**
-   - For any chosen location with no enclosing warning polygon: no banner, no STORMS headline, no warning shape on radar.
-   - For any chosen location whose coordinates do sit inside a current warning polygon: banner appears, radar shows the polygon, headline can be STORMS.
+4. **Centralize the warning geometry rule**
+   - Move the alert point-in-polygon logic into one shared helper used by both home warning lookup and radar overlays.
+   - Handle Polygon and MultiPolygon consistently.
+   - Treat missing geometry as non-applicable for banners/overlays.
+
+5. **Add temporary end-to-end diagnostics for this weather flow**
+   - Log one compact diagnostic per home briefing: requested lat/lon, returned alert count, whether any alert polygon contained the point, final word, and reason.
+   - Log location detection outcomes: success, timeout, permission denied, unavailable.
+   - Keep logs concise so we can verify the exact failure path if the issue appears again.
+
+6. **Validate end-to-end before calling it fixed**
+   - Test Houston coordinates: no warning banner, no Louisiana polygon, no `STORMS` unless local radar/minutely evidence supports it.
+   - Test a point inside any currently active warning polygon: banner appears, radar overlay appears, and `STORMS` is allowed.
+   - Test a point outside but near an active warning polygon: no banner and no overlay.
+   - Test blocked geolocation: detection stops and shows the permission error.
+   - Test slow/timeout geolocation path: detection stops and shows the timeout error.
+
+## Files to update
+
+- `src/components/AddressPicker.tsx`
+- `src/lib/addressContext.tsx`
+- `src/routes/index.tsx`
+- `src/lib/homeBriefing.functions.ts`
+- `src/lib/metDataFetcher.ts`
+- `src/components/LiveRadarMap.tsx`
+- Add a small shared alert-geometry helper if needed, for example under `src/lib/alertGeometry.ts`
