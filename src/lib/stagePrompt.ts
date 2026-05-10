@@ -46,6 +46,14 @@ You are NOT issuing a forecast. You are explaining a tendency in plain English.
 - BANNED in any output field: "60% above normal", "anomaly", "percentile", "tercile",
   "climatological mean", "ensemble probability", "MJO", "ENSO", "CPC", "NClimGrid",
   "z-score", "standard deviation". Translate every such concept to everyday words.
+- ALLOWED in summary / plain_english_summary / cpc_narrative: factual climatology numbers
+  drawn from the pre-digested briefing (e.g. "around 4 inches of rain on roughly 9 days",
+  "average highs near 65°F"). These are historical averages, not forecast probabilities,
+  and the user explicitly wants them.
+- ALWAYS return a "cpc_narrative" field — 1–2 sentences paraphrased from the CPC
+  discussion paragraph in the user message (if present). Refer to it as "the long-range
+  outlook" or "national forecasters", never "CPC". If no discussion paragraph was provided,
+  set "cpc_narrative" to null.
 ${hasPlainLanguageDigest ? '- The user message already contains a pre-digested plain-language briefing — quote it faithfully, do not invent numbers.' : ''}
 
 ## OUTPUT JSON SHAPE (this stage only)
@@ -58,8 +66,9 @@ ${hasPlainLanguageDigest ? '- The user message already contains a pre-digested p
   "chance_of_impact": null,
   "headline_number": null,
   "main_threat": "single short phrase or empty string",
-  "summary": "2-3 sentence plain-English explanation",
+  "summary": "2-3 sentence plain-English explanation. INCLUDE the climatology baseline (e.g. 'November here normally brings about 4 inches of rain across 9 rainy days, with highs in the low 60s°F') AND the long-range tendency relative to that baseline.",
   "plain_english_summary": "same as summary, plain English",
+  "cpc_narrative": "1–2 sentences paraphrased from the CPC discussion paragraph, or null if none provided. Refer to the source as 'the long-range outlook' or 'national forecasters'.",
   "recommended_action": "1 friendly suggestion (e.g. 'Check back in a week for a real forecast.')",
   "stage_outro": "${outro}",
   "meteorologist_take": "1 person-to-person guidance sentence in second person — e.g. 'If I were you, I'd lock in the venue but keep the tent vendor's number handy. We'll start watching this around <date>.'",
