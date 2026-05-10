@@ -498,6 +498,87 @@ function EventPage() {
           </div>
         </div>
 
+        {/* Climate facts (climate / outlook stage only) */}
+        {Array.isArray(event.current_climate_facts) &&
+          event.current_climate_facts.length > 0 && (
+            <div
+              style={{
+                backgroundColor: '#fff',
+                border: `1px solid ${INK}14`,
+                borderRadius: '16px',
+                padding: '18px 18px 8px',
+                marginBottom: '32px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.12em',
+                  color: MUTED,
+                  marginBottom: '14px',
+                }}
+              >
+                CLIMATE FOR THIS DATE
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '14px 18px',
+                }}
+              >
+                {event.current_climate_facts.map((f) => (
+                  <div key={f.label} style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: '0.62rem',
+                        letterSpacing: '0.14em',
+                        color: MUTED,
+                        marginBottom: '4px',
+                      }}
+                    >
+                      {f.label}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '1.15rem',
+                        color: INK,
+                        lineHeight: 1.2,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {f.value}
+                    </div>
+                    {f.hint && (
+                      <div
+                        style={{
+                          fontSize: '0.7rem',
+                          color: MUTED,
+                          marginTop: '2px',
+                        }}
+                      >
+                        {f.hint}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  fontSize: '0.68rem',
+                  color: MUTED,
+                  marginTop: '14px',
+                  paddingTop: '10px',
+                  borderTop: `1px solid ${INK}0d`,
+                  lineHeight: 1.4,
+                }}
+              >
+                NOAA 1991–2020 daily normals — historical baseline, not a forecast.
+              </div>
+            </div>
+          )}
+
         {/* Actions */}
         <div
           style={{
