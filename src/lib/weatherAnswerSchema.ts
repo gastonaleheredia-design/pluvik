@@ -121,6 +121,76 @@ export interface ValidationOutcome {
 }
 
 /**
+ * Coerce common synonym values from the model into the strict enums our
+ * schema expects. Without this, otherwise-valid answers get rejected (e.g.
+ * `severity: "low-moderate"`, `verdict_word: "WATCH"`,
+ * `timeline[].severity: "none"`).
+ */
+function normalizeRawAnswer(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const r = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+
+  const sev = (v: unknown): 'low' | 'med' | 'high' | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const s = v.trim().toLowerCase();
+    if (!s || s === 'none' || s === 'n/a') return undefined;
+    if (['low', 'minor', 'slight'].includes(s)) return 'low';
+    if (['med', 'medium', 'moderate', 'mod', 'low-moderate', 'low-med', 'mid'].includes(s)) return 'med';
+    if (['high', 'severe', 'extreme', 'very-high', 'very high', 'moderate-high', 'med-high'].includes(s)) return 'high';
+    return undefined;
+  };
+  const tlSev = (v: unknown): 'ok' | 'watch' | 'bad' | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const s = v.trim().toLowerCase();
+    if (!s) return undefined;
+    if (['ok', 'none', 'low', 'calm', 'clear', 'dry'].includes(s)) return 'ok';
+    if (['watch', 'med', 'medium', 'moderate', 'low-moderate'].includes(s)) return 'watch';
+    if (['bad', 'high', 'severe', 'extreme', 'very-high'].includes(s)) return 'bad';
+    return 'watch';
+  };
+
+  const hz = r.hazards as Record<string, Record<string, unknown>> | null | undefined;
+  if (hz && typeof hz === 'object') {
+    for (const key of Object.keys(hz)) {
+      const h = hz[key];
+      if (h && typeof h === 'object' && 'severity' in h) {
+        const coerced = sev(h.severity);
+        if (coerced) h.severity = coerced;
+        else delete h.severity;
+      }
+    }
+  }
+
+  if (Array.isArray(r.timeline)) {
+    for (const row of r.timeline as Record<string, unknown>[]) {
+      if (row && typeof row === 'object' && 'severity' in row) {
+        const coerced = tlSev(row.severity);
+        if (coerced) row.severity = coerced;
+        else delete row.severity;
+      }
+    }
+  }
+
+  if (typeof r.verdict_word === 'string') {
+    const w = r.verdict_word.trim().toUpperCase();
+    if (w === 'YES' || w === 'NO' || w === 'MAYBE') r.verdict_word = w;
+    else r.verdict_word = 'MAYBE';
+  }
+
+  if (typeof r.verdict === 'string') {
+    const v = r.verdict.trim().toUpperCase().replace('NOGO', 'NO-GO').replace('NO_GO', 'NO-GO');
+    if (['GO', 'CAUTION', 'NO-GO', 'UNKNOWN'].includes(v)) r.verdict = v;
+  }
+
+  if (typeof r.confidence === 'string') {
+    const c = r.confidence.trim().toUpperCase().replace(/[\s-]/g, '_');
+    if (['HIGH', 'MEDIUM', 'LOW', 'VERY_LOW'].includes(c)) r.confidence = c;
+  }
+
+  return r;
+}
+
+/**
  * Parse + validate a model JSON response. On failure, return a graceful
  * UNKNOWN-verdict fallback so the UI can still render something useful
  * instead of throwing. `issues` lists what failed for logging.
