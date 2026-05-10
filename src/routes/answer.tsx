@@ -281,7 +281,12 @@ function AnswerPage() {
           &ldquo;{question}&rdquo;
         </div>
         <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em' }}>
-          {t('answer.for_location')} {address}
+          {t('answer.for_location')} {resolvedAddress}
+          {resolvedAddress !== address && (
+            <div style={{ marginTop: 6, fontSize: '0.7rem', color: ACCENT, letterSpacing: '0.1em' }}>
+              ↳ FROM YOUR QUESTION
+            </div>
+          )}
         </div>
       </div>
     );
@@ -437,7 +442,7 @@ function AnswerPage() {
   const topicTag = answer.mode === 'severe' ? 'SEVERE'
     : answer.mode === 'hurricane' ? 'STORM'
     : 'RAIN';
-  const contextLine = `${address.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
+  const contextLine = `${resolvedAddress.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
 
   if (!showWhy) {
     return (
