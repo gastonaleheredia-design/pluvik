@@ -58,7 +58,8 @@ async function fetchFrames(): Promise<PreparedFrames | null> {
   }
 }
 
-// RainViewer color schemes: 2 = NWS Reflectivity, 3 = Universal Blue (snow).
+// RainViewer color schemes: 6 = NEXRAD Level III (NWS green→red→magenta),
+// 2 = Universal Blue (snow palette).
 function rvTileUrl(host: string, frame: RVFrame, colorScheme: number) {
   return `${host}${frame.path}/256/{z}/{x}/{y}/${colorScheme}/1_1.png`;
 }
@@ -163,8 +164,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const meLat = gpsCoord?.lat ?? lat;
   const meLon = gpsCoord?.lon ?? lon;
 
-  // Color scheme by mode (RainViewer): rain & mix use NWS palette; snow uses blues.
-  const colorScheme = mode === "snow" ? 3 : 2;
+  // Color scheme by mode (RainViewer): rain & mix use NEXRAD III (NWS) palette;
+  // snow uses Universal Blue.
+  const colorScheme = mode === "snow" ? 2 : 6;
 
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
