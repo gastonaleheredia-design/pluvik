@@ -1,14 +1,9 @@
 /**
  * Phase 10 — Contextual MRMS radar map.
  *
- * Renders a Mapbox basemap centered on the event location with the
- * Iowa State Mesonet MRMS (Multi-Radar/Multi-Sensor) reflectivity tile
- * layer overlaid. Only mounted when the answer's `forecast_stage === 'live'`,
- * so we don't waste tiles for events that are days out.
- *
- * MRMS source: https://mesonet.agron.iastate.edu/ogc/ — public, no key.
- * Layer used: ridge::USCOMP-N0Q-<UTC YYYYmmddHHMM> (latest base reflectivity).
- * We use the "latest" alias path which always points to the most recent frame.
+ * Renders a Mapbox basemap centered on the event location with live radar
+ * reflectivity tiles overlaid. The tile path is resolved at runtime from the
+ * latest public RainViewer frame so the map shows actual storm imagery.
  */
 
 import { useEffect, useRef } from 'react';
@@ -25,8 +20,32 @@ interface LiveRadarMapProps {
   height?: number | string;
 }
 
-const MRMS_TILE_URL =
-  'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/q2-n0q-900913/{z}/{x}/{y}.png';
+const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
+
+interface RainViewerFrame {
+  time: number;
+  path: string;
+}
+
+interface RainViewerResponse {
+  host: string;
+  radar?: {
+    past?: RainViewerFrame[];
+    nowcast?: RainViewerFrame[];
+  };
+}
+
+async function getLatestRadarTileUrl() {
+  const response = await fetch(RAINVIEWER_API);
+  if (!response.ok) throw new Error(`radar metadata ${response.status}`);
+
+  const data = (await response.json()) as RainViewerResponse;
+  const frames = [...(data.radar?.past ?? []), ...(data.radar?.nowcast ?? [])];
+  const latest = frames.at(-1);
+  if (!data.host || !latest?.path) throw new Error('radar metadata missing latest frame');
+
+  return `${data.host}${latest.path}/256/{z}/{x}/{y}/4/1_1.png`;
+}
 
 export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -45,21 +64,39 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
     });
     mapRef.current = map;
 
-    map.on('load', () => {
-      // MRMS reflectivity raster overlay.
-      map.addSource('mrms-radar', {
+    let disposed = false;
+
+    const updateRadarLayer = async () => {
+      try {
+        const tileUrl = await getLatestRadarTileUrl();
+        if (disposed || !map.loaded()) return;
+
+        const existingSource = map.getSource('live-radar') as mapboxgl.RasterTileSource | undefined;
+        if (existingSource) {
+          const sourceWithSetTiles = existingSource as unknown as { setTiles?: (tiles: string[]) => void };
+          sourceWithSetTiles.setTiles?.([`${tileUrl}?t=${Date.now()}`]);
+          return;
+        }
+
+        map.addSource('live-radar', {
         type: 'raster',
-        tiles: [MRMS_TILE_URL],
+          tiles: [tileUrl],
         tileSize: 256,
-        attribution:
-          '© <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> · NOAA MRMS',
+          attribution: '© RainViewer · NOAA radar',
       });
       map.addLayer({
-        id: 'mrms-radar-layer',
+          id: 'live-radar-layer',
         type: 'raster',
-        source: 'mrms-radar',
-        paint: { 'raster-opacity': 0.65 },
+          source: 'live-radar',
+          paint: { 'raster-opacity': 0.82, 'raster-resampling': 'linear' },
       });
+      } catch (error) {
+        console.warn('Live radar layer unavailable', error);
+      }
+    };
+
+    map.on('load', () => {
+      void updateRadarLayer();
 
       // Marker on the event location.
       new mapboxgl.Marker({ color: '#c2410c' })
@@ -71,15 +108,11 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
 
     // Refresh the radar layer every 2 minutes so it stays "live".
     const refresh = setInterval(() => {
-      const src = map.getSource('mrms-radar') as mapboxgl.RasterTileSource | undefined;
-      if (src && typeof (src as unknown as { setTiles?: (t: string[]) => void }).setTiles === 'function') {
-        (src as unknown as { setTiles: (t: string[]) => void }).setTiles([
-          `${MRMS_TILE_URL}?t=${Date.now()}`,
-        ]);
-      }
-    }, 120_000);
+      void updateRadarLayer();
+    }, 60_000);
 
     return () => {
+      disposed = true;
       clearInterval(refresh);
       map.remove();
       mapRef.current = null;
