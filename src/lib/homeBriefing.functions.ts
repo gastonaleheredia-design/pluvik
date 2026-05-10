@@ -63,7 +63,19 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       `&forecast_days=7&timezone=auto`;
 
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`open-meteo ${res.status}`);
+    if (!res.ok) {
+      console.warn(`[homeBriefing] open-meteo ${res.status} — returning fallback`);
+      const fallbackSentence = language.startsWith('es')
+        ? 'No se pudo cargar el clima ahora mismo. Intenta de nuevo en un momento.'
+        : "Couldn't load weather right now. Try again in a moment.";
+      return {
+        word: 'DRY',
+        sentence: fallbackSentence,
+        next_rain_caption: null,
+        nearby_cell: null,
+        updated_at_local: '',
+      } satisfies HomeBriefing;
+    }
     const j = await res.json();
 
     const curCode: number = j.current?.weather_code ?? 0;
