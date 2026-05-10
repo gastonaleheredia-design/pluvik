@@ -95,6 +95,16 @@ export const WeatherAnswerSchema = z.object({
     label: z.string(),
   }).nullable().optional(),
 
+  /**
+   * "Why MAYBE" three-part rationale. Required when verdict_word is MAYBE
+   * AND the AFD section is available. Null otherwise.
+   */
+  maybe_explanation: z.object({
+    afd_quote: z.string().min(1),
+    model_reconciliation: z.string().min(1),
+    why_uncertain: z.string().min(1),
+  }).nullable().optional(),
+
   // Severe / hurricane fields — pass through untouched.
   risk_level: z.string().optional(),
   risk_level_num: z.number().optional(),
