@@ -18,6 +18,17 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [signupSent, setSignupSent] = useState(false);
+
+  const friendlyError = (msg: string | undefined): string => {
+    const m = (msg ?? '').toLowerCase();
+    if (!m) return t('auth.err_generic');
+    if (m.includes('invalid login') || m.includes('invalid credentials')) return t('auth.err_invalid_credentials');
+    if (m.includes('already registered') || m.includes('already exists') || m.includes('user already')) return t('auth.err_email_taken');
+    if (m.includes('password') && (m.includes('short') || m.includes('weak') || m.includes('6'))) return t('auth.err_weak_password');
+    if (m.includes('email') && m.includes('invalid')) return t('auth.err_invalid_email');
+    return msg ?? t('auth.err_generic');
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -29,7 +40,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       setLoading(false);
-      if (error) setError(error.message);
+      if (error) setError(friendlyError(error.message));
       else setInfo(t('auth.reset_sent'));
       return;
     }
@@ -44,7 +55,13 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      setError(friendlyError(error.message));
+      return;
+    }
+
+    if (tab === 'signup') {
+      // Email confirmation is on — don't auto-close, show check-email state.
+      setSignupSent(true);
     } else {
       onSuccess();
     }
@@ -53,15 +70,15 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const isDisabled =
     loading || !email || (tab !== 'forgot' && !password);
 
-  const handleGoogle = async () => {
+  const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth('google', {
+    const result = await lovable.auth.signInWithOAuth(provider, {
       redirect_uri: window.location.origin,
     });
     if (result.error) {
       setLoading(false);
-      setError(result.error.message ?? String(result.error));
+      setError(friendlyError(result.error.message ?? String(result.error)));
       return;
     }
     if (result.redirected) return; // browser will navigate
@@ -130,7 +147,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+        {!signupSent && <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           {(['signup', 'signin'] as const).map((tabKey) => (
             <button
               key={tabKey}
@@ -152,11 +169,33 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
               {tabKey === 'signup' ? t('auth.signup') : t('auth.signin')}
             </button>
           ))}
-        </div>
+        </div>}
+
+        {signupSent ? (
+          <div style={{ padding: '8px 0 4px' }}>
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '1.1rem', fontWeight: 500, marginBottom: 8 }}>
+              📬 {t('auth.signup_check_email_title')}
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#4b5563', lineHeight: 1.45, marginBottom: 18 }}>
+              {t('auth.signup_check_email_body', { email })}
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                width: '100%', padding: 14, borderRadius: 100, border: 'none',
+                backgroundColor: '#0b1018', color: '#faf7f0',
+                fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer',
+              }}
+            >
+              OK
+            </button>
+          </div>
+        ) : (
+        <>
 
         {/* Google sign-in */}
         <button
-          onClick={handleGoogle}
+          onClick={() => handleOAuth('google')}
           disabled={loading}
           style={{
             width: '100%',
@@ -173,7 +212,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '10px',
-            marginBottom: '14px',
+            marginBottom: '10px',
           }}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
@@ -183,6 +222,24 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
           </svg>
           {t('auth.continue_google')}
+        </button>
+        {/* Apple sign-in */}
+        <button
+          onClick={() => handleOAuth('apple')}
+          disabled={loading}
+          style={{
+            width: '100%', padding: '12px', borderRadius: '100px', border: 'none',
+            backgroundColor: '#000', color: '#fff',
+            fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
+            cursor: loading ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+            marginBottom: '14px',
+          }}
+        >
+          <svg width="16" height="18" viewBox="0 0 16 18" aria-hidden fill="#fff">
+            <path d="M13.07 9.6c-.02-2.07 1.69-3.06 1.77-3.11-.96-1.41-2.46-1.6-3-1.62-1.27-.13-2.49.75-3.13.75-.65 0-1.65-.74-2.71-.72-1.39.02-2.69.81-3.41 2.06-1.45 2.52-.37 6.24 1.04 8.29.69 1 1.51 2.13 2.58 2.09 1.04-.04 1.43-.67 2.69-.67 1.25 0 1.6.67 2.7.65 1.12-.02 1.82-1.02 2.5-2.03.79-1.16 1.12-2.29 1.13-2.35-.02-.01-2.16-.83-2.18-3.34zM10.99 3.66c.57-.7.96-1.66.85-2.62-.83.04-1.83.55-2.42 1.24-.53.61-1 1.6-.87 2.54.92.07 1.86-.46 2.44-1.16z"/>
+          </svg>
+          {t('auth.continue_apple')}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
           <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(11,16,24,0.1)' }} />
@@ -212,6 +269,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
 
         {/* Password */}
         {tab !== 'forgot' && (
+          <>
           <input
             type="password"
             placeholder={t('auth.password_placeholder')}
@@ -226,11 +284,17 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
               backgroundColor: '#f0ebde',
               fontFamily: 'Inter, sans-serif',
               fontSize: '0.92rem',
-              marginBottom: '10px',
+              marginBottom: '6px',
               outline: 'none',
               color: '#0b1018',
             }}
           />
+          {tab === 'signup' && (
+            <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '10px', paddingLeft: 4 }}>
+              {t('auth.password_hint')}
+            </div>
+          )}
+          </>
         )}
 
         {/* Forgot password / back link */}
@@ -294,6 +358,8 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             ? t('auth.send_reset_link')
             : t('auth.signin_cta')}
         </button>
+        </>
+        )}
       </div>
     </div>
   );

@@ -51,8 +51,14 @@ function HomePage() {
       .select('onboarding_completed_at')
       .eq('id', user.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
+        if (error) {
+          console.warn('[onboarding] profile read failed; trusting local flag', error);
+          // If local says done, stay. If not, do NOT redirect on a transient
+          // error — better to show home than to bounce a returning user.
+          return;
+        }
         const remoteDone = !!data?.onboarding_completed_at;
         if (remoteDone) {
           try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
@@ -64,7 +70,9 @@ function HomePage() {
             .from('profiles')
             .update({ onboarding_completed_at: new Date().toISOString() })
             .eq('id', user.id)
-            .then(() => {});
+            .then(({ error: updErr }) => {
+              if (updErr) console.warn('[onboarding] profile backfill failed', updErr);
+            });
           return;
         }
         navigate({ to: '/onboarding' });
