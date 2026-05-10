@@ -618,6 +618,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         stormIntercepts,
         confidence,
         parsed.sensitivityProfile,
+        parsed.timeWindow ? `the user's plan around ${parsed.timeWindow}` : `the user's event time`,
       ) + '\n' + stageRules;
 
     const userMessage =
