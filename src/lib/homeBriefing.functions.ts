@@ -551,5 +551,6 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
       alert: alertOut,
+      verdict_reason: { code: reasonCode, detail: reasonDetail },
     } satisfies HomeBriefing;
   });
