@@ -20,10 +20,19 @@ import {
 } from '@/lib/snapshots';
 import type { ForecastStage } from '@/lib/forecastStage';
 
-// Don't re-evaluate an event more often than this.
-const THROTTLE_MINUTES = 30;
 // Cap per run to keep the worker responsive.
-const MAX_EVENTS_PER_RUN = 25;
+const MAX_EVENTS_PER_RUN = 50;
+
+/**
+ * Tiered refresh interval based on how close the event is.
+ * Returns the minimum minutes that must pass between refreshes.
+ */
+function refreshIntervalMinutes(hoursToEvent: number): number {
+  if (hoursToEvent <= 6) return 15;
+  if (hoursToEvent <= 24) return 60;
+  if (hoursToEvent <= 72) return 180;
+  return 720; // 12h
+}
 
 interface EventRow {
   id: string;
@@ -195,14 +204,20 @@ async function refreshOne(
     });
   if (insErr) return { id: event.id, ok: false, error: insErr.message };
 
+  // If this refresh produced a meaningful change, mark the event so the UI
+  // can show an unseen-change indicator until the user opens it.
+  if (tag === 'SIGNIFICANT_CHANGE' || tag === 'STAGE_PROMOTED') {
+    await supabaseAdmin
+      .from('tracked_events')
+      .update({ last_significant_change_at: nowIso })
+      .eq('id', event.id);
+  }
+
   return { id: event.id, ok: true, tag };
 }
 
 async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}) {
   const { force = false, userId = null } = opts;
-  const throttleCutoff = new Date(
-    Date.now() - THROTTLE_MINUTES * 60_000,
-  ).toISOString();
   const nowIso = new Date().toISOString();
 
   let q = supabaseAdmin
@@ -212,25 +227,36 @@ async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}
     .eq('is_active', true)
     .not('event_at', 'is', null)
     .gt('event_at', nowIso);
-  if (!force) {
-    q = q.or(`last_checked_at.is.null,last_checked_at.lt.${throttleCutoff}`);
-  }
   if (userId) {
     q = q.eq('user_id', userId);
   }
   const { data: events, error } = await q
     .order('event_at', { ascending: true })
-    .limit(force ? 100 : MAX_EVENTS_PER_RUN);
+    .limit(force ? 200 : MAX_EVENTS_PER_RUN * 4);
   if (error) throw new Error(error.message);
+
+  // Apply tiered throttle in JS so each event's interval scales with how
+  // close its `event_at` is. `force=1` (manual refresh) bypasses throttle.
+  const now = Date.now();
+  const candidates = ((events ?? []) as EventRow[]).filter((ev) => {
+    if (force) return true;
+    if (!ev.event_at) return false;
+    const hoursToEvent = Math.max(0, (new Date(ev.event_at).getTime() - now) / 3_600_000);
+    const intervalMin = refreshIntervalMinutes(hoursToEvent);
+    if (!ev.last_checked_at) return true;
+    const ageMin = (now - new Date(ev.last_checked_at).getTime()) / 60_000;
+    return ageMin >= intervalMin;
+  }).slice(0, MAX_EVENTS_PER_RUN);
 
   // Run sequentially to avoid hammering upstream weather sources.
   const results: Awaited<ReturnType<typeof refreshOne>>[] = [];
-  for (const ev of (events ?? []) as EventRow[]) {
+  for (const ev of candidates) {
     results.push(await refreshOne(ev));
   }
 
   return {
-    scanned: events?.length ?? 0,
+    scanned: candidates.length,
+    eligible: events?.length ?? 0,
     refreshed: results.filter((r) => r.ok).length,
     failed: results.filter((r) => !r.ok),
     tags: results.filter((r) => r.ok).map((r) => r.tag),
