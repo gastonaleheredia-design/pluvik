@@ -10,6 +10,7 @@ interface MapboxFeature {
   place_name: string;
   center: [number, number];
   text: string;
+  place_type?: string[];
 }
 
 interface SavedPlace {
@@ -27,7 +28,7 @@ interface AddressPickerProps {
 
 export function AddressPicker({ onClose }: AddressPickerProps) {
   const { t } = useTranslation();
-  const { setAddress, resumeFollowing } = useAddress();
+  const { address: currentAddress, setAddress, resumeFollowing } = useAddress();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MapboxFeature[]>([]);
@@ -55,7 +56,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim() || query.length < 3) {
+    if (!query.trim() || query.length < 2) {
       setResults([]);
       return;
     }
@@ -63,8 +64,19 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
       setSearching(true);
       try {
         const encoded = encodeURIComponent(query);
+        const params = new URLSearchParams({
+          access_token: MAPBOX_TOKEN,
+          country: 'US',
+          limit: '6',
+          // POI first so business / venue names rank above street addresses.
+          types: 'poi,address,place,locality,neighborhood,postcode',
+          autocomplete: 'true',
+        });
+        if (currentAddress.lat != null && currentAddress.lon != null) {
+          params.set('proximity', `${currentAddress.lon},${currentAddress.lat}`);
+        }
         const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&country=US&limit=5&types=address,place,postcode,poi`
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?${params.toString()}`
         );
         if (res.ok) {
           const data = await res.json();
@@ -78,7 +90,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, currentAddress.lat, currentAddress.lon]);
 
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -341,7 +353,9 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                   textAlign: 'left',
                 }}
               >
-                <span style={{ color: '#9ca3af', fontSize: '0.8rem', flexShrink: 0 }}>📍</span>
+                <span style={{ color: '#9ca3af', fontSize: '0.8rem', flexShrink: 0 }}>
+                  {feature.place_type?.[0] === 'poi' ? '🏛️' : '📍'}
+                </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -352,9 +366,26 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
                     }}
                   >
-                    {feature.text}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{feature.text}</span>
+                    {feature.place_type?.[0] && (
+                      <span style={{
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontSize: '0.48rem',
+                        letterSpacing: '0.14em',
+                        color: feature.place_type[0] === 'poi' ? '#c2410c' : '#9ca3af',
+                        border: `1px solid ${feature.place_type[0] === 'poi' ? '#c2410c55' : '#9ca3af44'}`,
+                        borderRadius: 100,
+                        padding: '1px 6px',
+                        flexShrink: 0,
+                      }}>
+                        {feature.place_type[0] === 'poi' ? 'PLACE' : feature.place_type[0].toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <div
                     style={{
