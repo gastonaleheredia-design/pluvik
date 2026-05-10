@@ -220,6 +220,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_checked_at: string | null
+          last_significant_change_at: string | null
           lat: number | null
           lon: number | null
           question: string
@@ -227,6 +228,7 @@ export type Database = {
           resolved_lat: number | null
           resolved_lon: number | null
           user_id: string
+          user_seen_change_at: string | null
         }
         Insert: {
           address: string
@@ -245,6 +247,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
           question: string
@@ -252,6 +255,7 @@ export type Database = {
           resolved_lat?: number | null
           resolved_lon?: number | null
           user_id: string
+          user_seen_change_at?: string | null
         }
         Update: {
           address?: string
@@ -270,6 +274,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
           question?: string
@@ -277,6 +282,7 @@ export type Database = {
           resolved_lat?: number | null
           resolved_lon?: number | null
           user_id?: string
+          user_seen_change_at?: string | null
         }
         Relationships: [
           {
