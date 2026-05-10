@@ -240,3 +240,147 @@ export async function fetchClimateNormalForMonth(
   if (!normal) return null;
   return { station, normal };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Daily 1991–2020 normals — exact-day climatology                            */
+/* -------------------------------------------------------------------------- */
+
+export interface DailyNormal {
+  month: number;
+  day: number;
+  /** Average daily max temperature for this calendar day (°F). */
+  maxTempF: number | null;
+  /** Average daily min temperature (°F). */
+  minTempF: number | null;
+  /** Average daily mean temperature (°F). */
+  meanTempF: number | null;
+  /** Percent of years that recorded ≥ 0.01" of precip on this day (0–100). */
+  precipPctMeasurable: number | null;
+  /** Median precip amount on this day (inches). */
+  precipMedianIn: number | null;
+  /** 75th-percentile precip amount on this day (inches) — "wet day" amount. */
+  precipP75In: number | null;
+}
+
+export interface DailyClimate {
+  stationId: string;
+  stationName: string;
+  stationLat: number;
+  stationLon: number;
+  distanceMiles: number;
+  daily: DailyNormal;
+  fetchedAt: string;
+}
+
+const DAILY_CACHE = new Map<string, { value: DailyClimate | null; expires: number }>();
+const DAILY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
+
+/**
+ * Pull NOAA 1991–2020 daily normals for a specific calendar day at the
+ * nearest station with usable data. Returns null when nothing is reachable.
+ */
+export async function fetchDailyClimateNormal(
+  lat: number,
+  lon: number,
+  month: number,
+  day: number,
+): Promise<DailyClimate | null> {
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${pad(month)}-${pad(day)}`;
+  const hit = DAILY_CACHE.get(key);
+  if (hit && hit.expires > Date.now()) return hit.value;
+
+  const bbox = [
+    lat - SEARCH_RADIUS_DEG,
+    lon - SEARCH_RADIUS_DEG,
+    lat + SEARCH_RADIUS_DEG,
+    lon + SEARCH_RADIUS_DEG,
+  ].join(',');
+
+  // Use a fixed leap-friendly year (2010) — daily normals are keyed by MM-DD.
+  const dateStr = `2010-${pad(month)}-${pad(day)}`;
+  const url = new URL('https://www.ncei.noaa.gov/access/services/data/v1');
+  url.searchParams.set('dataset', 'normals-daily-1991-2020');
+  url.searchParams.set('startDate', dateStr);
+  url.searchParams.set('endDate', dateStr);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('includeStationName', 'true');
+  url.searchParams.set('includeStationLocation', '1');
+  url.searchParams.set('units', 'standard');
+  url.searchParams.set('boundingBox', bbox);
+  url.searchParams.set(
+    'dataTypes',
+    [
+      'DLY-TMAX-NORMAL', 'DLY-TMIN-NORMAL', 'DLY-TAVG-NORMAL',
+      'DLY-PRCP-PCTALL-GE001HI', 'DLY-PRCP-50PCTL', 'DLY-PRCP-75PCTL',
+    ].join(','),
+  );
+
+  let rows: Record<string, string>[] = [];
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 12_000);
+    const res = await fetch(url.toString(), {
+      signal: ctl.signal,
+      headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
+    }).finally(() => clearTimeout(t));
+    if (!res.ok) {
+      console.warn('[dailyClimateNormal] NCEI returned', res.status);
+      DAILY_CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+      return null;
+    }
+    rows = (await res.json()) as Record<string, string>[];
+  } catch (err) {
+    console.warn('[dailyClimateNormal] fetch failed:', (err as Error).message);
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+    return null;
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + DAILY_CACHE_TTL_MS });
+    return null;
+  }
+
+  type Cand = {
+    id: string; name: string; slat: number; slon: number; dist: number;
+    row: Record<string, string>;
+  };
+  const candidates: Cand[] = [];
+  for (const r of rows) {
+    const slat = Number(r.LATITUDE);
+    const slon = Number(r.LONGITUDE);
+    if (!Number.isFinite(slat) || !Number.isFinite(slon)) continue;
+    if (num(r['DLY-TMAX-NORMAL']) == null && num(r['DLY-PRCP-PCTALL-GE001HI']) == null) continue;
+    candidates.push({
+      id: r.STATION ?? '', name: r.NAME ?? r.STATION ?? '',
+      slat, slon, dist: distanceMiles(lat, lon, slat, slon), row: r,
+    });
+  }
+  candidates.sort((a, b) => a.dist - b.dist);
+  const best = candidates[0];
+  if (!best) {
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + DAILY_CACHE_TTL_MS });
+    return null;
+  }
+  const r = best.row;
+  const value: DailyClimate = {
+    stationId: best.id,
+    stationName: best.name,
+    stationLat: best.slat,
+    stationLon: best.slon,
+    distanceMiles: Math.round(best.dist * 10) / 10,
+    daily: {
+      month, day,
+      maxTempF: num(r['DLY-TMAX-NORMAL']),
+      minTempF: num(r['DLY-TMIN-NORMAL']),
+      meanTempF: num(r['DLY-TAVG-NORMAL']),
+      precipPctMeasurable: num(r['DLY-PRCP-PCTALL-GE001HI']),
+      precipMedianIn: num(r['DLY-PRCP-50PCTL']),
+      precipP75In: num(r['DLY-PRCP-75PCTL']),
+    },
+    fetchedAt: new Date().toISOString(),
+  };
+  DAILY_CACHE.set(key, { value, expires: Date.now() + DAILY_CACHE_TTL_MS });
+  return value;
+}
