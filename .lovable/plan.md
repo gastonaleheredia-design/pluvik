@@ -1,76 +1,49 @@
-## Why "Refresh all" looks broken
+## What's wrong
 
-Two real bugs combine to produce what you saw (card = NO 85%, detail = YES):
+The dashboard already has a stage-badge system (`TOO FAR OUT · TRACKING`, `LONG-RANGE TREND`, `EARLY SIGNAL`, `LIVE`, `FORECAST`, `WINDING DOWN`). But the Monday card in your screenshot has no pill at all, even though the database shows it's at `short_range` stage. Two real problems:
 
-**Bug 1 — Dashboard ignores the freshest field.** The detail page renders the headline from `current_verdict_word` (the literal "YES / NO / MAYBE" the model wrote). The dashboard ignores that column entirely and re-derives the word from `current_verdict` (the GO / WAIT / NO-GO plan label) via a hard-coded map (`NO-GO → "NO"`). So even after a refresh writes a fresh `current_verdict_word = "YES"`, the card still shows "NO" because it never looks at that field. The two pages are reading different columns for the same headline.
+1. **The `short_range` label ("FORECAST") is too generic and not "tracking-flavored"** — it doesn't tell the user *where in the tracking lifecycle* this question lives. So even when it renders it doesn't feel like a sibling of `EARLY SIGNAL` / `TOO FAR OUT`.
+2. **Some cards still slip through with no pill** — when `current_forecast_stage` is `null` and we can't derive it from `event_at` (no date, or row predates the stage system), the chain returns `null` and the pill is hidden. Result: the card you circled has nothing where the badge should be.
 
-**Bug 2 — "Updated just now" lies on partial failures.** `refresh-events` always bumps `last_checked_at = now()`, even when `askWeather` comes back UNKNOWN/unusable. In that branch it deliberately *does not* overwrite the verdict fields. Result: the card timestamp resets to "just now" while the verdict stays stale. The button shows the green "Refreshed ✓" because the HTTP call succeeded — but nothing actually changed.
+## What we'll change (UI only)
 
-There is also a secondary issue: the refresh runs all events sequentially server-side. With 5 events × ~5–15 s each, the Worker can hit its response budget; the client sees a clean response for the first events processed and stale data for the rest.
+**Single file: `src/routes/dashboard.tsx`** (matching pill copy on `src/routes/event.$id.tsx` so detail and card stay in sync).
 
-## Plan
+### 1. Rename the stage labels so they form a clear tracking ladder
 
-### 1. Single source of truth for the headline (fixes bug 1)
+Keep the same five stages, just give them names that read like a timeline a user is moving down:
 
-- Extend `TrackedEvent` in `src/routes/dashboard.tsx` to include `current_verdict_word`, `current_verdict_sentence`, and `current_percentage` (already there).
-- Replace the `VERDICT_WORD[event.current_verdict]` map with the same logic the detail page uses:
-  ```
-  const word = isRainQ
-    ? pickHeadlineWord({ question, percentage, fallbackWord: current_verdict_word ?? current_verdict })
-    : (current_verdict_word ?? VERDICT_WORD[current_verdict] ?? '—');
-  ```
-- Use `current_verdict_sentence` (when present) for any subhead text, matching the detail page.
-- Keep the GO/WAIT/NO-GO plan label in the small `pctLine` row only — that's the "plan" tag, not the headline answer.
+| Stage              | Old badge               | New badge              |
+|--------------------|-------------------------|------------------------|
+| `climate`          | TOO FAR OUT · TRACKING  | TOO FAR OUT · TRACKING *(unchanged)* |
+| `outlook`          | LONG-RANGE TREND        | LONG-RANGE TREND *(unchanged)* |
+| `model_trend`      | EARLY SIGNAL            | EARLY SIGNAL *(unchanged)* |
+| `short_range`      | FORECAST                | **COMING UP**          |
+| `live`             | LIVE                    | **HAPPENING NOW**      |
+| past-due, active   | WINDING DOWN            | WINDING DOWN *(unchanged)* |
+| archived           | Tracking ended          | Tracking ended *(unchanged)* |
+| archived + benign  | All clear               | All clear *(unchanged)* |
 
-After this change, dashboard and detail can never disagree because both render from the same persisted columns.
+This gives a readable order on the Tracking screen: TOO FAR OUT → LONG-RANGE TREND → EARLY SIGNAL → COMING UP → HAPPENING NOW → WINDING DOWN → TRACKING ENDED.
 
-### 2. Don't lie about freshness (fixes bug 2)
+### 2. Guarantee every card has a badge
 
-In `src/routes/api/public/refresh-events.tsx`:
-- Add a new column `last_refresh_attempt_at timestamptz` via migration.
-- On every attempt, write `last_refresh_attempt_at = now()`.
-- Only write `last_checked_at = now()` when `isUsable === true` (i.e. we actually have a fresh verdict).
-- Return a per-event result array: `[{ id, ok, tag, error }]`.
+Today the pill block is wrapped in `(allClear || isArchived || stageBadge)`. If `stageBadge` is `null` (no stage, no event date) the whole pill disappears. We will:
 
-In `dashboard.tsx`:
-- After `await fetch(...)`, parse the JSON and count `ok` vs failed.
-- The button label becomes:
-  - all ok → "Refreshed ✓"
-  - some failed → "Refreshed N of M" (orange)
-  - all failed → "Couldn't refresh — try again" (red, no green check)
-- The card's "Updated …" line keeps reading `last_checked_at`, so it now only resets when the verdict actually changed.
+- Add a final fallback: if no stage can be resolved and the row isn't archived/past-due, show **`TRACKING`** as a neutral pill (same muted style we use for `TOO FAR OUT`).
+- Drop the conditional wrapper so the pill div is always rendered for any non-archived, non-allClear card.
 
-### 3. Make the refresh fit the Worker budget
+### 3. Color tier matches "how soon"
 
-In `runRefresh` (`refresh-events.tsx`):
-- Replace the sequential `for` loop with a small concurrency pool (3 in parallel) using a tiny inline `pLimit`-style helper. No new dependency.
-- Keep the `MAX_EVENTS_PER_RUN` cap. With 5 events at concurrency 3, total latency drops from ~5×N to ~2×N.
+Two visual tiers (we already use both — just apply consistently):
 
-### 4. Realtime safety net (cheap, optional but recommended)
+- **Muted/grey pill** (`INK + '0d'` bg, `MUTED` text): `TRACKING`, `TOO FAR OUT · TRACKING`, `LONG-RANGE TREND` — the "still far away, just watching" tier.
+- **Accent pill** (`ACCENT + '14'` bg, `ACCENT` text): `EARLY SIGNAL`, `COMING UP`, `HAPPENING NOW`, `WINDING DOWN` — the "this is real / imminent" tier.
 
-In `dashboard.tsx`, subscribe once per mount:
-```
-supabase.channel('tracked_events_user')
-  .on('postgres_changes', {
-    event: 'UPDATE', schema: 'public', table: 'tracked_events',
-    filter: `user_id=eq.${user.id}`,
-  }, (payload) => setEvents(prev => prev.map(e => e.id === payload.new.id ? { ...e, ...payload.new } : e)))
-  .subscribe();
-```
-This guarantees the card snaps to the new verdict the moment the server writes it, even if a future race re-introduces a refetch ordering bug. Requires `ALTER PUBLICATION supabase_realtime ADD TABLE tracked_events;` in the migration.
+Archived stays grey, "All clear" stays green.
 
-### 5. Out of scope
+## Out of scope
 
-- Reworking `askWeather` itself, the MAYBE explanation, or the AFD pipeline.
-- Removing the button — keeping it; once 1+2 land, it will tell the truth.
-- Changing the cron-driven background refresh schedule.
-
-## Files touched
-
-- `src/routes/dashboard.tsx` — interface, headline logic, refresh button states, realtime subscription.
-- `src/routes/api/public/refresh-events.tsx` — separate `last_refresh_attempt_at`, only bump `last_checked_at` on usable answers, parallelize with a 3-wide pool, return per-event results.
-- New migration — add `tracked_events.last_refresh_attempt_at`, add `tracked_events` to `supabase_realtime` publication.
-
-## Acceptance check
-
-After this lands: open the same "Will it rain Monday at 6:30 PM?" event, hit Refresh all, and the card headline must match what the detail page shows — both reading from the same `current_verdict_word`. If the underlying refresh fails, the button says so and "Updated …" does not reset.
+- No DB / migration changes (stages already persist in `current_forecast_stage`).
+- No changes to the AI / answer pipeline or to how stages are classified.
+- No new cards, animations, or layout shifts — only the badge text + the always-render fallback.

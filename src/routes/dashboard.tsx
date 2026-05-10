@@ -545,9 +545,15 @@ function DashboardPage() {
             : stage === 'climate' ? 'TOO FAR OUT · TRACKING'
             : stage === 'outlook' ? 'LONG-RANGE TREND'
             : stage === 'model_trend' ? 'EARLY SIGNAL'
-            : stage === 'live' ? 'LIVE'
-            : stage === 'short_range' ? 'FORECAST'
-            : null;
+            : stage === 'live' ? 'HAPPENING NOW'
+            : stage === 'short_range' ? 'COMING UP'
+            : 'TRACKING';
+          // Visual tier: muted for "still far out, just watching",
+          // accent for "real / imminent".
+          const mutedBadge =
+            stageBadge === 'TRACKING' ||
+            stageBadge === 'TOO FAR OUT · TRACKING' ||
+            stageBadge === 'LONG-RANGE TREND';
           const isRainQ = isRainYesNoQuestion(event.question);
           // For rain yes/no questions, answer the question literally instead
           // of mashing the plan verdict ("NO") into the headline next to a
@@ -643,25 +649,31 @@ function DashboardPage() {
                   ×
                 </button>
 
-                {/* Lifecycle pill */}
-                {(allClear || isArchived || stageBadge) && (
-                  <div
-                    style={{
-                      display: 'inline-block',
-                      alignSelf: 'flex-start',
-                      fontSize: '0.62rem',
-                      letterSpacing: '0.1em',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      color: allClear ? '#15803d' : isClimate ? MUTED : ACCENT,
-                      backgroundColor: allClear ? '#15803d14' : isClimate ? INK + '0d' : ACCENT + '14',
-                      padding: '3px 10px',
-                      borderRadius: '100px',
-                    }}
-                  >
-                    {allClear ? 'All clear' : isArchived ? 'Tracking ended' : stageBadge}
-                  </div>
-                )}
+                {/* Lifecycle pill — always present so every card has a label */}
+                <div
+                  style={{
+                    display: 'inline-block',
+                    alignSelf: 'flex-start',
+                    fontSize: '0.62rem',
+                    letterSpacing: '0.1em',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    color: allClear
+                      ? '#15803d'
+                      : isArchived || mutedBadge
+                      ? MUTED
+                      : ACCENT,
+                    backgroundColor: allClear
+                      ? '#15803d14'
+                      : isArchived || mutedBadge
+                      ? INK + '0d'
+                      : ACCENT + '14',
+                    padding: '3px 10px',
+                    borderRadius: '100px',
+                  }}
+                >
+                  {allClear ? 'All clear' : isArchived ? 'Tracking ended' : stageBadge}
+                </div>
 
                 {/* Event name */}
                 <div
