@@ -1,65 +1,64 @@
-## What I found
+## Mission recap
 
-The issue is not Houston-specific. The app has three general problems in the end-to-end flow:
+The home screen shows the weather word for the city you actually selected (e.g. "Houston, TX → RAIN SOON / 83°"). When you tap RADAR, the live map must center on that same city — not on whatever address last fetched a warning, and never on a storm cell elsewhere. Pulling the radar drawer to full height must show an edge-to-edge map, not a sliver at the bottom.
 
-1. **The warning can remain stale on screen**
-   - The current live API check for Houston returns **no active warning**.
-   - The radar warning API check for the Louisiana point also returned **no active warning** after expiry.
-   - But the UI can keep showing an old briefing/warning while a new location or expired warning is being refreshed, because `briefing` is not cleared when a new location request starts and some refresh paths still apply results without the same request-coordinate guard.
+## What I found in the end-to-end review
 
-2. **The home page does too much before showing the first answer**
-   - The home briefing currently waits for extra radar probes and alert checks before rendering the main word/sentence.
-   - Those probes use large model grid calls and can slow first paint. The visible result can feel like the first page is stuck even when the basic city forecast is fast.
+Confirmed from a live network capture:
+- The home label said "Houston, TX" (29.76, -95.37).
+- The radar's NWS alerts request fired for `point=31.6729,-93.0446` — that is Natchitoches, LA. So the radar component received different coordinates than the home headline at the moment of opening.
 
-3. **Location detection can leave the user in a bad loop**
-   - There are two geolocation flows: auto-follow in `addressContext` and manual “Use my current location” in `AddressPicker`.
-   - When browser location is blocked or slow, the picker can show “Detecting…” for too long, and the page continues showing the old city/weather behind it.
-   - If detection fails, we should stop immediately, show a clear permission/timeout message, and not leave follow mode trying to update in the background.
+Reading the code path:
+
+1. `src/lib/addressContext.tsx` keeps a single `selectedAddress` in state + localStorage. When `following=true`, `watchPosition` calls `setAddressState({ meta: 'FOLLOWING', lat, lon, label })` and persists it. There is no guard that prevents an in-flight reverse-geocode from overwriting the address the user just manually picked: if you pick "Houston" while a `watchPosition` callback is mid-flight from a prior session, the FOLLOWING write can land after your pick and silently move `lat/lon` to the device's actual location while the label briefly remains "Houston". This explains the label/coord drift the network tab shows.
+
+2. `src/routes/index.tsx` passes `selectedAddress.lat/lon` straight into `<AlertSheet>`. There is no key on the sheet, so when `selectedAddress` changes mid-session the radar map effects (`useEffect([], …)` init, frame init) keep their first-mount captured `lat/lon` and only the secondary "react to me coord" effect calls `flyTo`. The first NWS warnings fetch (line 420 in `LiveRadarMap.tsx`) uses the props at mount time, so a stale mount fires the wrong `point=` request.
+
+3. `src/components/AlertSheet.tsx` fullscreen layout: at snap=1 the content area is `flex: 1, overflowY: 'hidden'`, and the radar wrapper is `flex: 1, minHeight: 0`. But the parent `Drawer.Content` only has `display: flex; flex-direction: column; maxHeight: 100dvh` with no explicit `height: 100dvh` at snap=1. Vaul sets the translate but not an inner height, so the children's `flex: 1` resolves against an intrinsic height that's only as tall as the half-snap content was — the map collapses to a sliver while the rest of the drawer is empty. This matches the screenshot (radar peeking at the bottom edge with the home page visible behind a dim overlay).
+
+4. `LiveRadarMap` re-issues `fetchActiveWarningPolygons` on a 120s timer using the `lat/lon` captured by the init `useEffect([], …)` closure, not the current props. So even after the second effect re-centers the map, the periodic warnings refresh keeps querying the original (possibly wrong) point.
 
 ## Plan
 
-1. **Make location detection deterministic**
-   - In `AddressPicker`, add a single cleanup-safe detection flow with a hard total timeout.
-   - Stop the “Detecting…” state on every success, error, timeout, fallback, and component close path.
-   - If permission is denied, turn off follow mode and show a clear message instead of continuing to auto-follow in the background.
-   - Prevent overlapping high-accuracy/fallback geolocation calls from racing each other.
+Single source of truth for "where am I", deterministic coord plumbing into the radar, and a fullscreen drawer that actually fills the viewport.
 
-2. **Clear stale weather immediately when the selected coordinates change**
-   - In `src/routes/index.tsx`, when a new address begins loading, clear the previous briefing/warning so an old banner cannot remain while the new city is loading.
-   - Apply the same request-coordinate stale guard to manual refresh, auto-retry, and expired-warning refresh, not only the first load.
-   - If a warning expires, clear it immediately in the UI while the refresh runs.
+### 1. `src/lib/addressContext.tsx` — stop FOLLOWING from overwriting a manual pick
 
-3. **Split fast home load from slower radar validation**
-   - Keep the first home briefing fast: current conditions, hourly forecast, minutely point precipitation, and point-in-polygon warning check.
-   - Run heavier radar/nearby-cell validation with short timeouts and do not block the first visible city answer on it.
-   - Only upgrade the headline to `STORMS` when either:
-     - the selected coordinates are inside a current warning polygon, or
-     - radar/minutely evidence near the selected coordinates confirms local storms.
-   - Do not let expired/stale alert data or a previous city’s radar result affect the current city.
+- Track a `manualPickAt: number | null` ref. `setAddress()` (called by AddressPicker / search results) sets it to `Date.now()` whenever `addr.meta !== 'FOLLOWING'`.
+- In the `watchPosition` `accept()` callback, ignore the fix if `manualPickAt` is within the last 60 s, or if `following === false` by the time the async reverse-geocode resolves.
+- Bundle `{ label, lat, lon }` into a single atomic write (already true) and add a `console.debug('[address] accepted fix', …)` so the network/console tells the same story.
 
-4. **Centralize the warning geometry rule**
-   - Move the alert point-in-polygon logic into one shared helper used by both home warning lookup and radar overlays.
-   - Handle Polygon and MultiPolygon consistently.
-   - Treat missing geometry as non-applicable for banners/overlays.
+### 2. `src/routes/index.tsx` — make the sheet honor coord changes
 
-5. **Add temporary end-to-end diagnostics for this weather flow**
-   - Log one compact diagnostic per home briefing: requested lat/lon, returned alert count, whether any alert polygon contained the point, final word, and reason.
-   - Log location detection outcomes: success, timeout, permission denied, unavailable.
-   - Keep logs concise so we can verify the exact failure path if the issue appears again.
+- Add a stable `key={`${selectedAddress.lat?.toFixed(4)}|${selectedAddress.lon?.toFixed(4)}`}` to `<AlertSheet>` so a city change forces a clean remount of the radar with the new coords (the existing stale-guard on `briefing` already handles the home headline).
+- Already-clear briefing on coord change stays as-is.
 
-6. **Validate end-to-end before calling it fixed**
-   - Test Houston coordinates: no warning banner, no Louisiana polygon, no `STORMS` unless local radar/minutely evidence supports it.
-   - Test a point inside any currently active warning polygon: banner appears, radar overlay appears, and `STORMS` is allowed.
-   - Test a point outside but near an active warning polygon: no banner and no overlay.
-   - Test blocked geolocation: detection stops and shows the permission error.
-   - Test slow/timeout geolocation path: detection stops and shows the timeout error.
+### 3. `src/components/LiveRadarMap.tsx` — coords from props on every fetch
 
-## Files to update
+- Remove the dependency on captured `lat/lon` in the init effect: hold `meLat/meLon` in a `coordsRef` updated via the existing prop-effect, and have the 120 s warnings refresher read `coordsRef.current` instead of the stale closure.
+- The `useMyLocation()` GPS button stays opt-in (no auto-trigger on mount), so opening the radar in Houston never silently jumps to the device location.
+- Keep the existing point-in-polygon filter; add a `console.debug('[radar] alerts point', { lat, lon, count })` so we can see at a glance that the request matches the displayed city.
 
-- `src/components/AddressPicker.tsx`
+### 4. `src/components/AlertSheet.tsx` — fullscreen really fills the screen
+
+- When `isFull`, set `Drawer.Content` to `height: 100dvh` (not just `maxHeight`) and the inner content wrapper to `height: '100%'`. Keep the `flex: 1; minHeight: 0` on the radar wrapper.
+- Pass `height="100%"` to `LiveRadarMap` at `isFull` (already done) but also drop the `marginBottom` and `borderRadius` to 0 (already done) and ensure the outer wrapper gets `height: '100%'` not the prop value when `isFullscreen`.
+- Trigger `map.resize()` from `LiveRadarMap` on `isFullscreen` change (already wired); add one more resize at `transitionend` of the drawer to cover vaul's snap animation tail.
+
+### 5. End-to-end smoke check (manual, after the edit)
+
+Open the preview, then verify each step in order:
+1. Pick "Houston, TX" from the address picker → home shows RAIN SOON / 83°.
+2. Tap RADAR → network tab shows `api.weather.gov/alerts/active?point=29.7604,-95.3698` (Houston), not Natchitoches.
+3. Drag the drawer to the top → the radar fills the screen edge-to-edge.
+4. Close, switch to a Louisiana city under an active warning → the warning banner returns and the radar centers there.
+5. Switch back to Houston → the banner clears and the radar centers on Houston again.
+
+## Files to edit
+
 - `src/lib/addressContext.tsx`
 - `src/routes/index.tsx`
-- `src/lib/homeBriefing.functions.ts`
-- `src/lib/metDataFetcher.ts`
 - `src/components/LiveRadarMap.tsx`
-- Add a small shared alert-geometry helper if needed, for example under `src/lib/alertGeometry.ts`
+- `src/components/AlertSheet.tsx`
+
+No business-logic or backend changes; this is all coord plumbing and drawer layout.

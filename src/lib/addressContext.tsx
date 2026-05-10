@@ -94,6 +94,11 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, []);
   const lastFixRef = useRef<{ lat: number; lon: number; t: number } | null>(null);
+  // Timestamp of the most recent manual address pick. While recent, the
+  // watchPosition `accept()` callback ignores incoming GPS fixes so that an
+  // in-flight reverse geocode can't silently overwrite a city the user just
+  // picked.
+  const manualPickAtRef = useRef<number | null>(null);
 
   const setAddress = (addr: SelectedAddress) => {
     setAddressState(addr);
@@ -104,6 +109,7 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     }
     // A user-picked address turns OFF auto-follow until they re-enable.
     if (addr.meta !== 'FOLLOWING') {
+      manualPickAtRef.current = Date.now();
       setFollowingState(false);
       try { localStorage.setItem(FOLLOW_KEY, 'false'); } catch { /* ignore */ }
     }
@@ -154,6 +160,10 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const accept = async (lat: number, lon: number) => {
+      // Honor a recent manual pick: ignore late GPS fixes for 60s after.
+      if (manualPickAtRef.current && Date.now() - manualPickAtRef.current < 60_000) {
+        return;
+      }
       const now = Date.now();
       const last = lastFixRef.current;
       if (last) {
@@ -174,6 +184,11 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
         }
       } catch { /* ignore */ }
       if (cancelled) return;
+      // Re-check after the async reverse geocode resolves: if the user
+      // turned off following or made a manual pick in the meantime, drop it.
+      if (manualPickAtRef.current && Date.now() - manualPickAtRef.current < 60_000) {
+        return;
+      }
       setFollowActive(true);
       setFollowError(null);
       const next: SelectedAddress = { label, meta: 'FOLLOWING', lat, lon };
@@ -182,6 +197,7 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
       const ts = Date.now();
       setLastFixTs(ts);
       try { localStorage.setItem(LAST_FIX_KEY, String(ts)); } catch { /* ignore */ }
+      console.debug('[address] accepted fix', { lat, lon, label });
     };
 
     const watchId = navigator.geolocation.watchPosition(
