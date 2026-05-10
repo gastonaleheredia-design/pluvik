@@ -15,6 +15,21 @@ import { transcribeVoice } from '../lib/transcribeVoice.functions';
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
 
+/** Convert a Blob to a raw (no data: prefix) base64 string. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      // result looks like "data:audio/webm;base64,XXXX"
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read audio'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const ACCENT = '#c2410c';
