@@ -18,7 +18,6 @@ import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
 import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchClimateNormals';
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
-import { buildPlainLanguageContext } from './plainLanguage';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 
 interface WeatherRequest {
@@ -369,10 +368,6 @@ export const askWeather = createServerFn({ method: 'POST' })
     // raw numbers or jargon (enforced by stagePrompt + this prompt block).
     const needsLongRange =
       stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
-    let plainLanguageBlock = '';
-    let plainLanguageOutro: string | null = null;
-    let plainLanguageNextCheckAt: string | null = null;
-    let cpcNarrativeFromContext: string | null = null;
     if (needsLongRange) {
       const eventDate = new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
@@ -492,7 +487,6 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
-      (plainLanguageBlock ? `${plainLanguageBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}`;
 
     const controller = new AbortController();
@@ -568,8 +562,8 @@ export const askWeather = createServerFn({ method: 'POST' })
       ...validated.data,
       mode,
       forecast_stage: stageInfo.stage,
-      stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
-      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
+      stage_outro: validated.data.stage_outro ?? undefined,
+      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? undefined,
       cpc_narrative:
         ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ?? null,
       event_at: new Date(
