@@ -121,7 +121,7 @@ function EventPage() {
     setBusy(true);
     await supabase
       .from('tracked_events')
-      .update({ is_active: false })
+      .update({ is_active: false, archived_at: new Date().toISOString() })
       .eq('id', event.id);
     navigate({ to: '/dashboard' });
   };
