@@ -176,6 +176,10 @@ export interface ExtendedWeatherAnswer {
   recommended_action?: string;
   plain_english_summary?: string;
   stage_outro?: string;
+  /** 2–3 sentence "meteorologist's read" of the daily normals. */
+  climate_interpretation?: string | null;
+  /** Single italic disclaimer line shown under the read. */
+  climate_framing?: string | null;
   /** ISO timestamp of when the user's plan happens (now + hoursAhead). */
   event_at?: string;
   /** Source families that fed this answer — used as snapshot dataSources. */
@@ -588,6 +592,8 @@ export const askWeather = createServerFn({ method: 'POST' })
         cpc_narrative: digest.cpcNarrative,
         stage_outro: digest.stageOutro,
         climate_facts: digest.facts,
+        climate_interpretation: digest.interpretation,
+        climate_framing: digest.framing,
         hazards: null,
         timeline: null,
         event_window: null,
