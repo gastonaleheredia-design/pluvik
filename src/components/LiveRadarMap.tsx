@@ -856,3 +856,70 @@ const miniCardCta: React.CSSProperties = {
   fontSize: "0.58rem", letterSpacing: "0.14em",
   fontWeight: 700, cursor: "pointer",
 };
+
+function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3958.8; // miles
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+const gpsErrorStyle: React.CSSProperties = {
+  position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(185,28,28,0.92)", color: "#faf7f0",
+  padding: "5px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em", fontWeight: 700,
+  zIndex: 6,
+};
+
+const toolHintStyle: React.CSSProperties = {
+  position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(11,16,24,0.85)", color: "#facc15",
+  padding: "5px 14px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,204,21,0.4)",
+  zIndex: 6, pointerEvents: "none",
+};
+
+const pinCardWrap: React.CSSProperties = {
+  position: "absolute", top: 90, left: 12, right: 50,
+  backgroundColor: "#faf7f0",
+  borderRadius: 10,
+  border: "1px solid #0b1018",
+  padding: "10px 12px",
+  display: "flex", flexDirection: "column", gap: 6,
+  boxShadow: "0 6px 20px rgba(11,16,24,0.25)",
+  zIndex: 5,
+};
+
+const pinLabelStyle: React.CSSProperties = {
+  fontFamily: "Fraunces, serif",
+  fontSize: "0.92rem", color: "#0b1018", lineHeight: 1.3,
+};
+
+const rulerBadgeStyle: React.CSSProperties = {
+  position: "absolute", top: 90, left: "50%", transform: "translateX(-50%)",
+  display: "flex", alignItems: "center", gap: 8,
+  backgroundColor: "rgba(250,204,21,0.95)", color: "#0b1018",
+  padding: "6px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.65rem", letterSpacing: "0.12em", fontWeight: 700,
+  zIndex: 6,
+};
+
+const rulerClearBtn: React.CSSProperties = {
+  width: 18, height: 18, borderRadius: "50%",
+  border: "none", backgroundColor: "#0b1018", color: "#facc15",
+  fontSize: 12, lineHeight: 1, cursor: "pointer", padding: 0,
+};
+
+const scrubStyle: React.CSSProperties = {
+  width: "100%",
+  accentColor: "#ef4444",
+  pointerEvents: "auto",
+  cursor: "pointer",
+};
