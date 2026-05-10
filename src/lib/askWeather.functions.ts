@@ -16,7 +16,8 @@ import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
 import { fetchClimateNormals } from './fetchers/fetchClimateNormals';
-import { fetchCpcOutlooks } from './fetchers/fetchCpcOutlooks';
+import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
+import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildPlainLanguageContext } from './plainLanguage';
 
 interface WeatherRequest {
@@ -55,6 +56,8 @@ export interface ExtendedWeatherAnswer {
   meteorologist_take?: string | null;
   /** Friendly date phrase telling the user when we'll start watching. */
   next_check_at?: string | null;
+  /** Paraphrased CPC discussion (long-range outlook narrative). */
+  cpc_narrative?: string | null;
   /** Multi-hazard breakdown. */
   hazards?: Record<string, { active: boolean; severity?: 'low' | 'med' | 'high'; note?: string | null }> | null;
   /** Hour-by-hour mini timeline around the event window. */
@@ -368,20 +371,37 @@ export const askWeather = createServerFn({ method: 'POST' })
     let plainLanguageBlock = '';
     let plainLanguageOutro: string | null = null;
     let plainLanguageNextCheckAt: string | null = null;
+    let cpcNarrativeFromContext: string | null = null;
     if (needsLongRange) {
       const eventDate = new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       );
       const eventMonth = eventDate.getUTCMonth() + 1;
-      const [normals, outlooks] = await Promise.all([
+      // Fetch CPC outlooks at BOTH climate and outlook stages — at climate
+      // stage the seasonal horizon is the right tool. Pick the horizon that
+      // matches the user's lead time so the LLM only sees the relevant one.
+      const leadHours = typeof hoursAhead === 'number' ? hoursAhead : 24;
+      const targetHorizon = selectHorizonForLead(leadHours);
+      const [normals, outlooksAll, discussion] = await Promise.all([
         fetchClimateNormals(lat, lon),
-        stageInfo.stage === 'outlook' ? fetchCpcOutlooks(lat, lon) : Promise.resolve(null),
+        fetchCpcOutlooks(lat, lon),
+        fetchCpcDiscussion(targetHorizon, lat, lon),
       ]);
+      // Narrow CPC outlooks to the matching horizon.
+      const outlooks: CpcOutlooks | null = outlooksAll
+        ? {
+            ...outlooksAll,
+            horizons: outlooksAll.horizons.filter((h) => h.horizon === targetHorizon),
+          }
+        : null;
+      const usableOutlooks: CpcOutlooks | null =
+        outlooks && outlooks.horizons.length > 0 ? outlooks : null;
       const ctx = buildPlainLanguageContext({
         stage: stageInfo.stage,
         eventMonth,
         normals,
-        outlooks,
+        outlooks: usableOutlooks,
+        discussion,
         eventAtIso: new Date(
           Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
         ).toISOString(),
@@ -389,11 +409,14 @@ export const askWeather = createServerFn({ method: 'POST' })
       plainLanguageBlock = ctx.promptBlock;
       plainLanguageOutro = ctx.stageOutro;
       plainLanguageNextCheckAt = ctx.nextCheckAt;
+      cpcNarrativeFromContext = ctx.cpcDiscussionParagraph;
       console.log('[askWeather:diag] plain-language context', {
         stage: stageInfo.stage,
+        targetHorizon,
         sentenceCount: ctx.sentences.length,
         hasNormals: !!normals,
-        hasOutlooks: !!outlooks,
+        hasOutlooks: !!usableOutlooks,
+        hasDiscussion: !!discussion,
         nextCheckAt: ctx.nextCheckAt,
       });
     }
@@ -496,6 +519,13 @@ export const askWeather = createServerFn({ method: 'POST' })
       forecast_stage: stageInfo.stage,
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
       next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
+      cpc_narrative:
+        ((validated.data as Record<string, unknown>).cpc_narrative as string | null | undefined) ??
+        // Fall back to a trimmed first sentence of the raw paragraph if the
+        // model omitted the field — better than rendering nothing.
+        (cpcNarrativeFromContext
+          ? cpcNarrativeFromContext.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ')
+          : null),
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),
