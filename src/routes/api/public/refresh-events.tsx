@@ -105,6 +105,11 @@ async function refreshOne(
     climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
     climate_interpretation?: string | null;
     climate_framing?: string | null;
+    maybe_explanation?: {
+      afd_quote: string;
+      model_reconciliation: string;
+      why_uncertain: string;
+    } | null;
   };
 
   // Treat the answer as usable only if it has at least a verdict or summary
@@ -136,6 +141,7 @@ async function refreshOne(
         current_climate_facts: (a.climate_facts ?? null) as never,
         current_climate_interpretation: a.climate_interpretation ?? null,
         current_climate_framing: a.climate_framing ?? null,
+        current_maybe_explanation: (a.maybe_explanation ?? null) as never,
       }
     : {};
   const { error: updErr } = await supabaseAdmin
