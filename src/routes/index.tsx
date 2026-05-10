@@ -956,6 +956,7 @@ function HomePage() {
       )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
         <AlertSheet
+          key={`${selectedAddress.lat.toFixed(4)}|${selectedAddress.lon.toFixed(4)}`}
           lat={selectedAddress.lat}
           lon={selectedAddress.lon}
           alert={sheetMode === 'alert' && warning ? {
