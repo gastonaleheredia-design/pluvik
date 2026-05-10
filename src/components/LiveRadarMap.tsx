@@ -1,12 +1,15 @@
 /**
- * Contextual MRMS radar map with frame looping, NWS warning polygons,
- * and a small toolbar (play/pause, zoom, recenter, layer toggles, basemap).
+ * Contextual MRMS radar map with NWS Reflectivity palette, looping frames,
+ * NWS warning polygons (clickable → /alert/$id), a you-are-here marker,
+ * a frame clock + progress bar, a dBZ legend, and a small toolbar.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN } from "@/config/keys";
+import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -52,8 +55,9 @@ async function fetchFrames(): Promise<PreparedFrames | null> {
   }
 }
 
+// Palette 2 = NWS Reflectivity (classic green→yellow→orange→red→magenta).
 function tileUrlFor(host: string, frame: RVFrame) {
-  return `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`;
+  return `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
 }
 
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
@@ -68,12 +72,37 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       (f: any) => /Warning$/.test(f?.properties?.event ?? "") && f?.geometry,
     );
     if (!features.length) return null;
+
+    // Cache full alert details so /alert/$id can hydrate instantly.
+    for (const f of features) {
+      const p = f.properties ?? {};
+      const cached: CachedAlert = {
+        id: p.id ?? f.id ?? "",
+        event: p.event ?? "Weather Warning",
+        headline: p.headline ?? "",
+        description: p.description ?? "",
+        instruction: p.instruction ?? "",
+        severity: (p.severity ?? "unknown").toLowerCase(),
+        certainty: (p.certainty ?? "unknown").toLowerCase(),
+        urgency: (p.urgency ?? "unknown").toLowerCase(),
+        areaDesc: p.areaDesc ?? "",
+        expires: p.expires ?? null,
+        effective: p.effective ?? null,
+        senderName: p.senderName ?? "NWS",
+      };
+      if (cached.id) cacheAlert(cached);
+    }
+
     return {
       type: "FeatureCollection" as const,
       features: features.map((f: any) => ({
         type: "Feature" as const,
         geometry: f.geometry,
-        properties: { event: f.properties.event },
+        properties: {
+          id: f.properties?.id ?? f.id ?? "",
+          event: f.properties?.event ?? "Warning",
+          expires: f.properties?.expires ?? null,
+        },
       })),
     };
   } catch {
@@ -86,7 +115,14 @@ const STYLES = {
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
 };
 
+interface MiniCardData {
+  id: string;
+  event: string;
+  expires: string | null;
+}
+
 export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
@@ -97,10 +133,13 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [playing, setPlaying] = useState(true);
-  const [frameLabel, setFrameLabel] = useState<string>("");
+  const [frameTime, setFrameTime] = useState<{ ts: number; isForecast: boolean } | null>(null);
+  const [frameProgress, setFrameProgress] = useState<number>(0); // 0..1
   const [showRadar, setShowRadar] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
   const [basemap, setBasemap] = useState<"streets" | "satellite">("streets");
+  const [legendOpen, setLegendOpen] = useState(true);
+  const [miniCard, setMiniCard] = useState<MiniCardData | null>(null);
 
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
@@ -125,13 +164,12 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
       });
     }
-    const t = new Date(frame.time * 1000);
-    const hh = t.getHours().toString().padStart(2, "0");
-    const mm = t.getMinutes().toString().padStart(2, "0");
-    const isForecast = framesRef.current
-      ? framesRef.current.frames.indexOf(frame) >= framesRef.current.nowcastStartIdx
-      : false;
-    setFrameLabel(`${hh}:${mm}${isForecast ? " · forecast" : ""}`);
+    const fr = framesRef.current;
+    const isForecast = fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false;
+    setFrameTime({ ts: frame.time * 1000, isForecast });
+    if (fr && fr.frames.length > 1) {
+      setFrameProgress(fr.frames.indexOf(frame) / (fr.frames.length - 1));
+    }
   }, [showRadar]);
 
   const advanceFrame = useCallback(() => {
@@ -145,6 +183,22 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
     if (tickRef.current) clearInterval(tickRef.current);
     tickRef.current = setInterval(advanceFrame, 700);
   }, [advanceFrame]);
+
+  const wireWarningInteractions = useCallback((map: mapboxgl.Map) => {
+    const onClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+      const f = e.features?.[0];
+      const props = (f?.properties ?? {}) as { id?: string; event?: string; expires?: string | null };
+      if (!props.id) return;
+      setMiniCard({
+        id: props.id,
+        event: props.event ?? "Warning",
+        expires: props.expires ?? null,
+      });
+    };
+    map.on("click", "nws-warnings-fill", onClick);
+    map.on("mouseenter", "nws-warnings-fill", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "nws-warnings-fill", () => { map.getCanvas().style.cursor = ""; });
+  }, []);
 
   const refreshWarnings = useCallback(async (map: mapboxgl.Map, la: number, lo: number) => {
     const fc = await fetchActiveWarningPolygons(la, lo);
@@ -171,7 +225,29 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
       layout: { visibility: showWarnings ? "visible" : "none" },
       paint: { "line-color": "#dc2626", "line-width": 3 },
     });
-  }, [showWarnings]);
+    wireWarningInteractions(map);
+  }, [showWarnings, wireWarningInteractions]);
+
+  // Build the you-are-here DOM element (pulsing blue dot with white ring).
+  const buildMarkerEl = useCallback(() => {
+    const wrap = document.createElement("div");
+    wrap.style.width = "18px";
+    wrap.style.height = "18px";
+    wrap.style.position = "relative";
+    wrap.innerHTML = `
+      <span style="
+        position:absolute; inset:0; border-radius:50%;
+        background:#2563eb; border:2px solid #ffffff;
+        box-shadow:0 0 0 1px rgba(11,16,24,0.4);
+      "></span>
+      <span style="
+        position:absolute; inset:-6px; border-radius:50%;
+        background:rgba(37,99,235,0.35);
+        animation: youhere-pulse 1.8s ease-out infinite;
+      "></span>
+    `;
+    return wrap;
+  }, []);
 
   // Re-add radar + warnings layers after a basemap style swap.
   const onStyleReload = useCallback(() => {
@@ -214,7 +290,7 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
       frameIdxRef.current = Math.max(0, fr.nowcastStartIdx - 1);
       setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
       void refreshWarnings(map, lat, lon);
-      markerRef.current = new mapboxgl.Marker({ color: "#c2410c" })
+      markerRef.current = new mapboxgl.Marker({ element: buildMarkerEl(), anchor: "center" })
         .setLngLat([lon, lat])
         .addTo(map);
       setStatus("ready");
@@ -288,6 +364,14 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
     map.flyTo({ center: [lon, lat], zoom: 7, essential: true });
   };
 
+  const frameLabel = (() => {
+    if (!frameTime) return "";
+    const t = new Date(frameTime.ts);
+    const hh = t.getHours().toString().padStart(2, "0");
+    const mm = t.getMinutes().toString().padStart(2, "0");
+    return `${hh}:${mm}`;
+  })();
+
   return (
     <div
       style={{
@@ -308,10 +392,10 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
         </div>
       )}
 
-      {/* Top-left: live + frame timestamp */}
+      {/* Top-left: live indicator only */}
       <div style={pillTopLeft}>
         <span style={liveDot} />
-        Live radar{frameLabel ? ` · ${frameLabel}` : ""}
+        Live radar
       </div>
 
       {/* Right toolbar */}
@@ -320,6 +404,27 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
         <ToolBtn label="◎" title="Recenter" onClick={recenter} />
+      </div>
+
+      {/* dBZ legend, bottom-right, collapsible */}
+      <div style={legendWrapStyle}>
+        <button
+          onClick={() => setLegendOpen((o) => !o)}
+          style={legendHeaderStyle}
+          aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
+        >
+          dBZ {legendOpen ? "▾" : "▸"}
+        </button>
+        {legendOpen && (
+          <div style={legendBodyStyle}>
+            {DBZ_STOPS.map((s) => (
+              <div key={s.label} style={legendRow}>
+                <span style={{ ...legendSwatch, backgroundColor: s.color }} />
+                <span style={legendLabel}>{s.dbz}+ · {s.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Bottom toggles */}
@@ -331,11 +436,62 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
         </Toggle>
       </div>
 
+      {/* Frame clock + progress strip, bottom-center */}
+      {frameTime && (
+        <div style={clockWrapStyle}>
+          <div style={clockRow}>
+            <span style={clockText}>
+              {frameLabel}
+              {frameTime.isForecast ? " · forecast" : " · now"}
+            </span>
+          </div>
+          <div style={progressTrack}>
+            <div
+              style={{
+                ...progressFill,
+                width: `${Math.round(frameProgress * 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mini info card for clicked polygon */}
+      {miniCard && (
+        <div style={miniCardWrap}>
+          <button
+            onClick={() => setMiniCard(null)}
+            style={miniCardClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+          <div style={miniCardEvent}>{miniCard.event.toUpperCase()}</div>
+          {miniCard.expires && (
+            <div style={miniCardExpires}>
+              UNTIL {new Date(miniCard.expires).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/alert/$id", params: { id: miniCard.id } })}
+            style={miniCardCta}
+          >
+            FULL DETAILS →
+          </button>
+        </div>
+      )}
+
       <style>
         {`@keyframes live-radar-pulse {
             0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
             70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
             100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        }
+        @keyframes youhere-pulse {
+          0% { transform: scale(0.8); opacity: 0.7; }
+          80% { transform: scale(2.2); opacity: 0; }
+          100% { transform: scale(2.2); opacity: 0; }
         }`}
       </style>
     </div>
@@ -380,6 +536,16 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
+// NWS Reflectivity color stops (approx, for legend display only).
+const DBZ_STOPS = [
+  { dbz: 5,  color: "#7cfc8d", label: "Light" },
+  { dbz: 20, color: "#15c40a", label: "Moderate" },
+  { dbz: 35, color: "#fef000", label: "Heavy" },
+  { dbz: 50, color: "#fd7e00", label: "Intense" },
+  { dbz: 60, color: "#fc0000", label: "Severe" },
+  { dbz: 70, color: "#fc00ff", label: "Hail" },
+];
+
 const overlayStyle: React.CSSProperties = {
   position: "absolute", inset: 0,
   display: "flex", alignItems: "center", justifyContent: "center",
@@ -407,6 +573,100 @@ const toolbarStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column", gap: 6,
 };
 const togglesStyle: React.CSSProperties = {
-  position: "absolute", bottom: 10, left: 10,
+  position: "absolute", bottom: 56, left: 10,
   display: "flex", gap: 6, flexWrap: "wrap",
+};
+
+const legendWrapStyle: React.CSSProperties = {
+  position: "absolute", bottom: 56, right: 10,
+  backgroundColor: "rgba(11,16,24,0.82)",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  overflow: "hidden",
+  maxWidth: 150,
+};
+const legendHeaderStyle: React.CSSProperties = {
+  width: "100%", padding: "5px 10px", border: "none",
+  background: "transparent", color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em",
+  fontWeight: 700, cursor: "pointer", textAlign: "left",
+};
+const legendBodyStyle: React.CSSProperties = {
+  padding: "4px 8px 8px",
+  display: "flex", flexDirection: "column", gap: 3,
+};
+const legendRow: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 6,
+};
+const legendSwatch: React.CSSProperties = {
+  width: 14, height: 10, borderRadius: 2,
+  border: "1px solid rgba(0,0,0,0.3)",
+};
+const legendLabel: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.55rem", letterSpacing: "0.06em",
+  color: "#faf7f0",
+};
+
+const clockWrapStyle: React.CSSProperties = {
+  position: "absolute", bottom: 10, left: 10, right: 10,
+  display: "flex", flexDirection: "column", gap: 4,
+  pointerEvents: "none",
+};
+const clockRow: React.CSSProperties = {
+  display: "flex", justifyContent: "center",
+};
+const clockText: React.CSSProperties = {
+  backgroundColor: "rgba(11,16,24,0.82)", color: "#faf7f0",
+  padding: "3px 10px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.12em", fontWeight: 700,
+};
+const progressTrack: React.CSSProperties = {
+  height: 3, borderRadius: 100,
+  backgroundColor: "rgba(255,255,255,0.18)",
+  overflow: "hidden",
+};
+const progressFill: React.CSSProperties = {
+  height: "100%", backgroundColor: "#ef4444",
+  transition: "width 0.3s ease",
+};
+
+const miniCardWrap: React.CSSProperties = {
+  position: "absolute", top: 50, left: 12, right: 50,
+  backgroundColor: "#faf7f0",
+  borderRadius: 10,
+  border: "1px solid #b91c1c",
+  padding: "10px 12px",
+  display: "flex", flexDirection: "column", gap: 6,
+  boxShadow: "0 6px 20px rgba(11,16,24,0.25)",
+  zIndex: 5,
+};
+const miniCardClose: React.CSSProperties = {
+  position: "absolute", top: 4, right: 6,
+  width: 22, height: 22,
+  border: "none", background: "transparent",
+  color: "#6b6357", fontSize: 18, lineHeight: 1,
+  cursor: "pointer", padding: 0,
+};
+const miniCardEvent: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.62rem", letterSpacing: "0.16em",
+  color: "#b91c1c", fontWeight: 700,
+  paddingRight: 22,
+};
+const miniCardExpires: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em",
+  color: "#6b6357",
+};
+const miniCardCta: React.CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "6px 12px", borderRadius: 100,
+  border: "1px solid #0b1018",
+  backgroundColor: "transparent", color: "#0b1018",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em",
+  fontWeight: 700, cursor: "pointer",
 };
