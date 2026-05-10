@@ -58,6 +58,8 @@ export interface ExtendedWeatherAnswer {
   next_check_at?: string | null;
   /** Paraphrased CPC discussion (long-range outlook narrative). */
   cpc_narrative?: string | null;
+  /** Structured climate facts for climate/outlook stages. */
+  climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
   /** Multi-hazard breakdown. */
   hazards?: Record<string, { active: boolean; severity?: 'low' | 'med' | 'high'; note?: string | null }> | null;
   /** Hour-by-hour mini timeline around the event window. */
@@ -453,6 +455,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         next_check_at: digest.nextCheckAt,
         cpc_narrative: digest.cpcNarrative,
         stage_outro: digest.stageOutro,
+        climate_facts: digest.facts,
         hazards: null,
         timeline: null,
         event_window: null,
