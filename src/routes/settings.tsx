@@ -9,6 +9,7 @@ import { AddressPicker } from '../components/AddressPicker';
 import { supabase } from '../lib/supabase';
 import { deleteAccount } from '../lib/account.functions';
 import { useNavigate } from '@tanstack/react-router';
+import { TwoFactorSection } from '../components/TwoFactorSection';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -70,6 +71,7 @@ function SettingsPage() {
   const [busy, setBusy] = useState<'email' | 'password' | 'delete' | null>(null);
 
   const isOAuthOnly = !user?.identities?.some((i) => i.provider === 'email');
+  const emailUnconfirmed = !!user && !user.email_confirmed_at && !!user.email;
 
   const handleChangeEmail = async () => {
     if (!newEmail) return;
@@ -79,9 +81,27 @@ function SettingsPage() {
     setBusy(null);
     if (error) setAccountMsg({ kind: 'err', text: error.message });
     else {
-      setAccountMsg({ kind: 'ok', text: t('auth.email_change_sent') });
+      setAccountMsg({ kind: 'ok', text: t('auth.email_change_sent_long') });
       setNewEmail('');
     }
+  };
+
+  const handleResendVerification = async () => {
+    if (!user?.email) return;
+    setAccountMsg(null);
+    const { error } = await supabase.auth.resend({ type: 'signup', email: user.email });
+    if (error) setAccountMsg({ kind: 'err', text: error.message });
+    else setAccountMsg({ kind: 'ok', text: t('auth.resend_verification_sent') });
+  };
+
+  const handleSendMyResetLink = async () => {
+    if (!user?.email) return;
+    setAccountMsg(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) setAccountMsg({ kind: 'err', text: error.message });
+    else setAccountMsg({ kind: 'ok', text: t('auth.reset_link_sent_to_me') });
   };
 
   const handleChangePassword = async () => {
@@ -249,6 +269,18 @@ function SettingsPage() {
           </p>
           <p className="text-sm text-ink mb-5">{user.email}</p>
 
+          {emailUnconfirmed && (
+            <div className="mb-5 p-3 rounded-xl border border-[rgba(194,65,12,0.3)] bg-[rgba(194,65,12,0.06)]">
+              <p className="text-xs text-ink mb-2">{t('auth.email_unverified_note')}</p>
+              <button
+                onClick={handleResendVerification}
+                className="text-xs font-medium text-[#c2410c] underline"
+              >
+                {t('auth.resend_verification')}
+              </button>
+            </div>
+          )}
+
           {/* Change email */}
           <div className="mb-5">
             <p className="text-xs text-neutral-gray mb-1">{t('auth.change_email')}</p>
@@ -288,6 +320,12 @@ function SettingsPage() {
               >
                 {busy === 'password' ? t('auth.loading') : t('auth.update_password')}
               </button>
+              <button
+                onClick={handleSendMyResetLink}
+                className="w-full mt-2 py-2 text-xs text-[#c2410c] underline"
+              >
+                {t('auth.send_my_reset_link')}
+              </button>
             </div>
           )}
 
@@ -296,6 +334,9 @@ function SettingsPage() {
               {accountMsg.text}
             </div>
           )}
+
+          {/* Two-factor authentication */}
+          <TwoFactorSection />
 
           <button
             onClick={() => signOut()}

@@ -19,6 +19,11 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [signupSent, setSignupSent] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
+  // MFA challenge state — set when sign-in returns aal2 required
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
 
   const friendlyError = (msg: string | undefined): string => {
     const m = (msg ?? '').toLowerCase();
@@ -63,8 +68,44 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       // Email confirmation is on — don't auto-close, show check-email state.
       setSignupSent(true);
     } else {
+      // Check if account requires a 2FA challenge
+      try {
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+          const { data: factors } = await supabase.auth.mfa.listFactors();
+          const totp = factors?.totp?.find((f) => f.status === 'verified');
+          if (totp) {
+            const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({ factorId: totp.id });
+            if (!chalErr && chal) {
+              setMfaFactorId(totp.id);
+              setMfaChallengeId(chal.id);
+              return;
+            }
+          }
+        }
+      } catch {
+        // fall through to success
+      }
       onSuccess();
     }
+  };
+
+  const handleMfaSubmit = async () => {
+    if (!mfaFactorId || !mfaChallengeId || mfaCode.length < 6) return;
+    setError('');
+    setLoading(true);
+    const { error } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: mfaChallengeId,
+      code: mfaCode,
+    });
+    setLoading(false);
+    if (error) {
+      setError(t('auth.mfa_invalid_code'));
+      setMfaCode('');
+      return;
+    }
+    onSuccess();
   };
 
   const isDisabled =
@@ -73,16 +114,32 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth(provider, {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
+    try {
+      const result = await lovable.auth.signInWithOAuth(provider, {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        setLoading(false);
+        // Surface real error so we can debug Apple
+        const msg = result.error.message ?? String(result.error);
+        // eslint-disable-next-line no-console
+        console.error(`[auth] ${provider} sign-in failed:`, result.error);
+        if (provider === 'apple') {
+          setError(`${t('auth.apple_failed')} (${msg})`);
+        } else {
+          setError(friendlyError(msg));
+        }
+        return;
+      }
+      if (result.redirected) return; // browser will navigate
+      onSuccess();
+    } catch (e) {
       setLoading(false);
-      setError(friendlyError(result.error.message ?? String(result.error)));
-      return;
+      const msg = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error(`[auth] ${provider} sign-in threw:`, e);
+      setError(provider === 'apple' ? `${t('auth.apple_failed')} (${msg})` : friendlyError(msg));
     }
-    if (result.redirected) return; // browser will navigate
-    onSuccess();
   };
 
   return (
@@ -147,30 +204,6 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         </div>
 
         {/* Tabs */}
-        {!signupSent && <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {(['signup', 'signin'] as const).map((tabKey) => (
-            <button
-              key={tabKey}
-              onClick={() => setTab(tabKey)}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '100px',
-                border: 'none',
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: 500,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                backgroundColor: tab === tabKey ? '#0b1018' : '#f0ebde',
-                color: tab === tabKey ? '#faf7f0' : '#6b7280',
-                transition: 'all 0.2s',
-              }}
-            >
-              {tabKey === 'signup' ? t('auth.signup') : t('auth.signin')}
-            </button>
-          ))}
-        </div>}
-
         {signupSent ? (
           <div style={{ padding: '8px 0 4px' }}>
             <div style={{ fontFamily: 'Fraunces, serif', fontSize: '1.1rem', fontWeight: 500, marginBottom: 8 }}>
@@ -188,6 +221,54 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
               }}
             >
               OK
+            </button>
+          </div>
+        ) : mfaChallengeId ? (
+          <div style={{ padding: '8px 0 4px' }}>
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '1.15rem', fontWeight: 500, marginBottom: 6 }}>
+              🔐 {t('auth.mfa_challenge_title')}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#4b5563', lineHeight: 1.45, marginBottom: 14 }}>
+              {t('auth.mfa_challenge_sub')}
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              autoFocus
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
+              placeholder={t('auth.mfa_code_placeholder')}
+              style={{
+                width: '100%', padding: '14px 16px', borderRadius: 12,
+                border: '1px solid rgba(11,16,24,0.1)', backgroundColor: '#f0ebde',
+                fontFamily: 'Inter, sans-serif', fontSize: '1.2rem', letterSpacing: '0.4em',
+                textAlign: 'center', marginBottom: 12, outline: 'none', color: '#0b1018',
+              }}
+            />
+            {error && <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+            <button
+              onClick={handleMfaSubmit}
+              disabled={loading || mfaCode.length < 6}
+              style={{
+                width: '100%', padding: 14, borderRadius: 100, border: 'none',
+                backgroundColor: loading || mfaCode.length < 6 ? '#9ca3af' : '#c2410c',
+                color: '#faf7f0', fontFamily: 'Inter, sans-serif', fontWeight: 600,
+                fontSize: '0.92rem', cursor: loading || mfaCode.length < 6 ? 'not-allowed' : 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              {loading ? t('auth.loading') : t('auth.mfa_submit')}
+            </button>
+            <button
+              onClick={() => { supabase.auth.signOut(); setMfaChallengeId(null); setMfaFactorId(null); setMfaCode(''); }}
+              style={{
+                width: '100%', padding: 10, background: 'none', border: 'none',
+                color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer',
+              }}
+            >
+              {t('auth.mfa_cancel')}
             </button>
           </div>
         ) : (
@@ -241,10 +322,52 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           </svg>
           {t('auth.continue_apple')}
         </button>
+
+        {/* OAuth error display (visible even when email panel collapsed) */}
+        {!showEmail && error && (
+          <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginTop: 4, marginBottom: 4 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Toggle email panel */}
+        <button
+          onClick={() => { setShowEmail((v) => !v); setError(''); setInfo(''); }}
+          style={{
+            width: '100%', padding: '10px', background: 'none', border: 'none',
+            color: '#6b7280', fontSize: '0.82rem', cursor: 'pointer',
+            marginBottom: showEmail ? 8 : 0,
+          }}
+        >
+          {showEmail ? t('auth.hide_email') : t('auth.use_email_instead')} {showEmail ? '▴' : '▾'}
+        </button>
+
+        {showEmail && (
+        <>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
           <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(11,16,24,0.1)' }} />
           <span style={{ fontSize: '0.7rem', color: '#9ca3af', letterSpacing: '0.08em' }}>{t('auth.or')}</span>
           <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(11,16,24,0.1)' }} />
+        </div>
+
+        {/* Tabs (only when email expanded) */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          {(['signup', 'signin'] as const).map((tabKey) => (
+            <button
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
+              style={{
+                flex: 1, padding: '10px', borderRadius: '100px', border: 'none',
+                fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.85rem',
+                cursor: 'pointer',
+                backgroundColor: tab === tabKey ? '#0b1018' : '#f0ebde',
+                color: tab === tabKey ? '#faf7f0' : '#6b7280',
+                transition: 'all 0.2s',
+              }}
+            >
+              {tabKey === 'signup' ? t('auth.signup') : t('auth.signin')}
+            </button>
+          ))}
         </div>
 
         {/* Email */}
@@ -358,6 +481,8 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             ? t('auth.send_reset_link')
             : t('auth.signin_cta')}
         </button>
+        </>
+        )}
         </>
         )}
       </div>
