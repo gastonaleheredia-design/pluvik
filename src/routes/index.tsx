@@ -7,6 +7,7 @@ import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, type HomeBriefing } from '../lib/homeBriefing.functions';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { AlertSheet } from '../components/AlertSheet';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
@@ -34,6 +35,7 @@ function HomePage() {
   const [showAddrHint, setShowAddrHint] = useState(false);
   const [listening, setListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
   const recognitionRef = useRef<any>(null);
 
   // Redirect to onboarding if not completed.
@@ -143,20 +145,45 @@ function HomePage() {
   };
 
   // Fetch the home briefing for the saved address.
+  // Re-runs on focus and on a 30s tick while an alert is showing so the
+  // banner clears itself when the warning expires without a manual reload.
   useEffect(() => {
     if (selectedAddress.lat == null || selectedAddress.lon == null) {
       setBriefingLoading(false);
       return;
     }
     let cancelled = false;
-    setBriefingLoading(true);
-    getHomeBriefing({
-      data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language },
-    })
-      .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
-      .catch(() => { if (!cancelled) setBriefingLoading(false); });
-    return () => { cancelled = true; };
+    const fetchOnce = (showLoading: boolean) => {
+      if (showLoading) setBriefingLoading(true);
+      getHomeBriefing({
+        data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
+      })
+        .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
+        .catch(() => { if (!cancelled) setBriefingLoading(false); });
+    };
+    fetchOnce(true);
+    const onVis = () => { if (!document.hidden) fetchOnce(false); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onVis); };
   }, [selectedAddress.lat, selectedAddress.lon, i18n.language]);
+
+  // Auto-refresh while a warning is active. When the expiry passes, the
+  // re-fetch returns `alert: null` and the banner disappears on its own.
+  useEffect(() => {
+    const expiresIso = briefing?.alert?.expires_iso;
+    if (!expiresIso || selectedAddress.lat == null || selectedAddress.lon == null) return;
+    const id = setInterval(() => {
+      const expired = Date.now() >= new Date(expiresIso).getTime();
+      if (expired) {
+        getHomeBriefing({
+          data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
+        })
+          .then((b) => setBriefing(b))
+          .catch(() => {});
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, [briefing?.alert?.expires_iso, selectedAddress.lat, selectedAddress.lon, i18n.language]);
 
   const handleSubmit = () => {
     if (!questionText.trim()) return;
@@ -214,7 +241,10 @@ function HomePage() {
       >
         {/* Active NWS warning banner */}
         {warning && (
-          <div
+          <button
+            type="button"
+            onClick={() => setSheetMode('alert')}
+            role="alert"
             style={{
               width: '100%',
               maxWidth: '480px',
@@ -223,39 +253,20 @@ function HomePage() {
               borderRadius: '10px',
               backgroundColor: WARN_BG,
               border: `1px solid ${WARN}`,
-              textAlign: 'left',
+              textAlign: 'center',
+              cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.62rem',
+              letterSpacing: '0.18em',
+              color: WARN,
+              fontWeight: 700,
             }}
-            role="alert"
           >
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.62rem',
-                letterSpacing: '0.18em',
-                color: WARN,
-                fontWeight: 700,
-              }}
-            >
-              {warning.event.toUpperCase()}
-              {warning.expires_local
-                ? ` · ${t('home.warning_until', { defaultValue: 'UNTIL' })} ${warning.expires_local}`
-                : ` · ${t('home.warning_active', { defaultValue: 'ACTIVE' })}`}
-            </div>
-            {warning.headline && (
-              <div
-                style={{
-                  marginTop: '4px',
-                  fontFamily: 'Fraunces, serif',
-                  fontStyle: 'italic',
-                  fontSize: '0.85rem',
-                  color: INK,
-                  lineHeight: 1.35,
-                }}
-              >
-                {warning.headline}
-              </div>
-            )}
-          </div>
+            {warning.event.toUpperCase()}
+            {warning.expires_local
+              ? ` · ${t('home.warning_until', { defaultValue: 'UNTIL' })} ${warning.expires_local}`
+              : ` · ${t('home.warning_active', { defaultValue: 'ACTIVE' })}`}
+          </button>
         )}
 
         {/* Location block — kicker + city + tap hint, all tappable. */}
@@ -296,6 +307,7 @@ function HomePage() {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
+            suppressHydrationWarning
           >
             {selectedAddress.label || '＋ Add address'}
           </span>
@@ -312,6 +324,32 @@ function HomePage() {
             </span>
           )}
         </button>
+
+        {/* Always-visible radar pill (works even with no active warning) */}
+        {selectedAddress.lat != null && selectedAddress.lon != null && (
+          <button
+            type="button"
+            onClick={() => setSheetMode('radar')}
+            style={{
+              marginBottom: '20px',
+              padding: '6px 14px',
+              borderRadius: '100px',
+              border: `1px solid rgba(11,16,24,0.12)`,
+              backgroundColor: 'transparent',
+              cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.62rem',
+              letterSpacing: '0.18em',
+              color: MUTED,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span aria-hidden style={{ fontSize: '0.8rem', lineHeight: 1 }}>◎</span>
+            RADAR
+          </button>
+        )}
 
         {briefingLoading ? (
           <div
@@ -490,6 +528,20 @@ function HomePage() {
 
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
+      {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
+        <AlertSheet
+          lat={selectedAddress.lat}
+          lon={selectedAddress.lon}
+          alert={sheetMode === 'alert' && warning ? {
+            event: warning.event,
+            headline: warning.headline,
+            description: warning.description,
+            instruction: warning.instruction,
+            expires_local: warning.expires_local,
+          } : null}
+          onClose={() => setSheetMode('closed')}
+        />
+      )}
     </div>
   );
 }

@@ -1,51 +1,51 @@
-## What's actually happening on your screen
+## Fixes for the active-warning home screen
 
-Three things were promised in the last plan but only one is really working:
+### 1. Banner: minimal + tappable
+Strip the banner down to a single line — just the event name and the "until" time. The full NWS headline moves into a tap-to-open sheet so the home screen stays calm.
 
-1. **No NWS warning banner.** The app never reads NWS active alerts on the home screen. `fetchAlerts()` exists in `src/lib/metDataFetcher.ts` (it hits `api.weather.gov/alerts/active`), but `getHomeBriefing` never calls it. So a Severe Thunderstorm Warning covering Anadarko is invisible here.
+- Banner content reduces to: `SEVERE THUNDERSTORM WARNING · UNTIL 8:45 PM` (mono, red border, no body text).
+- Wrapping `<button>` opens a bottom sheet (`AlertSheet`, new component) with:
+  - Full event title + expiry
+  - The NWS `description` text (longer than `headline`)
+  - The NWS `instruction` text (action items: "Take shelter…")
+  - A `LiveRadarMap` centered on the user's saved address
+  - A close button
+- Add `description`, `instruction`, and `expires_iso` to the briefing's `alert` payload (we already pull them from the NWS feature; just plumb them through `getActiveWarning` → `homeBriefing.functions.ts`).
 
-2. **No "Storm X mi NW" line.** `probeNearbyCell` does run, but it has two bugs that match exactly the Anadarko case:
-   - It only flags cells classified as `moderate` or stronger. The radar source is HRRR *forecast* precip converted to synthetic dBZ via Marshall-Palmer — it routinely under-classifies an ongoing real storm as `light` for the first 15-30 min, so a 10 mi cell next door can fall through.
-   - The grid sample uses 0.175° spacing. At Oklahoma's latitude that's ~12 mi between sample points. A compact cell sitting between two grid points can return zero precip and be missed entirely.
+### 2. Auto-dismiss when the warning expires
+- Add `expires_iso` to the alert payload.
+- In `index.tsx`, run a 30 s `setInterval` while a warning is showing. When `Date.now() >= new Date(expires_iso)`, clear the alert from local state and re-fetch the briefing (which will return `alert: null` and a fresh verdict).
+- Also re-fetch the briefing whenever the tab regains focus (`visibilitychange`) so a long-idle session doesn't show a stale warning.
 
-3. **Hydration warning** (`home.right_now_at` shown raw on the server, real text on the client). The translation key exists; the mismatch is because i18n's language is resolved from `localStorage` on the client but defaults to `en` on the SSR pass when the server-rendered language differs from the client. Cosmetic, but it's polluting the console and causing a re-render.
+### 3. Radar surfacing
+The user wants the radar reachable from the home page when something is happening, but not a permanent extra tab.
 
-## Plan
+- Inside the alert sheet, embed `LiveRadarMap` (already exists, used in `/event/$id`). The radar centers on the user's pin so the rolling-in cell is visible immediately.
+- Add a small radar pill on the home hero — `◎ RADAR` — placed just under the address block. Always visible (not warning-gated). Tapping opens the same `AlertSheet` shell in "radar-only" mode (no alert text). This gives the user a permanent, low-noise way to reach the radar without a new bottom-nav tab.
+- No changes to `BottomNav` — keeps the three-tab structure intact.
 
-### 1. Add a Severe-Weather banner to the home screen
-- In `src/lib/homeBriefing.functions.ts`, call NWS `alerts/active?point=lat,lon` in parallel with the Open-Meteo fetch. Map the highest-priority active alert to a new `briefing.alert` field:
-  ```ts
-  alert: {
-    event: string;          // "Severe Thunderstorm Warning"
-    severity: 'extreme' | 'severe' | 'moderate' | 'minor';
-    headline: string;       // first sentence, trimmed to ~140 chars
-    expires_local: string;  // formatted in address tz
-  } | null
-  ```
-- Priority order: Tornado Warning > Flash Flood Warning > Severe Thunderstorm Warning > anything else with `severity in (extreme, severe)`. Watches and advisories are intentionally excluded from the banner (they'd cry wolf).
-- In `src/routes/index.tsx`, render a thin red banner pinned just above the verdict block when `briefing.alert` is present: small mono kicker (`SEVERE THUNDERSTORM WARNING · UNTIL 9:15 PM`) + a one-line italic headline. Tappable to expand the full headline. Uses the existing `ACCENT` family but in a saturated warning red so it's unmistakable.
-- When an active warning exists, also force the verdict word to `STORMS` and replace the sentence with the warning summary — DRY at a location under an active SVR is the bug the user actually saw.
+### 4. Tie "NEXT RAIN" to current reality
+Right now `NEXT RAIN · SUN 9 AM` is computed from Open-Meteo and ignores the active warning, so it reads as "it won't rain until Sunday" while a storm is 10 mi out.
 
-### 2. Make the nearby-storm line actually fire
-Edit `src/lib/metDataFetcher.ts`:
-- **Tighten the grid near the user.** Inside `probeNearbyCell` (don't touch the LLM-facing fetch), do a dedicated 5×5 grid at 0.07° spacing (~5 mi) covering ±25 mi. This eliminates the "cell falls between samples" miss.
-- **Lower the intensity floor inside 15 mi.** Keep the `moderate+` filter for cells 15–25 mi away (avoids drizzle false alarms), but accept any cell ≥ 30 dBZ within 15 mi. Synthetic dBZ from HRRR is conservative; a real ongoing storm reads ~30-40 there.
-- **Cross-check against active NWS alerts.** If a SVR/Tornado warning polygon covers the user's point, force `nearby_cell` to be non-null even when the radar grid is sparse — pull bearing from the warning polygon centroid and motion from the alert's `parameters.movement` field when present, otherwise label motion `unknown` (new enum value, rendered as just "nearby").
+- In `homeBriefing.functions.ts`, when `activeAlert` is present:
+  - Suppress `next_rain_caption` entirely (the warning IS the next rain).
+  - Also override the verdict sentence to a short, scannable form: `Storm impacting in ~N min — winds to X mph, hail Y in.` We already have NWS `parameters` (`maxWindGust`, `maxHailSize`, `tornadoDetection`) — extract them when present, fall back to a one-line distillation of `headline` otherwise.
+- Keep the long NWS text only inside the sheet, not in the hero.
 
-### 3. Fix the hydration warning
-- Pass `defaultValue` on every `t('home.*')` call in `src/routes/index.tsx` so SSR renders sensible English text instead of the raw key when i18n hasn't loaded its resource bundle yet. This eliminates the server/client text mismatch without touching the i18n bootstrap.
+### 5. Hydration warning
+The runtime hydration mismatch is now `Houston, TX` (server) vs `Anadarko, Oklahoma…` (client) — the saved address in `addressContext` is read from `localStorage` on the client only. Fix by suppressing hydration on just that span (`suppressHydrationWarning` on the city `<span>`), since the address can legitimately differ between SSR and client and there's no useful SSR value to show.
 
-### 4. Out of scope (intentionally)
-- No new data providers, no paid APIs, no DB changes, no auth changes.
-- Tracking page and Ask flow are untouched. Only the home briefing payload + home route render are edited.
+### Files touched
+- `src/lib/metDataFetcher.ts` — extend `ActiveAlert` with `description`, `instruction`, `expiresIso`, `parameters` (wind gust, hail, tornado flag).
+- `src/lib/homeBriefing.functions.ts` — pass the new fields into `briefing.alert`, suppress `next_rain_caption` when alert active, build short impact sentence from `parameters`.
+- `src/components/AlertSheet.tsx` — new component (bottom sheet with full alert text + embedded `LiveRadarMap`, also supports radar-only mode).
+- `src/routes/index.tsx` — slim banner to one line, open `AlertSheet` on tap, expiry timer + `visibilitychange` refetch, `◎ RADAR` pill that opens the sheet in radar-only mode, `suppressHydrationWarning` on city span.
 
-## Files touched
-- `src/lib/homeBriefing.functions.ts` — add `alert` field, fetch NWS alerts, plumb through verdict override.
-- `src/lib/metDataFetcher.ts` — new tight-grid sampler inside `probeNearbyCell`, intensity floor by distance, alert-polygon fallback, new `'unknown'` motion enum.
-- `src/routes/index.tsx` — warning banner above hero, render `unknown` motion gracefully, add `defaultValue` to `t()` calls to stop the hydration warning.
-- `src/i18n/translations.ts` — new keys: `home.warning_until`, `home.motion_unknown`, EN + ES.
+### Out of scope
+- No bottom-nav changes, no new dedicated `/radar` route, no DB or auth work.
+- Tracking/dashboard pages untouched.
 
-## How to verify
-- Anadarko, OK while the SVR is active → red banner with "SEVERE THUNDERSTORM WARNING · UNTIL …", verdict flips to STORMS, sentence reflects the warning, nearby-cell line shows the storm to the west.
-- A quiet location (e.g. somewhere in central NM with no warnings and no convection) → banner absent, nearby-cell line absent, verdict unchanged.
-- Console clean of the `home.right_now_at` hydration mismatch.
+### Verification
+- Anadarko under active SVR → banner shows only "SEVERE THUNDERSTORM WARNING · UNTIL …", `NEXT RAIN` line gone, verdict sentence is the short impact form, tapping opens sheet with NWS detail + radar centered on Anadarko, `◎ RADAR` pill visible.
+- After 8:45 PM CDT (warning expiry) → banner disappears within ~30 s without manual reload, verdict reverts to point-only forecast, `NEXT RAIN` returns.
+- Quiet location → no banner, `◎ RADAR` pill still works and opens radar-only sheet.

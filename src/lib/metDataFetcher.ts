@@ -703,11 +703,17 @@ export interface ActiveAlert {
   event: string;
   severity: 'extreme' | 'severe' | 'moderate' | 'minor' | 'unknown';
   headline: string;
+  description: string;
+  instruction: string;
   expiresIso: string | null;
   /** Approximate centroid of the affected polygon, used to derive bearing. */
   centroid: { lat: number; lon: number } | null;
   /** Free-text movement string from alert.parameters.movement, if present. */
   movement: string | null;
+  /** Numeric impact parameters parsed from NWS alert.parameters, if present. */
+  maxWindGustMph: number | null;
+  maxHailInches: number | null;
+  tornadoDetected: boolean;
 }
 
 const ALERT_PRIORITY: Record<string, number> = {
@@ -761,13 +767,31 @@ export async function getActiveWarning(lat: number, lon: number): Promise<Active
       const movementParam = p.parameters?.movement;
       const movement = Array.isArray(movementParam) ? movementParam[0] : (movementParam ?? null);
 
+      // NWS parameters arrays look like { maxWindGust: ["60 MPH"], maxHailSize: ["1.00"], tornadoDetection: ["RADAR INDICATED"] }
+      const firstStr = (k: string): string | null => {
+        const v = p.parameters?.[k];
+        if (Array.isArray(v) && v.length) return String(v[0]);
+        if (typeof v === 'string') return v;
+        return null;
+      };
+      const windRaw = firstStr('maxWindGust');
+      const hailRaw = firstStr('maxHailSize');
+      const tornadoRaw = firstStr('tornadoDetection');
+      const windMph = windRaw ? parseInt(windRaw.replace(/[^\d]/g, ''), 10) || null : null;
+      const hailIn = hailRaw ? parseFloat(hailRaw) || null : null;
+
       const candidate: ActiveAlert = {
         event,
         severity: (p.severity ?? 'unknown').toLowerCase() as ActiveAlert['severity'],
         headline: (p.headline ?? p.description ?? '').toString().slice(0, 200),
+        description: (p.description ?? '').toString(),
+        instruction: (p.instruction ?? '').toString(),
         expiresIso: p.expires ?? p.ends ?? null,
         centroid,
         movement: typeof movement === 'string' ? movement : null,
+        maxWindGustMph: windMph,
+        maxHailInches: hailIn,
+        tornadoDetected: !!tornadoRaw,
       };
       if (!best || score > best.score) best = { score, alert: candidate };
     }
