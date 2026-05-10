@@ -33,7 +33,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
   // Radar fills the whole viewport at full snap (edge-to-edge); otherwise
   // leaves room for text in the half-sheet.
   const radarHeight = isFull
-    ? '100dvh'
+    ? 'calc(100dvh - 48px - env(safe-area-inset-top, 0px))'
     : isRadarOnly
       ? 'calc(70vh - 140px)'
       : 320;
@@ -68,21 +68,64 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
           <Drawer.Title className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
             {alert ? alert.event : 'Live radar'}
           </Drawer.Title>
-          <div
-            style={{
-              width: isFull ? 56 : 40,
-              height: isFull ? 5 : 4,
-              borderRadius: 3,
-              backgroundColor: isFull ? 'rgba(255,255,255,0.55)' : 'rgba(11,16,24,0.18)',
-              margin: isFull ? '10px auto 6px' : '12px auto 8px',
-              flexShrink: 0,
-              position: isFull ? 'absolute' : 'relative',
-              top: isFull ? 'env(safe-area-inset-top, 8px)' : undefined,
-              left: isFull ? 0 : undefined,
-              right: isFull ? 0 : undefined,
-              zIndex: isFull ? 2 : undefined,
-            }}
-          />
+          {isFull ? (
+            // Solid top bar in fullscreen — drag handle + minimize + close.
+            // Sits above the map so nothing overlays the radar.
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingTop: 'env(safe-area-inset-top, 0px)',
+                backgroundColor: PAGE_BG,
+                borderBottom: '1px solid rgba(11,16,24,0.08)',
+                flexShrink: 0,
+                zIndex: 3,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSnap(SNAP_POINTS[0])}
+                aria-label="Minimize"
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  padding: '10px 14px', color: INK,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem', letterSpacing: '0.16em', fontWeight: 700,
+                }}
+              >
+                ▾ MINIMIZE
+              </button>
+              <div
+                style={{
+                  width: 44, height: 5, borderRadius: 3,
+                  backgroundColor: 'rgba(11,16,24,0.18)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  padding: '10px 14px', color: INK,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.7rem', letterSpacing: '0.16em', fontWeight: 700,
+                }}
+              >
+                ✕ CLOSE
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                width: 40, height: 4, borderRadius: 3,
+                backgroundColor: 'rgba(11,16,24,0.18)',
+                margin: '12px auto 8px', flexShrink: 0,
+              }}
+            />
+          )}
 
           <div
             style={{
@@ -140,7 +183,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 overflow: 'hidden',
               }}
             >
-              <LiveRadarMap lat={lat} lon={lon} height={radarHeight} />
+              <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} />
             </div>
 
             {!isFull && alert?.description && (

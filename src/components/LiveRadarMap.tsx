@@ -17,6 +17,8 @@ interface LiveRadarMapProps {
   lat: number;
   lon: number;
   height?: number | string;
+  /** When true, the map is rendered edge-to-edge inside a full-screen sheet. */
+  isFullscreen?: boolean;
 }
 
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
@@ -121,7 +123,7 @@ interface MiniCardData {
   expires: string | null;
 }
 
-export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
+export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -140,6 +142,16 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
   const [basemap, setBasemap] = useState<"streets" | "satellite">("streets");
   const [legendOpen, setLegendOpen] = useState(true);
   const [miniCard, setMiniCard] = useState<MiniCardData | null>(null);
+  const [gpsCoord, setGpsCoord] = useState<{ lat: number; lon: number } | null>(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [tool, setTool] = useState<"none" | "ruler" | "pin">("none");
+  const [rulerPts, setRulerPts] = useState<[number, number][]>([]); // [lon,lat]
+  const [pinInfo, setPinInfo] = useState<{ lon: number; lat: number; label: string | null; distMi: number | null } | null>(null);
+
+  // Effective "you are here" coords: prefer real GPS fix when present.
+  const meLat = gpsCoord?.lat ?? lat;
+  const meLon = gpsCoord?.lon ?? lon;
 
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
@@ -177,6 +189,14 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
     if (!fr || !playingRef.current) return;
     frameIdxRef.current = (frameIdxRef.current + 1) % fr.frames.length;
     setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
+  }, [setRadarTile]);
+
+  const jumpToFrame = useCallback((idx: number) => {
+    const fr = framesRef.current;
+    if (!fr) return;
+    const clamped = Math.max(0, Math.min(fr.frames.length - 1, idx));
+    frameIdxRef.current = clamped;
+    setRadarTile(fr.host, fr.frames[clamped]);
   }, [setRadarTile]);
 
   const startTicker = useCallback(() => {
@@ -258,6 +278,29 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
     void refreshWarnings(map, lat, lon);
   }, [lat, lon, refreshWarnings, setRadarTile]);
 
+  // --- Resize handling: keep mapbox canvas in sync when the sheet resizes ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Two RAFs + a delayed resize cover the vaul snap animation.
+    const r1 = requestAnimationFrame(() => map.resize());
+    const r2 = requestAnimationFrame(() => map.resize());
+    const t = setTimeout(() => map.resize(), 320);
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      clearTimeout(t);
+    };
+  }, [isFullscreen, height]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => mapRef.current?.resize());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Init map
   useEffect(() => {
     if (!containerRef.current) return;
@@ -318,14 +361,14 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // React to lat/lon changes (re-center, refresh warnings).
+  // React to "me" coord changes (re-center, refresh warnings).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.flyTo({ center: [lon, lat], zoom: map.getZoom(), essential: true });
-    if (markerRef.current) markerRef.current.setLngLat([lon, lat]);
-    void refreshWarnings(map, lat, lon);
-  }, [lat, lon, refreshWarnings]);
+    map.flyTo({ center: [meLon, meLat], zoom: map.getZoom(), essential: true });
+    if (markerRef.current) markerRef.current.setLngLat([meLon, meLat]);
+    void refreshWarnings(map, meLat, meLon);
+  }, [meLat, meLon, refreshWarnings]);
 
   // Play/pause
   useEffect(() => {
@@ -361,8 +404,91 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
   const recenter = () => {
     const map = mapRef.current;
     if (!map) return;
-    map.flyTo({ center: [lon, lat], zoom: 7, essential: true });
+    map.flyTo({ center: [meLon, meLat], zoom: 7, essential: true });
   };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setGpsError("Location not supported");
+      return;
+    }
+    setGpsBusy(true);
+    setGpsError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsBusy(false);
+        const next = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setGpsCoord(next);
+        const map = mapRef.current;
+        if (map) {
+          map.flyTo({ center: [next.lon, next.lat], zoom: 9, essential: true });
+        }
+      },
+      (err) => {
+        setGpsBusy(false);
+        setGpsError(err.code === 1 ? "Permission denied" : "Couldn't get location");
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 },
+    );
+  };
+
+  // --- Ruler tool: render a line + label between rulerPts ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const data: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: rulerPts.length >= 2
+        ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: rulerPts } }]
+        : [],
+    };
+    const src = map.getSource("ruler-src") as mapboxgl.GeoJSONSource | undefined;
+    if (src) { src.setData(data); return; }
+    map.addSource("ruler-src", { type: "geojson", data });
+    map.addLayer({
+      id: "ruler-line",
+      type: "line",
+      source: "ruler-src",
+      paint: { "line-color": "#facc15", "line-width": 3, "line-dasharray": [2, 1] },
+    });
+  }, [rulerPts, basemap]);
+
+  // Click handler for ruler/pin tools
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handler = (e: mapboxgl.MapMouseEvent) => {
+      if (tool === "ruler") {
+        setRulerPts((prev) => (prev.length >= 2 ? [[e.lngLat.lng, e.lngLat.lat]] : [...prev, [e.lngLat.lng, e.lngLat.lat]]));
+      } else if (tool === "pin") {
+        const lon2 = e.lngLat.lng, lat2 = e.lngLat.lat;
+        const distMi = haversineMi(meLat, meLon, lat2, lon2);
+        setPinInfo({ lon: lon2, lat: lat2, label: null, distMi });
+        // Reverse geocode
+        fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lon2},${lat2}.json?access_token=${MAPBOX_TOKEN}&limit=1&language=en`)
+          .then((r) => r.json())
+          .then((d) => {
+            const label = d?.features?.[0]?.place_name ?? null;
+            setPinInfo((p) => p ? { ...p, label } : p);
+          })
+          .catch(() => { /* ignore */ });
+      }
+    };
+    map.on("click", handler);
+    return () => { map.off("click", handler); };
+  }, [tool, meLat, meLon]);
+
+  // Cursor when tool is active
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = tool === "none" ? "" : "crosshair";
+  }, [tool]);
+
+  const clearRuler = () => setRulerPts([]);
+  const clearPin = () => setPinInfo(null);
+
+  const rulerDistMi = rulerPts.length >= 2 ? haversineMi(rulerPts[0][1], rulerPts[0][0], rulerPts[1][1], rulerPts[1][0]) : null;
 
   const frameLabel = (() => {
     if (!frameTime) return "";
@@ -375,11 +501,11 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
   return (
     <div
       style={{
-        borderRadius: "16px",
+        borderRadius: isFullscreen ? 0 : "16px",
         overflow: "hidden",
-        border: "1px solid #0b101814",
+        border: isFullscreen ? "none" : "1px solid #0b101814",
         height,
-        marginBottom: 20,
+        marginBottom: isFullscreen ? 0 : 20,
         position: "relative",
         backgroundColor: "#0b1018",
       }}
@@ -404,7 +530,52 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
         <ToolBtn label="◎" title="Recenter" onClick={recenter} />
+        <ToolBtn label={gpsBusy ? "…" : "📍"} title="My location (GPS)" onClick={useMyLocation} />
+        {isFullscreen && (
+          <>
+            <ToolBtn
+              label="📏"
+              title={tool === "ruler" ? "Exit ruler" : "Measure distance"}
+              onClick={() => { setTool(tool === "ruler" ? "none" : "ruler"); setRulerPts([]); }}
+            />
+            <ToolBtn
+              label="🎯"
+              title={tool === "pin" ? "Exit pin" : "Drop a pin"}
+              onClick={() => { setTool(tool === "pin" ? "none" : "pin"); setPinInfo(null); }}
+            />
+          </>
+        )}
       </div>
+
+      {gpsError && (
+        <div style={gpsErrorStyle}>{gpsError}</div>
+      )}
+
+      {tool !== "none" && (
+        <div style={toolHintStyle}>
+          {tool === "ruler"
+            ? rulerPts.length === 0 ? "TAP A START POINT" : rulerPts.length === 1 ? "TAP AN END POINT" : `${rulerDistMi?.toFixed(1)} MI · TAP TO RESET`
+            : "TAP THE MAP TO DROP A PIN"}
+        </div>
+      )}
+
+      {pinInfo && (
+        <div style={pinCardWrap}>
+          <button onClick={clearPin} style={miniCardClose} aria-label="Close">×</button>
+          <div style={miniCardEvent}>📍 DROPPED PIN</div>
+          <div style={pinLabelStyle}>{pinInfo.label ?? "Resolving address…"}</div>
+          {pinInfo.distMi != null && (
+            <div style={miniCardExpires}>{pinInfo.distMi.toFixed(1)} MI FROM YOU</div>
+          )}
+        </div>
+      )}
+
+      {rulerPts.length >= 2 && rulerDistMi != null && (
+        <div style={rulerBadgeStyle}>
+          📏 {rulerDistMi.toFixed(1)} mi · {(rulerDistMi * 1.609).toFixed(1)} km
+          <button onClick={clearRuler} style={rulerClearBtn}>×</button>
+        </div>
+      )}
 
       {/* dBZ legend, bottom-right, collapsible */}
       <div style={legendWrapStyle}>
@@ -445,14 +616,29 @@ export function LiveRadarMap({ lat, lon, height = 320 }: LiveRadarMapProps) {
               {frameTime.isForecast ? " · forecast" : " · now"}
             </span>
           </div>
-          <div style={progressTrack}>
-            <div
-              style={{
-                ...progressFill,
-                width: `${Math.round(frameProgress * 100)}%`,
+          {isFullscreen && framesRef.current ? (
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
+              value={frameIdxRef.current}
+              onChange={(e) => {
+                playingRef.current = false;
+                setPlaying(false);
+                jumpToFrame(parseInt(e.target.value, 10));
               }}
+              style={scrubStyle}
             />
-          </div>
+          ) : (
+            <div style={progressTrack}>
+              <div
+                style={{
+                  ...progressFill,
+                  width: `${Math.round(frameProgress * 100)}%`,
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -669,4 +855,71 @@ const miniCardCta: React.CSSProperties = {
   fontFamily: "JetBrains Mono, ui-monospace, monospace",
   fontSize: "0.58rem", letterSpacing: "0.14em",
   fontWeight: 700, cursor: "pointer",
+};
+
+function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3958.8; // miles
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+const gpsErrorStyle: React.CSSProperties = {
+  position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(185,28,28,0.92)", color: "#faf7f0",
+  padding: "5px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em", fontWeight: 700,
+  zIndex: 6,
+};
+
+const toolHintStyle: React.CSSProperties = {
+  position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(11,16,24,0.85)", color: "#facc15",
+  padding: "5px 14px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,204,21,0.4)",
+  zIndex: 6, pointerEvents: "none",
+};
+
+const pinCardWrap: React.CSSProperties = {
+  position: "absolute", top: 90, left: 12, right: 50,
+  backgroundColor: "#faf7f0",
+  borderRadius: 10,
+  border: "1px solid #0b1018",
+  padding: "10px 12px",
+  display: "flex", flexDirection: "column", gap: 6,
+  boxShadow: "0 6px 20px rgba(11,16,24,0.25)",
+  zIndex: 5,
+};
+
+const pinLabelStyle: React.CSSProperties = {
+  fontFamily: "Fraunces, serif",
+  fontSize: "0.92rem", color: "#0b1018", lineHeight: 1.3,
+};
+
+const rulerBadgeStyle: React.CSSProperties = {
+  position: "absolute", top: 90, left: "50%", transform: "translateX(-50%)",
+  display: "flex", alignItems: "center", gap: 8,
+  backgroundColor: "rgba(250,204,21,0.95)", color: "#0b1018",
+  padding: "6px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.65rem", letterSpacing: "0.12em", fontWeight: 700,
+  zIndex: 6,
+};
+
+const rulerClearBtn: React.CSSProperties = {
+  width: 18, height: 18, borderRadius: "50%",
+  border: "none", backgroundColor: "#0b1018", color: "#facc15",
+  fontSize: 12, lineHeight: 1, cursor: "pointer", padding: 0,
+};
+
+const scrubStyle: React.CSSProperties = {
+  width: "100%",
+  accentColor: "#ef4444",
+  pointerEvents: "auto",
+  cursor: "pointer",
 };
