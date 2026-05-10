@@ -24,7 +24,7 @@ export interface HomeBriefing {
   /** Local-time string like "8:06 PM" of when this briefing was generated. */
   updated_at_local: string;
   /** Current temperature in Fahrenheit (rounded), or null if unavailable. */
-  temp_f: number | null;
+  temp_f?: number | null;
   /** Active NWS warning (Tornado / Flash Flood / Severe Thunderstorm), or null. */
   alert: {
     event: string;
