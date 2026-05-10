@@ -703,6 +703,7 @@ export const askWeather = createServerFn({ method: 'POST' })
               briefing.hourlyForecast,
               typeof hoursAhead === 'number' ? hoursAhead : 24,
               stageInfo.stage,
+              typeof endHoursAhead === 'number' ? endHoursAhead : undefined,
             )
           : null;
       if (fb) {
