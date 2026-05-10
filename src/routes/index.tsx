@@ -397,23 +397,24 @@ function HomePage() {
               gap: '8px',
             }}
           >
-            {following && (
-              <span
-                aria-hidden
-                style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  backgroundColor: followActive ? '#16a34a' : ACCENT,
-                  animation: 'homePulse 1.4s ease-in-out infinite',
-                  display: 'inline-block',
-                }}
-              />
-            )}
+            <span
+              aria-hidden
+              title={
+                freshness === 'live' ? 'Live GPS' :
+                freshness === 'stale' ? 'Last known location' :
+                'Pinned address'
+              }
+              style={{
+                width: 6, height: 6, borderRadius: '50%',
+                backgroundColor:
+                  freshness === 'live' ? '#16a34a' :
+                  freshness === 'stale' ? '#f59e0b' :
+                  '#9ca3af',
+                animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                display: 'inline-block',
+              }}
+            />
             {t('home.right_now_at', { defaultValue: 'RIGHT NOW AT' })}
-            {following && (
-              <span style={{ color: ACCENT }}>
-                · {t('home.following', { defaultValue: 'FOLLOWING' })}
-              </span>
-            )}
           </span>
           <span
             style={{
@@ -443,59 +444,33 @@ function HomePage() {
           )}
         </button>
 
-        {/* Location mode segmented toggle: FIXED ↔ FOLLOW ME */}
-        <div
-          role="group"
-          aria-label="Location mode"
-          style={{
-            marginTop: '-18px',
-            marginBottom: '24px',
-            display: 'inline-flex',
-            padding: '3px',
-            borderRadius: '100px',
-            border: '1px solid rgba(11,16,24,0.12)',
-            background: 'rgba(11,16,24,0.04)',
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.58rem',
-            letterSpacing: '0.18em',
-          }}
-        >
-          {([
-            { key: 'fixed', active: !following, label: t('home.mode_fixed', { defaultValue: 'FIXED' }) },
-            { key: 'follow', active: following, label: t('home.mode_follow', { defaultValue: 'FOLLOW ME' }) },
-          ] as const).map((seg) => (
-            <button
-              key={seg.key}
-              type="button"
-              onClick={() => setFollowing(seg.key === 'follow')}
-              aria-pressed={seg.active}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '100px',
-                border: 'none',
-                cursor: 'pointer',
-                background: seg.active ? ACCENT : 'transparent',
-                color: seg.active ? PAGE_BG : MUTED,
-                fontFamily: 'inherit',
-                fontSize: 'inherit',
-                letterSpacing: 'inherit',
-                fontWeight: seg.active ? 700 : 500,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'background-color 120ms ease, color 120ms ease',
-              }}
-            >
-              {seg.key === 'follow' && (
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-              )}
-              {seg.label}
-            </button>
-          ))}
-        </div>
+        {/* "Use my current location" link — shown when the user is on a manually pinned address. */}
+        {freshness === 'manual' && (
+          <button
+            type="button"
+            onClick={resumeFollowing}
+            style={{
+              marginTop: '-12px',
+              marginBottom: '20px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.58rem',
+              letterSpacing: '0.16em',
+              color: ACCENT,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            </svg>
+            {t('home.use_my_location', { defaultValue: 'USE MY CURRENT LOCATION' })}
+          </button>
+        )}
         {followError && (
           <div style={{
             marginTop: '-12px', marginBottom: '16px',
