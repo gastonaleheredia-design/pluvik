@@ -21,6 +21,7 @@ import type {
   CpcVariableOutlook,
 } from './fetchers/fetchCpcOutlooks';
 import type { ClimateNormals, MonthlyNormal } from './fetchers/fetchClimateNormals';
+import type { CpcDiscussion } from './fetchers/fetchCpcDiscussion';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -74,7 +75,28 @@ export function translateClimateNormals(
   }
   const temp = tempDescriptor(slot.meanTempF, slot.maxTempF);
   const precip = precipDescriptor(slot.precipIn, slot.precipDays);
-  return `In a normal ${monthLabel(month)}, this area usually has ${temp} and ${precip}.`;
+  // Include the actual climatology numbers so the LLM can anchor its
+  // answer to a real baseline. Climatology is historical fact, not a
+  // probabilistic forecast — exposing inches / rainy-days / temperature
+  // does not violate the "no forecast numbers" rule for this stage.
+  const numericBits: string[] = [];
+  if (slot.maxTempF != null) {
+    numericBits.push(`average daytime highs around ${Math.round(slot.maxTempF)}°F`);
+  } else if (slot.meanTempF != null) {
+    numericBits.push(`average temperatures around ${Math.round(slot.meanTempF)}°F`);
+  }
+  if (slot.precipIn != null) {
+    const inches = slot.precipIn < 1
+      ? slot.precipIn.toFixed(1)
+      : Math.round(slot.precipIn).toString();
+    if (slot.precipDays != null) {
+      numericBits.push(`about ${inches} inches of rain across roughly ${Math.round(slot.precipDays)} rainy days`);
+    } else {
+      numericBits.push(`about ${inches} inches of rain on average`);
+    }
+  }
+  const tail = numericBits.length ? ` (typically ${numericBits.join(' and ')})` : '';
+  return `In a normal ${monthLabel(month)}, this area usually has ${temp} and ${precip}${tail}.`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -149,6 +171,8 @@ export interface PlainLanguageContextInput {
   eventMonth: number;
   normals: ClimateNormals | null;
   outlooks: CpcOutlooks | null;
+  /** Optional CPC plain-text discussion for the matching horizon. */
+  discussion?: CpcDiscussion | null;
   /** ISO timestamp of the user's event — used to derive the "we'll start watching on …" line. */
   eventAtIso?: string | null;
 }
@@ -162,6 +186,8 @@ export interface PlainLanguageContext {
   promptBlock: string;
   /** Friendly date phrase ("Oct 22, 2026") for the next-check hint. */
   nextCheckAt: string | null;
+  /** Best CPC horizon paragraph (verbatim) for the model to paraphrase. */
+  cpcDiscussionParagraph: string | null;
 }
 
 export function buildPlainLanguageContext(
@@ -174,6 +200,45 @@ export function buildPlainLanguageContext(
   }
   if (input.outlooks) {
     sentences.push(...translateCpcOutlooks(input.outlooks));
+  }
+
+  // When BOTH the normals and at least one outlook horizon are present,
+  // emit a paired "X is normal — long-range outlook leans Y vs that
+  // baseline" sentence. This is what makes the answer source-anchored
+  // instead of two unrelated bullets.
+  if (input.normals && input.outlooks && input.outlooks.horizons.length > 0) {
+    const slot = input.normals.monthly[input.eventMonth - 1];
+    const horizon = input.outlooks.horizons[0];
+    const precipLean = horizon.precipitation
+      ? horizon.precipitation.category
+      : null;
+    const tempLean = horizon.temperature ? horizon.temperature.category : null;
+    const baseline: string[] = [];
+    if (slot?.precipIn != null) {
+      const inches = slot.precipIn < 1
+        ? slot.precipIn.toFixed(1)
+        : Math.round(slot.precipIn).toString();
+      baseline.push(`a normal ${monthLabel(input.eventMonth)} averages around ${inches} inches of rain here`);
+    }
+    if (slot?.maxTempF != null) {
+      baseline.push(`with daytime highs near ${Math.round(slot.maxTempF)}°F`);
+    }
+    if (baseline.length > 0) {
+      const leans: string[] = [];
+      if (precipLean === 'above') leans.push('wetter than that baseline');
+      else if (precipLean === 'below') leans.push('drier than that baseline');
+      if (tempLean === 'above') leans.push('warmer than usual');
+      else if (tempLean === 'below') leans.push('cooler than usual');
+      if (leans.length > 0) {
+        sentences.push(
+          `For comparison: ${baseline.join(' ')}, and the long-range outlook leans ${leans.join(' and ')}.`,
+        );
+      } else {
+        sentences.push(
+          `For comparison: ${baseline.join(' ')}; the long-range outlook is close to that baseline.`,
+        );
+      }
+    }
   }
 
   const stageOutro = STAGE_OUTRO[input.stage];
@@ -195,11 +260,16 @@ export function buildPlainLanguageContext(
   }
 
   const lines: string[] = [];
-  lines.push('PRE-DIGESTED PLAIN-LANGUAGE CONTEXT (use these sentences as-is — do NOT re-introduce numbers, percentages, or technical terms):');
+  lines.push('PRE-DIGESTED PLAIN-LANGUAGE CONTEXT (paraphrase these sentences in your answer — climatology numbers like "4 inches" or "low 60s°F" are FACTUAL averages and are encouraged; do NOT introduce probability percentages, anomalies, terciles, or forecast jargon):');
   if (sentences.length === 0) {
     lines.push('- No long-range signals available; rely on the briefing only.');
   } else {
     for (const s of sentences) lines.push(`- ${s}`);
+  }
+  if (input.discussion?.paragraph) {
+    lines.push('');
+    lines.push(`CPC DISCUSSION PARAGRAPH (regional, ${input.discussion.region}, horizon=${input.discussion.horizon}). Paraphrase 1–2 sentences from this into the "cpc_narrative" field of your JSON. Do NOT quote it verbatim and do NOT mention "CPC", "Climate Prediction Center", "anomaly", "tercile", "ensemble", or "MJO/ENSO" — translate to everyday words like "the long-range outlook" or "national forecasters":`);
+    lines.push(input.discussion.paragraph);
   }
   if (nextCheckAt) {
     lines.push('');
@@ -215,5 +285,6 @@ export function buildPlainLanguageContext(
     stageOutro,
     promptBlock: lines.join('\n'),
     nextCheckAt,
+    cpcDiscussionParagraph: input.discussion?.paragraph ?? null,
   };
 }
