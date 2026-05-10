@@ -587,7 +587,7 @@ export async function probeImminentStorm(lat: number, lon: number): Promise<Immi
 export interface NearbyCellProbe {
   distanceMiles: number;
   bearingFromUser: string;
-  motionRelativeToUser: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary';
+  motionRelativeToUser: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary' | 'unknown';
 }
 
 const COMPASS_DEG: Record<string, number> = {
@@ -614,33 +614,73 @@ function classifyRelativeMotion(
 
 export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyCellProbe | null> {
   try {
-    const text = await fetchRadarCellsFromGrid(lat, lon);
-    if (!text || /No active|unavailable/.test(text)) return null;
-    const lines = text.split('\n').filter(l => l.startsWith('Cell '));
-    if (lines.length === 0) return null;
-
-    const parsed = lines.map(l => {
-      const head = l.match(/^Cell\s+(\w+)\s+at\s+(\d+)mi/);
-      const motion = l.match(/Motion:(\d+)°\(toward \w+\) at (\d+)mph/);
-      const intensity = l.match(/INTENSITY:(\w+)/);
-      return {
-        bearing: head?.[1] ?? '?',
-        dist: head ? parseInt(head[2], 10) : 999,
-        motionDir: motion ? parseInt(motion[1], 10) : null,
-        speed: motion ? parseInt(motion[2], 10) : null,
-        intensity: (intensity?.[1] ?? '').toLowerCase(),
-      };
-    });
-
-    // Keep moderate+ cells within 25 mi.
-    const candidates = parsed.filter(p =>
-      p.dist <= 25 &&
-      (p.intensity === 'moderate' || p.intensity === 'heavy' ||
-        p.intensity === 'intense' || p.intensity === 'extreme'),
+    // Tight 5-mile grid covering ±25 mi around the user. The wider LLM-facing
+    // sampler uses ~12 mi spacing — fine for analysis but it routinely misses
+    // a compact cell sitting between two grid points. This dedicated pass fixes
+    // that for the home-screen "nearby cell" line.
+    const STEP_DEG = 0.07;
+    const N = 5;
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+    for (let i = -N; i <= N; i++) {
+      for (let j = -N; j <= N; j++) {
+        lats.push(+(lat + i * STEP_DEG).toFixed(4));
+        lons.push(+(lon + (j * STEP_DEG) / cosLat).toFixed(4));
+      }
+    }
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+      `&minutely_15=precipitation&forecast_minutely_15=4` +
+      `&hourly=wind_speed_700hPa,wind_direction_700hPa&forecast_hours=2` +
+      `&models=gfs_hrrr&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
     );
-    if (candidates.length === 0) return null;
+    if (!res.ok) return null;
+    const json = await res.json();
+    const arr: any[] = Array.isArray(json) ? json : [json];
 
-    // Pick the closest one.
+    type Sample = {
+      dist: number; bearing: string; dbz: number;
+      motionDir: number | null; speed: number | null;
+    };
+    const samples: Sample[] = [];
+    for (const p of arr) {
+      const precip: number[] = p.minutely_15?.precipitation ?? [];
+      const max15 = precip.length ? Math.max(...precip) : 0;
+      if (max15 < 0.02) continue;                      // very low floor here — caller filters by distance
+      const mmPerHr = max15 * 4 * 25.4;
+      const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
+      const dy = (p.latitude - lat) * 69;
+      const dx = (p.longitude - lon) * 69 * cosLat;
+      const dist = Math.round(Math.hypot(dx, dy));
+      if (dist > 25) continue;
+      const bearingDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+      const fromDeg = p.hourly?.wind_direction_700hPa?.[0];
+      const sp = p.hourly?.wind_speed_700hPa?.[0];
+      samples.push({
+        dist,
+        bearing: compass(bearingDeg),
+        dbz,
+        motionDir: fromDeg != null ? (fromDeg + 180) % 360 : null,
+        speed: sp != null ? Math.round(sp) : null,
+      });
+    }
+    if (samples.length === 0) {
+      // Radar grid empty — fall back to NWS active warnings.
+      return await probeNearbyFromAlerts(lat, lon);
+    }
+
+    // Distance-tiered intensity floor:
+    //  - inside 15 mi: any cell ≥ 30 dBZ counts (HRRR forecast precip
+    //    under-classifies an ongoing real storm)
+    //  - 15-25 mi:    require ≥ 40 dBZ (avoids drizzle false alarms)
+    const candidates = samples.filter(s =>
+      (s.dist <= 15 && s.dbz >= 30) ||
+      (s.dist <= 25 && s.dbz >= 40)
+    );
+    if (candidates.length === 0) {
+      return await probeNearbyFromAlerts(lat, lon);
+    }
     candidates.sort((a, b) => a.dist - b.dist);
     const c = candidates[0];
     return {
@@ -651,6 +691,110 @@ export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyC
   } catch {
     return null;
   }
+}
+
+/**
+ * Active NWS warning summary used by the home-screen banner. We only surface
+ * the highest-priority warning (Tornado / Flash Flood / Severe Thunderstorm).
+ * Watches and advisories are intentionally excluded — they cry wolf at a
+ * glance.
+ */
+export interface ActiveAlert {
+  event: string;
+  severity: 'extreme' | 'severe' | 'moderate' | 'minor' | 'unknown';
+  headline: string;
+  expiresIso: string | null;
+  /** Approximate centroid of the affected polygon, used to derive bearing. */
+  centroid: { lat: number; lon: number } | null;
+  /** Free-text movement string from alert.parameters.movement, if present. */
+  movement: string | null;
+}
+
+const ALERT_PRIORITY: Record<string, number> = {
+  'Tornado Warning': 100,
+  'Flash Flood Warning': 90,
+  'Severe Thunderstorm Warning': 80,
+  'Tornado Watch': 0,        // excluded
+  'Severe Thunderstorm Watch': 0, // excluded
+};
+
+function polygonCentroid(coords: number[][]): { lat: number; lon: number } | null {
+  if (!Array.isArray(coords) || coords.length === 0) return null;
+  let sx = 0, sy = 0, n = 0;
+  for (const c of coords) {
+    if (!Array.isArray(c) || c.length < 2) continue;
+    sx += c[0]; sy += c[1]; n++;
+  }
+  if (n === 0) return null;
+  return { lat: sy / n, lon: sx / n };
+}
+
+export async function getActiveWarning(lat: number, lon: number): Promise<ActiveAlert | null> {
+  try {
+    const res = await fetch(
+      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
+      { headers: NWS }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const features: any[] = data.features ?? [];
+    if (!features.length) return null;
+
+    let best: { score: number; alert: ActiveAlert } | null = null;
+    for (const f of features) {
+      const p = f.properties ?? {};
+      const event: string = p.event ?? '';
+      // Default priority for unlisted "Warning" events; explicit override above.
+      const score = ALERT_PRIORITY[event] ?? (
+        /Warning$/.test(event) && (p.severity === 'Extreme' || p.severity === 'Severe') ? 50 : 0
+      );
+      if (score === 0) continue;
+
+      const geom = f.geometry;
+      let centroid: { lat: number; lon: number } | null = null;
+      if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates?.[0])) {
+        centroid = polygonCentroid(geom.coordinates[0]);
+      } else if (geom?.type === 'MultiPolygon' && Array.isArray(geom.coordinates?.[0]?.[0])) {
+        centroid = polygonCentroid(geom.coordinates[0][0]);
+      }
+
+      const movementParam = p.parameters?.movement;
+      const movement = Array.isArray(movementParam) ? movementParam[0] : (movementParam ?? null);
+
+      const candidate: ActiveAlert = {
+        event,
+        severity: (p.severity ?? 'unknown').toLowerCase() as ActiveAlert['severity'],
+        headline: (p.headline ?? p.description ?? '').toString().slice(0, 200),
+        expiresIso: p.expires ?? p.ends ?? null,
+        centroid,
+        movement: typeof movement === 'string' ? movement : null,
+      };
+      if (!best || score > best.score) best = { score, alert: candidate };
+    }
+    return best?.alert ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fallback used when the radar grid is empty but NWS has an active warning.
+ * Bearing comes from the polygon centroid relative to the user; distance is
+ * approximate (great-circle to centroid, capped at 25 mi for display).
+ */
+async function probeNearbyFromAlerts(lat: number, lon: number): Promise<NearbyCellProbe | null> {
+  const alert = await getActiveWarning(lat, lon);
+  if (!alert || !alert.centroid) return null;
+  const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+  const dy = (alert.centroid.lat - lat) * 69;
+  const dx = (alert.centroid.lon - lon) * 69 * cosLat;
+  const dist = Math.min(25, Math.max(1, Math.round(Math.hypot(dx, dy))));
+  const bearingDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  return {
+    distanceMiles: dist,
+    bearingFromUser: compass(bearingDeg),
+    motionRelativeToUser: 'unknown',
+  };
 }
 
 async function fetchEnsemble(lat: number, lon: number): Promise<string> {
