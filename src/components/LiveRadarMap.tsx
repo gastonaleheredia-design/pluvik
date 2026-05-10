@@ -79,7 +79,15 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
     const data = await res.json();
     const features = (data.features ?? []).filter(
       (f: any) => /Warning$/.test(f?.properties?.event ?? "") && f?.geometry,
-    );
+    ).filter((f: any) => {
+      // Drop polygons whose centroid is more than 100 mi from the user.
+      // NWS sometimes returns alerts from neighboring zones that are nowhere
+      // near the actual coords (e.g. a Shreveport LA warning for a Houston
+      // point because of a shared marine/inland zone).
+      const c = polygonCentroidLngLat(f.geometry);
+      if (!c) return true;
+      return haversineMiles(lat, lon, c.lat, c.lon) <= 100;
+    });
     if (!features.length) return null;
 
     // Cache full alert details so /alert/$id can hydrate instantly.
@@ -117,6 +125,31 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
   } catch {
     return null;
   }
+}
+
+function polygonCentroidLngLat(geom: any): { lat: number; lon: number } | null {
+  const ring = geom?.type === "Polygon"
+    ? geom.coordinates?.[0]
+    : geom?.type === "MultiPolygon"
+      ? geom.coordinates?.[0]?.[0]
+      : null;
+  if (!Array.isArray(ring) || ring.length === 0) return null;
+  let sx = 0, sy = 0, n = 0;
+  for (const c of ring) {
+    if (!Array.isArray(c) || c.length < 2) continue;
+    sx += c[0]; sy += c[1]; n++;
+  }
+  if (n === 0) return null;
+  return { lat: sy / n, lon: sx / n };
+}
+
+function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3958.8;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 const STYLES = {
