@@ -448,8 +448,15 @@ export async function fetchDailyClimateNormal(
       slat, slon, dist: distanceMiles(lat, lon, slat, slon), row: r,
     });
   }
-  candidates.sort((a, b) => a.dist - b.dist);
-  const best = candidates[0];
+  // Prefer stations carrying BOTH temp and precip normals — small co-op
+  // sites often report only precip. Fall back to partial-data stations
+  // only when no fully-equipped station exists in radius.
+  const fully = candidates.filter(
+    (c) => num(c.row['DLY-TMAX-NORMAL']) != null && num(c.row['DLY-PRCP-PCTALL-GE001HI']) != null,
+  );
+  const pool = fully.length > 0 ? fully : candidates;
+  pool.sort((a, b) => a.dist - b.dist);
+  const best = pool[0];
   if (!best) {
     DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;

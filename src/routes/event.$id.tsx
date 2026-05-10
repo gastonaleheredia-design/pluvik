@@ -26,6 +26,8 @@ interface TrackedEvent {
   lon?: number | null;
   current_forecast_stage?: string | null;
   current_climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
+  current_climate_interpretation?: string | null;
+  current_climate_framing?: string | null;
 }
 
 export const Route = createFileRoute('/event/$id')({
@@ -185,6 +187,10 @@ function EventPage() {
           current_forecast_stage: a.forecast_stage ?? event.current_forecast_stage ?? null,
           current_climate_facts:
             ((a as { climate_facts?: unknown }).climate_facts as never) ?? null,
+          current_climate_interpretation:
+            ((a as { climate_interpretation?: unknown }).climate_interpretation as never) ?? null,
+          current_climate_framing:
+            ((a as { climate_framing?: unknown }).climate_framing as never) ?? null,
         })
         .eq('id', event.id);
 
@@ -218,6 +224,14 @@ function EventPage() {
         current_climate_facts:
           ((a as { climate_facts?: TrackedEvent['current_climate_facts'] }).climate_facts) ??
           event.current_climate_facts ??
+          null,
+        current_climate_interpretation:
+          ((a as { climate_interpretation?: string | null }).climate_interpretation) ??
+          event.current_climate_interpretation ??
+          null,
+        current_climate_framing:
+          ((a as { climate_framing?: string | null }).climate_framing) ??
+          event.current_climate_framing ??
           null,
       });
       setSnapshots((prev) => [snap as unknown as TimelineSnapshot, ...prev]);
@@ -529,6 +543,43 @@ function EventPage() {
               >
                 CLIMATE FOR THIS DATE
               </div>
+              {event.current_climate_interpretation && (
+                <div style={{ marginBottom: '14px' }}>
+                  <div
+                    style={{
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.14em',
+                      color: MUTED,
+                      marginBottom: '6px',
+                    }}
+                  >
+                    THE READ
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: '1rem',
+                      lineHeight: 1.5,
+                      color: INK,
+                    }}
+                  >
+                    {event.current_climate_interpretation}
+                  </div>
+                  {event.current_climate_framing && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        fontSize: '0.78rem',
+                        fontStyle: 'italic',
+                        color: MUTED,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {event.current_climate_framing}
+                    </div>
+                  )}
+                </div>
+              )}
               <div
                 style={{
                   display: 'grid',

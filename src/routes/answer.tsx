@@ -231,6 +231,10 @@ function AnswerPage() {
           event_phrase: extractEventTimeFromQuestion(question)?.sourcePhrase ?? null,
           event_at: a.event_at ?? null,
           current_climate_facts: a.climate_facts ?? null,
+          current_climate_interpretation:
+            (a as { climate_interpretation?: string | null }).climate_interpretation ?? null,
+          current_climate_framing:
+            (a as { climate_framing?: string | null }).climate_framing ?? null,
         })
         .select()
         .single();
@@ -537,6 +541,10 @@ function AnswerPage() {
   const climateFacts =
     (answer as { climate_facts?: Array<{ label: string; value: string; hint?: string }> | null })
       .climate_facts ?? null;
+  const climateInterpretation =
+    (answer as { climate_interpretation?: string | null }).climate_interpretation ?? null;
+  const climateFraming =
+    (answer as { climate_framing?: string | null }).climate_framing ?? null;
   const climateOutro =
     stageOutro || 'We will start giving you a real forecast about 10 days before your date.';
   const saveCtaLabel =
@@ -683,6 +691,44 @@ function AnswerPage() {
               >
                 CLIMATE FOR THIS DATE
               </div>
+              {climateInterpretation && (
+                <div style={{ marginBottom: '14px' }}>
+                  <div
+                    style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.55rem',
+                      letterSpacing: '0.18em',
+                      color: MUTED,
+                      marginBottom: '6px',
+                    }}
+                  >
+                    THE READ
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: '1rem',
+                      lineHeight: 1.5,
+                      color: INK,
+                    }}
+                  >
+                    {climateInterpretation}
+                  </div>
+                  {climateFraming && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        fontSize: '0.78rem',
+                        fontStyle: 'italic',
+                        color: MUTED,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {climateFraming}
+                    </div>
+                  )}
+                </div>
+              )}
               <div
                 style={{
                   display: 'grid',

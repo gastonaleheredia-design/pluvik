@@ -127,6 +127,10 @@ export interface LongRangeDigest {
   stageOutro: string;
   /** Structured, glanceable climate facts for the detail screen. */
   facts: ClimateFact[];
+  /** 2–3 sentence "meteorologist's read" — what this date usually feels like. */
+  interpretation: string | null;
+  /** Short italic disclaimer line. */
+  framing: string | null;
 }
 
 export interface ClimateFact {
@@ -182,6 +186,104 @@ function buildFacts(daily: DailyClimate | null): ClimateFact[] {
   return out;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Plain-English interpretation of daily normals                              */
+/* -------------------------------------------------------------------------- */
+
+function seasonPhrase(month: number, address: string): string {
+  const place = placeShort(address);
+  if ([12, 1, 2].includes(month)) return `winter in ${place}`;
+  if ([3, 4, 5].includes(month)) return `spring in ${place}`;
+  if ([6, 7, 8].includes(month)) return `summer in ${place}`;
+  return `fall in ${place}`;
+}
+
+function tempSentence(maxF: number | null, minF: number | null, month: number, address: string): string | null {
+  if (maxF == null) return null;
+  const season = seasonPhrase(month, address);
+  const lowBit = minF != null ? `, with overnight lows around ${Math.round(minF)}°` : '';
+  if (maxF >= 95) {
+    return `This time of year is peak ${season} — afternoons typically push into the mid-90s and humidity runs high${lowBit}.`;
+  }
+  if (maxF >= 85) {
+    return `It's usually a warm, summery day — afternoon highs around ${Math.round(maxF)}°${lowBit}.`;
+  }
+  if (maxF >= 70) {
+    return `Expect a mild, pleasant day on average — highs near ${Math.round(maxF)}°${lowBit}.`;
+  }
+  if (maxF >= 50) {
+    return `It's usually a cool day — highs only around ${Math.round(maxF)}°${lowBit}.`;
+  }
+  if (maxF >= 32) {
+    return `Expect a cold day — highs around ${Math.round(maxF)}°${lowBit}, jacket weather.`;
+  }
+  return `This date sits in the heart of winter — highs typically below freezing (${Math.round(maxF)}°)${lowBit}.`;
+}
+
+function rainSentence(pct: number | null, p75: number | null): string | null {
+  if (pct == null) return null;
+  let lead: string;
+  if (pct < 20) lead = `Rain on this date is uncommon — only about 1 in ${Math.max(2, Math.round(100 / Math.max(1, pct)))} years see measurable rainfall.`;
+  else if (pct < 40) lead = `Rain is occasional — roughly 1 in 3 years see a measurable shower.`;
+  else if (pct < 60) lead = `Rain is fairly common — about half of all years see measurable rainfall on this date.`;
+  else lead = `Rain is the norm — most years see measurable rainfall on this date.`;
+  if (p75 != null && p75 >= 0.5) {
+    lead += ` When it does rain, it's usually around ${p75.toFixed(2)}″ — enough to interrupt outdoor plans.`;
+  }
+  return lead;
+}
+
+function timeOfDaySentence(hour: number, month: number, maxF: number | null): string | null {
+  if (!Number.isFinite(hour) || hour <= 0) return null;
+  const isSummer = [5, 6, 7, 8, 9].includes(month);
+  if (hour >= 17 && hour <= 21) {
+    if (isSummer && maxF != null && maxF >= 85) {
+      return `By that hour the worst of the heat is easing, and afternoon storms — when they fire — usually move out before evening.`;
+    }
+    return `Evenings on this date tend to be settled.`;
+  }
+  if (hour >= 12 && hour < 17) {
+    if (isSummer) return `Mid-afternoon is the warmest stretch of the day, and any rain that does form usually pops up in this window.`;
+    return `Afternoons on this date are typically the warmest part of the day.`;
+  }
+  if (hour >= 6 && hour < 12) {
+    return `Mornings are typically the coolest, calmest part of the day.`;
+  }
+  return `Late-night hours are usually the coolest of the day.`;
+}
+
+export function buildClimateInterpretation(
+  daily: DailyClimate | null,
+  eventIso: string,
+  address: string,
+): string | null {
+  if (!daily) return null;
+  const d = daily.daily;
+  const ed = new Date(eventIso);
+  const month = ed.getUTCMonth() + 1;
+  const hour = ed.getUTCHours();
+  const parts = [
+    tempSentence(d.maxTempF, d.minTempF, month, address),
+    rainSentence(d.precipPctMeasurable, d.precipP75In),
+    timeOfDaySentence(hour, month, d.maxTempF),
+  ].filter(Boolean) as string[];
+  if (parts.length === 0) return null;
+  return parts.join(' ');
+}
+
+function monthDayLabel(eventIso: string): string {
+  const d = new Date(eventIso);
+  return `${MONTH_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+function buildFraming(eventIso: string, nextCheckAt: string | null): string {
+  const dateLbl = monthDayLabel(eventIso);
+  const tail = nextCheckAt
+    ? ` We'll start showing a real forecast for your date around ${nextCheckAt}.`
+    : '';
+  return `This is the historical average for ${dateLbl} — what usually happens, not a forecast for this specific year.${tail}`;
+}
+
 export function buildLongRangeDigest(input: LongRangeDigestInput): LongRangeDigest {
   const eventDate = new Date(input.eventIso);
   const month = eventDate.getUTCMonth() + 1;
@@ -223,5 +325,7 @@ export function buildLongRangeDigest(input: LongRangeDigestInput): LongRangeDige
     meteorologistTake,
     stageOutro,
     facts: buildFacts(input.daily),
+    interpretation: buildClimateInterpretation(input.daily, input.eventIso, input.address),
+    framing: input.daily ? buildFraming(input.eventIso, input.nextCheckAt) : null,
   };
 }
