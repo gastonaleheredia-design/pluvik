@@ -19,6 +19,11 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [signupSent, setSignupSent] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
+  // MFA challenge state — set when sign-in returns aal2 required
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
 
   const friendlyError = (msg: string | undefined): string => {
     const m = (msg ?? '').toLowerCase();
@@ -63,8 +68,44 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       // Email confirmation is on — don't auto-close, show check-email state.
       setSignupSent(true);
     } else {
+      // Check if account requires a 2FA challenge
+      try {
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+          const { data: factors } = await supabase.auth.mfa.listFactors();
+          const totp = factors?.totp?.find((f) => f.status === 'verified');
+          if (totp) {
+            const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({ factorId: totp.id });
+            if (!chalErr && chal) {
+              setMfaFactorId(totp.id);
+              setMfaChallengeId(chal.id);
+              return;
+            }
+          }
+        }
+      } catch {
+        // fall through to success
+      }
       onSuccess();
     }
+  };
+
+  const handleMfaSubmit = async () => {
+    if (!mfaFactorId || !mfaChallengeId || mfaCode.length < 6) return;
+    setError('');
+    setLoading(true);
+    const { error } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: mfaChallengeId,
+      code: mfaCode,
+    });
+    setLoading(false);
+    if (error) {
+      setError(t('auth.mfa_invalid_code'));
+      setMfaCode('');
+      return;
+    }
+    onSuccess();
   };
 
   const isDisabled =
@@ -73,16 +114,32 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError('');
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth(provider, {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
+    try {
+      const result = await lovable.auth.signInWithOAuth(provider, {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        setLoading(false);
+        // Surface real error so we can debug Apple
+        const msg = result.error.message ?? String(result.error);
+        // eslint-disable-next-line no-console
+        console.error(`[auth] ${provider} sign-in failed:`, result.error);
+        if (provider === 'apple') {
+          setError(`${t('auth.apple_failed')} (${msg})`);
+        } else {
+          setError(friendlyError(msg));
+        }
+        return;
+      }
+      if (result.redirected) return; // browser will navigate
+      onSuccess();
+    } catch (e) {
       setLoading(false);
-      setError(friendlyError(result.error.message ?? String(result.error)));
-      return;
+      const msg = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error(`[auth] ${provider} sign-in threw:`, e);
+      setError(provider === 'apple' ? `${t('auth.apple_failed')} (${msg})` : friendlyError(msg));
     }
-    if (result.redirected) return; // browser will navigate
-    onSuccess();
   };
 
   return (
