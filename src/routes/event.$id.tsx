@@ -525,121 +525,166 @@ function EventPage() {
 
         {/* Climate facts (climate / outlook stage only) */}
         {Array.isArray(event.current_climate_facts) &&
-          event.current_climate_facts.length > 0 && (
-            <div
-              style={{
-                backgroundColor: '#fff',
-                border: `1px solid ${INK}14`,
-                borderRadius: '16px',
-                padding: '18px 18px 8px',
-                marginBottom: '32px',
-              }}
-            >
+          event.current_climate_facts.length > 0 &&
+          (() => {
+            const facts = event.current_climate_facts!;
+            const findVal = (label: string) =>
+              facts.find((f) => f.label === label)?.value ?? null;
+            const high = findVal('NORMAL HIGH');
+            const low = findVal('NORMAL LOW');
+            const meanTemp = findVal('NORMAL TEMP');
+            const rainPct = findVal('RAIN FREQUENCY');
+            const station = facts.find((f) => f.label === 'STATION');
+            const tempDisplay =
+              high && low ? `${high} / ${low}` : high ?? low ?? meanTemp ?? null;
+            const dateChip = event.event_at
+              ? new Date(event.event_at).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })
+              : null;
+            return (
               <div
                 style={{
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.12em',
-                  color: MUTED,
-                  marginBottom: '14px',
+                  backgroundColor: '#fff',
+                  border: `1px solid ${INK}14`,
+                  borderRadius: '16px',
+                  padding: '18px 18px 14px',
+                  marginBottom: '24px',
                 }}
               >
-                CLIMATE FOR THIS DATE
-              </div>
-              {event.current_climate_interpretation && (
-                <div style={{ marginBottom: '14px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: '14px',
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: '0.62rem',
-                      letterSpacing: '0.14em',
+                      fontSize: '0.7rem',
+                      letterSpacing: '0.12em',
                       color: MUTED,
-                      marginBottom: '6px',
                     }}
                   >
-                    THE READ
+                    CLIMATE FOR THIS DATE
                   </div>
+                  {dateChip && (
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '0.95rem',
+                        color: INK,
+                      }}
+                    >
+                      {dateChip}
+                    </div>
+                  )}
+                </div>
+
+                {event.current_climate_interpretation && (
                   <div
                     style={{
                       fontFamily: 'Fraunces, serif',
                       fontSize: '1rem',
                       lineHeight: 1.5,
                       color: INK,
+                      marginBottom: '14px',
                     }}
                   >
                     {event.current_climate_interpretation}
                   </div>
-                  {event.current_climate_framing && (
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        fontSize: '0.78rem',
-                        fontStyle: 'italic',
-                        color: MUTED,
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {event.current_climate_framing}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '14px 18px',
-                }}
-              >
-                {event.current_climate_facts.map((f) => (
-                  <div key={f.label} style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: '0.62rem',
-                        letterSpacing: '0.14em',
-                        color: MUTED,
-                        marginBottom: '4px',
-                      }}
-                    >
-                      {f.label}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '1.15rem',
-                        color: INK,
-                        lineHeight: 1.2,
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {f.value}
-                    </div>
-                    {f.hint && (
-                      <div
-                        style={{
-                          fontSize: '0.7rem',
-                          color: MUTED,
-                          marginTop: '2px',
-                        }}
-                      >
-                        {f.hint}
+                )}
+
+                {(tempDisplay || rainPct) && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '12px 18px',
+                      paddingTop: '4px',
+                      paddingBottom: '4px',
+                    }}
+                  >
+                    {tempDisplay && (
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: '1.25rem',
+                            color: INK,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {tempDisplay}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
+                          typical high / low
+                        </div>
+                      </div>
+                    )}
+                    {rainPct && (
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: '1.25rem',
+                            color: INK,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          ~{rainPct}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
+                          chance of rain, this date
+                        </div>
                       </div>
                     )}
                   </div>
-                ))}
+                )}
+
+                {event.current_climate_framing && (
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      fontSize: '0.78rem',
+                      fontStyle: 'italic',
+                      color: MUTED,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {event.current_climate_framing}
+                  </div>
+                )}
+
+                {station && (
+                  <button
+                    type="button"
+                    onClick={() => setStationOpen((v) => !v)}
+                    style={{
+                      marginTop: '12px',
+                      paddingTop: '10px',
+                      borderTop: `1px solid ${INK}0d`,
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '10px 0 0',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      fontSize: '0.7rem',
+                      color: MUTED,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Source: NOAA · {station.value}
+                    {stationOpen && station.hint ? ` — ${station.hint}` : ' ▾'}
+                  </button>
+                )}
               </div>
-              <div
-                style={{
-                  fontSize: '0.68rem',
-                  color: MUTED,
-                  marginTop: '14px',
-                  paddingTop: '10px',
-                  borderTop: `1px solid ${INK}0d`,
-                  lineHeight: 1.4,
-                }}
-              >
-                NOAA 1991–2020 daily normals — historical baseline, not a forecast.
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
         {/* Actions */}
         <div
