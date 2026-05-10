@@ -231,6 +231,10 @@ function AnswerPage() {
           event_phrase: extractEventTimeFromQuestion(question)?.sourcePhrase ?? null,
           event_at: a.event_at ?? null,
           current_climate_facts: a.climate_facts ?? null,
+          current_climate_interpretation:
+            (a as { climate_interpretation?: string | null }).climate_interpretation ?? null,
+          current_climate_framing:
+            (a as { climate_framing?: string | null }).climate_framing ?? null,
         })
         .select()
         .single();
