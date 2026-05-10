@@ -545,6 +545,46 @@ function EventPage() {
           </div>
         </div>
 
+        {/* Why MAYBE — three-part rationale shown only on uncertain answers */}
+        {displayVerdict === 'MAYBE' && event.current_maybe_explanation && (
+          <div
+            style={{
+              marginTop: '14px',
+              padding: '16px 18px',
+              borderRadius: '14px',
+              border: `1px solid ${INK}1f`,
+              backgroundColor: '#fff',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.62rem',
+                letterSpacing: '0.14em',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                color: ACCENT,
+                marginBottom: '8px',
+              }}
+            >
+              Why we're saying maybe
+            </div>
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '0.98rem',
+                lineHeight: 1.45,
+                color: INK,
+              }}
+            >
+              {event.current_maybe_explanation.afd_quote}{' '}
+              {event.current_maybe_explanation.model_reconciliation}{' '}
+              <span style={{ color: MUTED }}>
+                {event.current_maybe_explanation.why_uncertain}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Climate facts (climate / outlook stage only) */}
         {Array.isArray(event.current_climate_facts) &&
           event.current_climate_facts.length > 0 &&
