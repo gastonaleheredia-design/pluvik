@@ -412,6 +412,11 @@ export const translations = {
         mode_follow: 'SEGUIRME',
         because: 'PORQUE',
         because_aria: 'Por qué este veredicto',
+        why: 'POR QUÉ',
+        next_rain_short: 'PRÓXIMA LLUVIA',
+        radar_chip: 'RADAR',
+        resume_here: 'Usar mi ubicación',
+        refresh: 'Actualizar',
       },
       // Answer
       answer: {
