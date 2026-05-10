@@ -578,6 +578,81 @@ export async function probeImminentStorm(lat: number, lon: number): Promise<Immi
   }
 }
 
+/**
+ * Companion to probeImminentStorm: returns the nearest moderate+ cell within
+ * 25 mi regardless of whether it's "approaching", with motion classified
+ * relative to the user's pin. Used by the home screen to show a nearby-storm
+ * clarification when the verdict is DRY/CLOUDY but radar shows activity.
+ */
+export interface NearbyCellProbe {
+  distanceMiles: number;
+  bearingFromUser: string;
+  motionRelativeToUser: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary';
+}
+
+const COMPASS_DEG: Record<string, number> = {
+  N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315,
+};
+
+function classifyRelativeMotion(
+  bearingFromUser: string,
+  motionDirDeg: number | null,
+  speedMph: number | null,
+): NearbyCellProbe['motionRelativeToUser'] {
+  if (speedMph == null || speedMph < 5) return 'stationary';
+  if (motionDirDeg == null) return 'parallel';
+  const userBearingDeg = COMPASS_DEG[bearingFromUser] ?? 0;
+  // Direction from the cell toward the user (opposite of where the cell sits).
+  const towardUserDeg = (userBearingDeg + 180) % 360;
+  let diff = Math.abs(motionDirDeg - towardUserDeg) % 360;
+  if (diff > 180) diff = 360 - diff;
+  if (diff < 30) return 'approaching';
+  if (diff < 60) return 'drifting_toward';
+  if (diff < 120) return 'parallel';
+  return 'moving_away';
+}
+
+export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyCellProbe | null> {
+  try {
+    const text = await fetchRadarCellsFromGrid(lat, lon);
+    if (!text || /No active|unavailable/.test(text)) return null;
+    const lines = text.split('\n').filter(l => l.startsWith('Cell '));
+    if (lines.length === 0) return null;
+
+    const parsed = lines.map(l => {
+      const head = l.match(/^Cell\s+(\w+)\s+at\s+(\d+)mi/);
+      const motion = l.match(/Motion:(\d+)°\(toward \w+\) at (\d+)mph/);
+      const intensity = l.match(/INTENSITY:(\w+)/);
+      return {
+        bearing: head?.[1] ?? '?',
+        dist: head ? parseInt(head[2], 10) : 999,
+        motionDir: motion ? parseInt(motion[1], 10) : null,
+        speed: motion ? parseInt(motion[2], 10) : null,
+        intensity: (intensity?.[1] ?? '').toLowerCase(),
+      };
+    });
+
+    // Keep moderate+ cells within 25 mi.
+    const candidates = parsed.filter(p =>
+      p.dist <= 25 &&
+      (p.intensity === 'moderate' || p.intensity === 'heavy' ||
+        p.intensity === 'intense' || p.intensity === 'extreme'),
+    );
+    if (candidates.length === 0) return null;
+
+    // Pick the closest one.
+    candidates.sort((a, b) => a.dist - b.dist);
+    const c = candidates[0];
+    return {
+      distanceMiles: c.dist,
+      bearingFromUser: c.bearing,
+      motionRelativeToUser: classifyRelativeMotion(c.bearing, c.motionDir, c.speed),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchEnsemble(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(

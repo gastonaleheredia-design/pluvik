@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { probeImminentStorm } from './metDataFetcher';
+import { probeImminentStorm, probeNearbyCell, type NearbyCellProbe } from './metDataFetcher';
 
 interface HomeBriefingRequest {
   lat: number;
@@ -14,6 +14,15 @@ export interface HomeBriefing {
   sentence: string;
   /** Caption like "NEXT RAIN · TUE 4 PM", or null when no rain in 7 days */
   next_rain_caption: string | null;
+  /** Nearest moderate+ cell within 25 mi (only set when verdict is DRY/CLOUDY/RAIN SOON). */
+  nearby_cell: {
+    distance_mi: number;
+    bearing: string;
+    /** approaching | drifting_toward | parallel | moving_away | stationary */
+    motion: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary';
+  } | null;
+  /** Local-time string like "8:06 PM" of when this briefing was generated. */
+  updated_at_local: string;
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -106,6 +115,21 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     } catch { /* keep point-only verdict */ }
 
+    // Nearby (non-imminent) cell — only render when verdict isn't already STORMS/RAINING.
+    let nearbyCell: HomeBriefing['nearby_cell'] = null;
+    if (word === 'DRY' || word === 'CLOUDY' || word === 'RAIN SOON') {
+      try {
+        const near: NearbyCellProbe | null = await probeNearbyCell(lat, lon);
+        if (near) {
+          nearbyCell = {
+            distance_mi: near.distanceMiles,
+            bearing: near.bearingFromUser,
+            motion: near.motionRelativeToUser,
+          };
+        }
+      } catch { /* ignore */ }
+    }
+
     // One-line italic summary.
     let sentence: string;
     if (language.startsWith('es')) {
@@ -132,6 +156,18 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else sentence = 'Clear right now.';
     }
 
-    void tz;
-    return { word, sentence, next_rain_caption: nextRainCaption } satisfies HomeBriefing;
+    // Local "updated at" string in the address's timezone.
+    const updatedLocal = new Date().toLocaleTimeString(language.startsWith('es') ? 'es-US' : 'en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: tz,
+    });
+
+    return {
+      word,
+      sentence,
+      next_rain_caption: nextRainCaption,
+      nearby_cell: nearbyCell,
+      updated_at_local: updatedLocal,
+    } satisfies HomeBriefing;
   });
