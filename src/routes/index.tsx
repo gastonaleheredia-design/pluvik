@@ -935,6 +935,20 @@ function HomePage() {
             {micError}
           </div>
         )}
+        {micState === 'recording' && (
+          <div style={{ marginTop: 6, fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: '0.62rem', color: ACCENT, letterSpacing: '0.14em', textAlign: 'center' }}>
+            {t('home.mic_recording_progress', {
+              defaultValue: 'RECORDING {{m}}:{{s}} / 1:00 — TAP MIC TO STOP',
+              m: Math.floor(recordElapsed / 60),
+              s: String(recordElapsed % 60).padStart(2, '0'),
+            })}
+          </div>
+        )}
+        {recordCappedNotice && micState === 'idle' && (
+          <div style={{ marginTop: 6, fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: '0.6rem', color: MUTED, letterSpacing: '0.12em', textAlign: 'center' }}>
+            {t('home.mic_capped', { defaultValue: 'STOPPED AT 1 MINUTE — TAP THE MIC AGAIN TO ADD MORE' })}
+          </div>
+        )}
       </form>
       {questionText.trim().length > 2 && (
         <QuestionChips
