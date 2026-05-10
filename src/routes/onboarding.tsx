@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
-import '../i18n';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
