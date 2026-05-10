@@ -109,7 +109,7 @@ async function refreshOne(
   const resolvedEventAtIso = Number.isFinite(resolvedEventAtMs)
     ? new Date(resolvedEventAtMs).toISOString()
     : null;
-  const updatePayload: Record<string, unknown> = {
+  const updatePayload: Record<string, any> = {
     last_checked_at: nowIso,
     event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
     event_phrase: parsedTime?.sourcePhrase ?? null,
