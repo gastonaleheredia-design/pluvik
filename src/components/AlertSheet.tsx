@@ -30,10 +30,10 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
   const isFull = snap === 1;
   const isRadarOnly = !alert;
 
-  // Radar fills the whole viewport at full snap (edge-to-edge); otherwise
-  // leaves room for text in the half-sheet.
+  // Radar fills the whole viewport at full snap (truly edge-to-edge);
+  // otherwise leaves room for text in the half-sheet.
   const radarHeight = isFull
-    ? 'calc(100dvh - 48px - env(safe-area-inset-top, 0px))'
+    ? '100dvh'
     : isRadarOnly
       ? 'calc(70vh - 140px)'
       : 320;
@@ -57,7 +57,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
             zIndex: 50,
             display: 'flex',
             flexDirection: 'column',
-            backgroundColor: PAGE_BG,
+            backgroundColor: isFull ? '#0b1018' : PAGE_BG,
             borderTopLeftRadius: isFull ? 0 : 20,
             borderTopRightRadius: isFull ? 0 : 20,
             maxHeight: '100dvh',
@@ -69,54 +69,9 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
             {alert ? alert.event : 'Live radar'}
           </Drawer.Title>
           {isFull ? (
-            // Solid top bar in fullscreen — drag handle + minimize + close.
-            // Sits above the map so nothing overlays the radar.
-            <div
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingTop: 'env(safe-area-inset-top, 0px)',
-                backgroundColor: PAGE_BG,
-                borderBottom: '1px solid rgba(11,16,24,0.08)',
-                flexShrink: 0,
-                zIndex: 3,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setSnap(SNAP_POINTS[0])}
-                aria-label="Minimize"
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  padding: '10px 14px', color: INK,
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem', letterSpacing: '0.16em', fontWeight: 700,
-                }}
-              >
-                ▾ MINIMIZE
-              </button>
-              <div
-                style={{
-                  width: 44, height: 5, borderRadius: 3,
-                  backgroundColor: 'rgba(11,16,24,0.18)',
-                }}
-              />
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  padding: '10px 14px', color: INK,
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.7rem', letterSpacing: '0.16em', fontWeight: 700,
-                }}
-              >
-                ✕ CLOSE
-              </button>
-            </div>
+            // Fullscreen: no top bar — buttons float over the map (rendered
+            // below). This gives a true edge-to-edge radar.
+            null
           ) : (
             <div
               style={{
@@ -132,6 +87,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               flex: 1,
               overflowY: isFull ? 'hidden' : 'auto',
               padding: isFull ? 0 : '8px 20px 32px',
+              position: 'relative',
             }}
           >
             {!isFull && alert ? (
@@ -181,10 +137,62 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 marginTop: isFull ? 0 : 14,
                 borderRadius: isFull ? 0 : 12,
                 overflow: 'hidden',
+                position: isFull ? 'absolute' : 'relative',
+                inset: isFull ? 0 : undefined,
               }}
             >
               <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} />
             </div>
+
+            {/* Floating controls in fullscreen */}
+            {isFull && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSnap(SNAP_POINTS[0])}
+                  aria-label="Minimize"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+                    left: 12,
+                    zIndex: 6,
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    background: 'rgba(11,16,24,0.78)',
+                    color: '#faf7f0',
+                    cursor: 'pointer',
+                    padding: '6px 12px',
+                    borderRadius: 100,
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.6rem', letterSpacing: '0.16em', fontWeight: 700,
+                    backdropFilter: 'blur(6px)',
+                  }}
+                >
+                  ▾ MIN
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+                    right: 12,
+                    zIndex: 6,
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    background: 'rgba(11,16,24,0.78)',
+                    color: '#faf7f0',
+                    cursor: 'pointer',
+                    padding: '6px 12px',
+                    borderRadius: 100,
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.65rem', letterSpacing: '0.16em', fontWeight: 700,
+                    backdropFilter: 'blur(6px)',
+                  }}
+                >
+                  ✕ CLOSE
+                </button>
+              </>
+            )}
 
             {!isFull && alert?.description && (
               <div
