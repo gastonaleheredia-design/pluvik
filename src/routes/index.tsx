@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
+const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
 
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
@@ -28,6 +29,10 @@ function HomePage() {
   const [questionText, setQuestionText] = useState('');
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [showAddrHint, setShowAddrHint] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [micSupported, setMicSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -80,6 +85,61 @@ function HomePage() {
     return () => { cancelled = true; };
   }, [authLoading, user, navigate]);
 
+  // Show "(tap to change)" hint for the first 3 visits.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const n = parseInt(localStorage.getItem(ADDR_HINT_KEY) ?? '0', 10) || 0;
+      if (n < 3) {
+        setShowAddrHint(true);
+        localStorage.setItem(ADDR_HINT_KEY, String(n + 1));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Detect Web Speech API support.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as any;
+    setMicSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  const toggleListening = () => {
+    if (typeof window === 'undefined') return;
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+
+    if (listening && recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      return;
+    }
+
+    try {
+      const rec = new SR();
+      rec.lang = i18n.language?.startsWith('es') ? 'es-ES' : 'en-US';
+      rec.continuous = false;
+      rec.interimResults = true;
+      let finalText = '';
+      rec.onresult = (e: any) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) finalText += r[0].transcript;
+          else interim += r[0].transcript;
+        }
+        setQuestionText((finalText + interim).trimStart());
+      };
+      rec.onerror = () => setListening(false);
+      rec.onend = () => { setListening(false); recognitionRef.current = null; };
+      recognitionRef.current = rec;
+      rec.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+    }
+  };
+
   // Fetch the home briefing for the saved address.
   useEffect(() => {
     if (selectedAddress.lat == null || selectedAddress.lon == null) {
@@ -104,9 +164,24 @@ function HomePage() {
     });
   };
 
-  const addressLine = selectedAddress.label
-    ? `${selectedAddress.label}${selectedAddress.meta ? ' · ' + selectedAddress.meta : ''}`.toUpperCase()
-    : '';
+  // Translate motion enum and bearing for the nearby-cell line.
+  const renderNearby = () => {
+    if (!briefing?.nearby_cell) return null;
+    if (briefing.word === 'STORMS' || briefing.word === 'RAINING' || briefing.word === 'SNOW') return null;
+    const { distance_mi, bearing, motion } = briefing.nearby_cell;
+    const motionKey =
+      motion === 'approaching' ? 'home.motion_approaching' :
+      motion === 'drifting_toward' ? 'home.motion_drifting_toward' :
+      motion === 'parallel' ? 'home.motion_parallel' :
+      motion === 'moving_away' ? 'home.motion_moving_away' :
+      'home.motion_stationary';
+    return t('home.nearby_storm', {
+      distance: distance_mi,
+      bearing,
+      motion: t(motionKey),
+    });
+  };
+  const nearbyLine = renderNearby();
 
   return (
     <div
@@ -121,30 +196,6 @@ function HomePage() {
       }}
     >
       {/* Tiny address tag, top */}
-      <button
-        type="button"
-        onClick={() => setShowPicker(true)}
-        style={{
-          alignSelf: 'center',
-          margin: '52px 24px 0',
-          padding: '6px 4px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          fontSize: '0.6rem',
-          letterSpacing: '0.18em',
-          color: MUTED,
-          maxWidth: '90vw',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-        aria-label={t('home.address_change', { defaultValue: 'Change address' })}
-      >
-        {addressLine || '＋ ADD ADDRESS'}
-      </button>
-
       {/* HERO — verdict word + sentence + next-rain caption */}
       <div
         style={{
@@ -153,10 +204,65 @@ function HomePage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-start',
-          padding: '14vh 24px 0',
+          padding: '10vh 24px 0',
           textAlign: 'center',
         }}
       >
+        {/* Location block — kicker + city + tap hint, all tappable. */}
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '6px',
+            marginBottom: '28px',
+            maxWidth: '90vw',
+          }}
+          aria-label={t('home.address_change', { defaultValue: 'Change address' })}
+        >
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.6rem',
+              letterSpacing: '0.22em',
+              color: MUTED,
+            }}
+          >
+            {t('home.right_now_at')}
+          </span>
+          <span
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: '1.05rem',
+              color: INK,
+              maxWidth: '90vw',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {selectedAddress.label || '＋ Add address'}
+          </span>
+          {showAddrHint && (
+            <span
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontStyle: 'italic',
+                fontSize: '0.75rem',
+                color: MUTED,
+              }}
+            >
+              {t('home.tap_to_change')}
+            </span>
+          )}
+        </button>
+
         {briefingLoading ? (
           <div
             style={{
@@ -194,6 +300,20 @@ function HomePage() {
             >
               {briefing.sentence}
             </div>
+            {nearbyLine && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  fontFamily: 'Fraunces, serif',
+                  fontStyle: 'italic',
+                  fontSize: '0.95rem',
+                  color: ACCENT,
+                  maxWidth: '420px',
+                }}
+              >
+                {nearbyLine}
+              </div>
+            )}
             {briefing.next_rain_caption && (
               <div
                 style={{
@@ -205,6 +325,19 @@ function HomePage() {
                 }}
               >
                 {briefing.next_rain_caption}
+              </div>
+            )}
+            {briefing.updated_at_local && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem',
+                  letterSpacing: '0.18em',
+                  color: MUTED,
+                }}
+              >
+                {t('home.updated')} {briefing.updated_at_local}
               </div>
             )}
           </>
@@ -244,7 +377,7 @@ function HomePage() {
           <input
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
-            placeholder={t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })}
+            placeholder={listening ? t('home.mic_listening') : t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })}
             style={{
               flex: 1,
               border: 'none',
@@ -257,6 +390,33 @@ function HomePage() {
               minWidth: 0,
             }}
           />
+          {micSupported && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              aria-label="Voice input"
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '50%',
+                border: 'none',
+                backgroundColor: listening ? ACCENT : '#f1ede4',
+                color: listening ? PAGE_BG : INK,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'background-color 120ms ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3" />
+                <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+              </svg>
+            </button>
+          )}
           <button
             type="submit"
             disabled={!questionText.trim()}
