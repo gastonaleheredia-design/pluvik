@@ -19,6 +19,8 @@ interface TrackedEvent {
   archived_at?: string | null;
   event_at?: string | null;
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
+  last_significant_change_at?: string | null;
+  user_seen_change_at?: string | null;
 }
 
 interface SnapshotMini {
@@ -54,6 +56,17 @@ function relTime(iso: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+/** "in 2d 3h", "in 5h", "in 30m", or "soon" — used for archive countdown. */
+function relFuture(iso: string): string {
+  const diff = Math.floor((new Date(iso).getTime() - Date.now()) / 1000);
+  if (diff <= 60) return 'soon';
+  if (diff < 3600) return `in ${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `in ${Math.floor(diff / 3600)}h`;
+  const days = Math.floor(diff / 86400);
+  const hours = Math.floor((diff - days * 86400) / 3600);
+  return hours > 0 ? `in ${days}d ${hours}h` : `in ${days}d`;
 }
 
 function DashboardPage() {
@@ -160,6 +173,28 @@ function DashboardPage() {
         setSnapshots([]);
       }
       setLoadingEvents(false);
+      // Mark unseen significant changes as seen now that the user is viewing
+      // the active list. Only run for the active view so archived browsing
+      // doesn't clear the indicator prematurely.
+      if (view === 'active') {
+        const unseenIds = list
+          .filter((e) => {
+            const changed = e.last_significant_change_at
+              ? new Date(e.last_significant_change_at).getTime()
+              : 0;
+            const seen = e.user_seen_change_at
+              ? new Date(e.user_seen_change_at).getTime()
+              : 0;
+            return changed > seen;
+          })
+          .map((e) => e.id);
+        if (unseenIds.length > 0) {
+          await supabase
+            .from('tracked_events')
+            .update({ user_seen_change_at: new Date().toISOString() })
+            .in('id', unseenIds);
+        }
+      }
     });
   }, [user, view]);
 
@@ -452,6 +487,18 @@ function DashboardPage() {
           const finalSnap = eventSnaps.find((s) => s.is_final);
           const isArchived = !!event.archived_at;
           const allClear = isArchived && finalSnap?.change_tag === 'RESOLVED_BENIGN';
+          const hasUnseenChange = (() => {
+            const changed = event.last_significant_change_at
+              ? new Date(event.last_significant_change_at).getTime()
+              : 0;
+            const seen = event.user_seen_change_at
+              ? new Date(event.user_seen_change_at).getTime()
+              : 0;
+            return changed > 0 && changed > seen;
+          })();
+          const archivesAtIso = event.event_at
+            ? new Date(new Date(event.event_at).getTime() + 24 * 3600 * 1000).toISOString()
+            : null;
           return (
             <Link
               key={event.id}
@@ -600,6 +647,38 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
+                    {hasUnseenChange && (
+                      <span
+                        style={{
+                          marginLeft: '8px',
+                          padding: '2px 8px',
+                          borderRadius: '100px',
+                          backgroundColor: ACCENT + '1a',
+                          color: ACCENT,
+                          fontWeight: 700,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          fontSize: '0.6rem',
+                        }}
+                      >
+                        Updated
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Auto-archive countdown for active events */}
+                {!isArchived && archivesAtIso && (
+                  <div
+                    style={{
+                      fontSize: '0.65rem',
+                      letterSpacing: '0.06em',
+                      color: MUTED,
+                      opacity: 0.7,
+                      marginTop: '-2px',
+                    }}
+                  >
+                    Auto-archives {relFuture(archivesAtIso)}
                   </div>
                 )}
               </div>

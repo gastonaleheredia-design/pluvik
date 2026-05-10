@@ -81,6 +81,15 @@ function EventPage() {
       if (eventData) setEvent(eventData as TrackedEvent);
       if (snapData) setSnapshots(snapData as TimelineSnapshot[]);
       setLoading(false);
+      // Mark this event's significant change as seen so the in-app indicator
+      // (BottomNav dot, dashboard pill) clears.
+      if (eventData) {
+        supabase
+          .from('tracked_events')
+          .update({ user_seen_change_at: new Date().toISOString() })
+          .eq('id', id)
+          .then(() => {});
+      }
     });
   }, [user, id]);
 
