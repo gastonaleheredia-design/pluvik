@@ -470,32 +470,6 @@ export const askWeather = createServerFn({ method: 'POST' })
         scenario: scenarioProfile.scenario,
         horizon: scenarioProfile.horizon,
       } as unknown as ExtendedWeatherAnswer;
-
-      // (Legacy plain-language block kept below for non-bypass paths.)
-      // eslint-disable-next-line no-unreachable
-      const ctx = buildPlainLanguageContext({
-        stage: stageInfo.stage,
-        eventMonth,
-        normals,
-        outlooks: usableOutlooks,
-        discussion,
-        eventAtIso: new Date(
-          Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
-        ).toISOString(),
-      });
-      plainLanguageBlock = ctx.promptBlock;
-      plainLanguageOutro = ctx.stageOutro;
-      plainLanguageNextCheckAt = ctx.nextCheckAt;
-      cpcNarrativeFromContext = ctx.cpcDiscussionParagraph;
-      console.log('[askWeather:diag] plain-language context', {
-        stage: stageInfo.stage,
-        targetHorizon,
-        sentenceCount: ctx.sentences.length,
-        hasNormals: !!normals,
-        hasOutlooks: !!usableOutlooks,
-        hasDiscussion: !!discussion,
-        nextCheckAt: ctx.nextCheckAt,
-      });
     }
 
     const systemPrompt =
