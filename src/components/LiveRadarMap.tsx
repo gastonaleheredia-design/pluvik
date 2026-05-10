@@ -87,6 +87,7 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       return pointInAlertGeometry(lat, lon, f.geometry);
     });
     if (!features.length) return null;
+    console.debug('[radar] alerts point', { lat, lon, count: features.length });
 
     // Cache full alert details so /alert/$id can hydrate instantly.
     for (const f of features) {
