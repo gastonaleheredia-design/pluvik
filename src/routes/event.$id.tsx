@@ -24,6 +24,8 @@ interface TrackedEvent {
   event_at?: string | null;
   lat?: number | null;
   lon?: number | null;
+  current_forecast_stage?: string | null;
+  current_climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
 }
 
 export const Route = createFileRoute('/event/$id')({
@@ -171,6 +173,9 @@ function EventPage() {
           last_checked_at: new Date().toISOString(),
           // Refresh event_at in case the question/time interpretation changed.
           event_at: a.event_at ?? event.event_at ?? null,
+          current_forecast_stage: a.forecast_stage ?? event.current_forecast_stage ?? null,
+          current_climate_facts:
+            (a as { climate_facts?: unknown }).climate_facts ?? null,
         })
         .eq('id', event.id);
 
@@ -199,6 +204,12 @@ function EventPage() {
         current_verdict_sentence: verdictSentence,
         last_checked_at: new Date().toISOString(),
         event_at: a.event_at ?? event.event_at ?? null,
+        current_forecast_stage:
+          a.forecast_stage ?? event.current_forecast_stage ?? null,
+        current_climate_facts:
+          ((a as { climate_facts?: TrackedEvent['current_climate_facts'] }).climate_facts) ??
+          event.current_climate_facts ??
+          null,
       });
       setSnapshots((prev) => [snap as unknown as TimelineSnapshot, ...prev]);
     } catch (err) {
