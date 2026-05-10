@@ -1,59 +1,55 @@
-# Two work streams
+## Problem
 
-## 1) Why the home screen says STORMS while you're driving
+Long-range answers (e.g. "Jul 4 in Houston") show:
 
-### What I found in the code
+> "historical climate for this date isn't available."
 
-**Location is NOT following you.** Today the app only knows one location at a time, and that location is whatever was last picked or detected:
+NOAA absolutely has this data — your screenshot of NOWData for Houston Intercontinental (Jul 4) shows Normal Max 94°F / Min 75°F / Precip 0.16″. I confirmed by querying NCEI directly with that station ID and the exact-day record came back fine.
 
-- `src/lib/addressContext.tsx` stores a single `SelectedAddress` in `localStorage` (defaults to Houston city center: 29.76, -95.37).
-- The only place geolocation runs is `src/components/AddressPicker.tsx` → the "detect my location" button calls `navigator.geolocation.getCurrentPosition` once.
-- There is no `watchPosition`, no periodic refresh, no re-resolve when you re-open the app.
+## Root cause
 
-So as you drive across Houston, every briefing is being computed against the *same* lat/lon — usually downtown Houston — not where your phone actually is. That alone can explain disagreement with what you see out the windshield.
+Both `fetchClimateNormals` (monthly) and `fetchDailyClimateNormal` (daily) in `src/lib/fetchers/fetchClimateNormals.ts` hit the NCEI Access API using **only `boundingBox=`**. NCEI changed behavior — that endpoint now responds:
 
-**Why the verdict flipped to STORMS.** In `src/lib/homeBriefing.functions.ts`, the word is decided in this order (any one of these wins):
+```
+{"errorCode":400,"errorMessage":"Bad Request","errors":[{"field":"stations","message":"A station is required."}]}
+```
 
-1. Open-Meteo `current.weather_code >= 95` (thunderstorm code at the point).
-2. `probeImminentStorm()` — a radar probe says a cell is approaching within ~90 min.
-3. `getActiveWarning()` — any NWS active alert polygon covering the point (Severe T-storm, Flood, Marine, Special Weather Statement, etc.).
-4. A nearby radar cell ≥35 dBZ within 10 mi (≥50 dBZ → STORMS, otherwise RAINING).
+So every call returns 400 → null → "isn't available". This is why every long-range card and every "FORECAST TIMELINE" snapshot reads the same empty fallback line.
 
-The KHGX loop you sent shows mostly light returns SE of downtown over Galveston Bay — consistent with rule #4 firing on a 35–45 dBZ cell ~15–25 mi SE, OR rule #3 firing on a Marine/Special Weather Statement that covers the bay/coast. Today there is no UI to tell you *which* rule fired, so it just looks wrong.
+## Fix
 
-### What to change
+Two-step lookup using NCEI's free, no-key endpoints:
 
-**A. Live location tracking (opt-in, with a clear toggle).**
-- Add a "Follow my location" mode to `addressContext` (persisted preference). When on:
-  - Use `navigator.geolocation.watchPosition` with a 200 m / 60 s threshold so we only refresh the briefing when you've actually moved meaningfully.
-  - Reverse-geocode the new point through Mapbox to update the "Houston, TX" label to the current neighborhood/city.
-  - Show a small live indicator (pulsing dot + "Following") next to the location label so you know it's tracking.
-- When off (or permission denied), behave exactly as today (manual pick, default Houston).
-- Add a one-time permission primer ("Pluvik can follow you while you drive so the verdict matches where you actually are") before triggering the browser prompt.
+1. **Discover stations** with `https://www.ncei.noaa.gov/access/services/search/v1/data`, filtered by `dataset=normals-daily-1991-2020` (or monthly), `bbox=`, and the date. Response includes a `results[].stations[].id` list (e.g. `USC00414333`, `USW00012960`).
+2. **Pull data** with `https://www.ncei.noaa.gov/access/services/data/v1` using `stations=ID1,ID2,…` (comma-joined, top ~8 nearest), and the same `dataTypes`. Pick the nearest station with usable values (same logic we have today).
 
-**B. "Why STORMS?" transparency.**
-- Extend the `HomeBriefing` server response with a `verdict_reason` field: `'point_thunder' | 'imminent_radar_cell' | 'active_alert' | 'nearby_strong_cell' | 'point_precip' | 'forecast'` plus a short human string (e.g. "45 dBZ cell 18 mi SE, drifting away" or "Marine Weather Statement covers your area").
-- Surface that string under the headline as a tiny justification line ("BECAUSE · 45 dBZ cell 18 mi SE"), tappable to open the radar with that cell highlighted.
-- This makes today's confusion debuggable in the future — you'll instantly see whether it's a real cell, a stale point forecast, or a coastal marine alert that triggered STORMS.
+Apply this to **both** `fetchClimateNormals` (monthly) and `fetchDailyClimateNormal` (daily) — the monthly endpoint has the identical requirement now.
 
-**C. A small data-quality guardrail.**
-- If `verdict_reason === 'nearby_strong_cell'` AND that cell is moving *away* from the user AND >12 mi out, downgrade STORMS → CLOUDY/DRY (or "STORMS NEARBY" subtitle instead of the giant STORMS word). This stops the headline from screaming at you about a weakening cell over the bay.
+Other touch-ups in the same file:
+- Widen `SEARCH_RADIUS_DEG` fallback: if the first bbox returns 0 stations, retry with a larger box (~1.5°) before giving up.
+- Keep the existing 24h cache, but cache **null only for 5 min** (not 24 h) so a transient NCEI 5xx doesn't blank out climatology for a day.
+- Add a one-line `console.info` with chosen station name + distance, so we can sanity-check "Houston Intercontinental · 8.4 mi" in logs.
 
-## 2) Custom icon set to replace the emojis
+## Why this fixes the user-visible card
 
-The grid on the onboarding screen (Weddings 💍, Construction 🏗️, Parties 🎉, Sports 🏈, Fishing 🎣, Storm tracking 🌪️) currently renders OS emoji, which is why they look like Apple's set on your iPhone. They're not unique to Pluvik.
+Once `fetchDailyClimateNormal(29.76, -95.37, 7, 4)` returns Houston Intercontinental's row, `buildLongRangeDigest` already knows how to render it as:
 
-### What to change
-- Generate **6 bespoke icons** with `imagegen` (premium quality, transparent PNG, ~512×512), in a single coherent style that matches the app's editorial look (warm cream background, deep navy/ink line work, single amber accent — same palette as the headline and "NEXT RAIN" text).
-- One style direction (recommend): **hand-drawn ink linework with a single ochre/amber wash** — feels editorial, masthead-y, and pairs with the serif typography. Alternative styles I can offer if you prefer: (a) flat geometric monoline, (b) soft gouache/painted, (c) wood-block / risograph.
-- Save under `src/assets/icons/usecase-{weddings,construction,parties,sports,fishing,storms}.png` and import them in `src/routes/onboarding.tsx`, replacing the `emoji` field.
-- Audit other emoji usage in the app and, in the same pass, replace them with icons from the same family (so the app feels consistent — not just onboarding).
+> "Jul 4 in Houston usually around 94° / 75°, measurable rain on about 33% of years."
 
-## Out of scope for this round
-- Building a full icon component library / sprite system. We'll just ship the 6 PNGs and the audit-driven replacements.
-- Background geolocation when the app is closed (browsers don't allow it; that's a native-app feature).
+…and the `ClimateFact[]` block on the detail screen automatically populates NORMAL HIGH / NORMAL LOW / RAIN FREQUENCY / TYPICAL WET-DAY RAIN / STATION. No UI changes needed — they're rendering empty today purely because the fetcher returns null.
 
-## Verification when done
-- With "Follow my location" on, drive (or simulate moving the device) and confirm the location label and the briefing update without you tapping anything.
-- Open the home screen and confirm the small "BECAUSE · …" line explains the verdict, and that tapping it opens radar focused on the responsible cell/alert.
-- Confirm the 6 onboarding tiles show your custom icons and that no native OS emoji are visible there anymore.
+## Out of scope
+
+- Records (record high / record low). Your screenshot also shows "101 in 2009" and similar. NCEI's normals dataset doesn't carry record extremes; those come from a separate GHCN-Daily extremes dataset. I'd add that as a follow-up after we confirm the basic fix lands, since it requires a third request and a wider station search.
+- The hydration warning on the live-location pulse dot — unrelated to this issue, can clean up in a separate pass.
+
+## Files
+
+- `src/lib/fetchers/fetchClimateNormals.ts` — switch both fetchers to the two-step station-discover → data flow, add fallback radius, shorten null-cache TTL.
+
+## Verification
+
+1. Open the Jul 4 / Houston card → headline should read with the °/° + rain % line, not "isn't available".
+2. Open the event detail screen → CLIMATE FACTS rows populate with `94°F`, `75°F`, `33% of years`, station = "HOUSTON INTERCONT AP, TX US · ~8 mi away".
+3. Server logs show `[climateNormals] station=USW00012960 (8.4 mi)`.
+4. Try a second city (e.g. Nov 5 in Denver) to confirm it's not Houston-specific.
