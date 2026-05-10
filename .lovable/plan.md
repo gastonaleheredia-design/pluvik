@@ -1,73 +1,185 @@
-## What's wrong
+## Goal
 
-Looking at your screenshot and the underlying data, there are two separate problems:
+When the headline answer is **MAYBE**, give the user a short, honest explanation of *why it's a coin-flip* — anchored in the local NWS forecaster's narrative (AFD), reconciled with what the models are showing, and tied to the user's specific hour and address. YES and NO answers stay as they are.
 
-### 1. The "NO + 85%" contradiction
+This plan also fixes the real reasons MAYBE answers feel thin today — not just the prompt — so the explanation has good source material to draw from.
 
-Your Monday 6:30pm card shows:
-- Big word: **NO**
-- Number: **85% · NO-GO**
-- Sentence (in DB): *"Rain is very likely around 6:30 PM Monday."*
+---
 
-The card is answering two different questions at once. "NO" is being shown because the plan verdict is **NO-GO** (don't count on the plan), and the dashboard maps `NO-GO → "NO"`. But the user reads the question literally — *"Will it rain Monday at 6:30pm?"* — and "NO" with 85% looks like a bug.
+## Today's situation (what actually happens on a MAYBE)
 
-The literal answer to *"Will it rain?"* with 85% chance of rain is **YES**. The plan-fitness answer is **NO-GO**. Today the card mashes them together.
+1. `fetchAFD()` returns the latest discussion for the user's local NWS office, **truncated to 2000 chars**. AFDs are 4–8 KB and split into labeled sections: `.SHORT TERM...`, `.LONG TERM...`, `.AVIATION...`, `.MARINE...`. The 2 KB cap usually clips just the SYNOPSIS, so the period covering the user's actual day is often missing from what the model sees.
+2. The AFD text is dropped into the briefing as one blob with no section labeling, no marker for which period covers `event_at`, and no instruction to quote from it.
+3. The schema has `mechanism`, `main_concern`, and `confidence_reason` fields the model already fills, but nothing is reserved specifically for the MAYBE rationale, so it gets compressed into the same one-liner used for confident answers.
+4. The dashboard card and event detail page have no slot for a "why MAYBE" block — the card just shows the verdict word and percentage line.
 
-### 2. Missing tag on some cards
+That's the gap. The fix has three layers: better data going in, a dedicated reasoning step, and a UI block to render it.
 
-Cards only show a tag for `climate`, `outlook`, `model_trend`, `live`. Anything in the `short_range` stage (your Monday and tomorrow questions) gets no tag. Past-due events also have no tag — once `event_at` has passed there's no visual marker that the question is in wind-down.
+---
 
-## Fix
+## Layer 1 — Get the right AFD content into the prompt
 
-### A. Make the big word literally answer the question
+`src/lib/metDataFetcher.ts` → upgrade `fetchAFD()`:
 
-For yes/no rain questions ("Will it rain…?", "¿Va a llover…?"), the headline word should answer the question, not the plan:
+- Pull the **full** product text (current API response field is already `productText`; just stop truncating).
+- Parse the standard `.SECTION...` headers. AFDs use a stable pattern: lines starting with a period, all-caps section name, dot, then content until the next `.SECTION` header or `&&`.
+- Pick the section(s) whose period covers the user's `event_at`. The header line for each period usually carries the days (e.g. `.SHORT TERM (Today through Monday Night)...`). Resolve "today / tonight / Monday / Tuesday" into dates against the office's local timezone (we already know `cwa` and the user's lat/lon).
+- Return a structured object:
+  ```ts
+  { office: "HGX", issuedAt: "...", relevantSection: { label, periodLabel, body }, fullText: "..." }
+  ```
+- Update `MetBriefing.afd` to carry both the targeted excerpt AND the full text. The targeted excerpt becomes the primary thing the LLM cites; the full text stays as a fallback.
 
-```text
-Question:  Will it rain Monday at 6:30pm?
-Today:     NO          85% · NO-GO     ← contradicts itself
-After:     YES         85% chance of rain · plan: NO-GO
+In `assembleBriefingText` (same file), render the AFD section with explicit framing the model can't miss:
+
+```
+NWS FORECAST DISCUSSION — {OFFICE} (issued {time})
+PERIOD COVERING THE USER'S PLAN: {periodLabel}
+"""
+{relevantSection.body}
+"""
+(Full discussion follows for context.)
+{fullText}
 ```
 
-Implementation: in `dashboard.tsx`, detect rain-style questions (regex on `event.question` for "rain"/"llover"/"lluvia") and override the headline word:
-- chance ≥ 60% → **YES**
-- chance ≤ 25% → **NO**
-- otherwise → **MAYBE**
+If the AFD fetch fails, set `relevantSection: null` and downstream code knows to skip the MAYBE explanation cleanly instead of fabricating one.
 
-The plan verdict (GO / NO-GO / WAIT) moves into the small line under the percentage, so it's still visible but no longer fights the headline.
+---
 
-For non-rain questions ("Should I…?", "Is it safe…?"), keep today's behavior — the plan verdict *is* the answer.
+## Layer 2 — Force a structured "why MAYBE" reasoning step
 
-Same change is applied on the event detail screen (`event.$id.tsx`) so the two screens agree.
+### 2a. New answer field
 
-### B. Give every card a stage tag
+Add to `src/lib/weatherAnswerSchema.ts`:
 
-Extend the `stageBadge` map so every state has a label:
+```ts
+maybe_explanation: z.object({
+  afd_quote: z.string().min(1),          // a short paraphrase of the relevant AFD line
+  model_reconciliation: z.string().min(1), // how HRRR/ECMWF/NDFD timing lines up with that
+  why_uncertain: z.string().min(1),        // one sentence: the specific source of uncertainty
+}).nullable().optional()
+```
 
-| Stage / state          | Tag                  |
-| ---------------------- | -------------------- |
-| climate                | TOO FAR OUT          |
-| outlook                | LONG-RANGE TREND     |
-| model_trend            | EARLY SIGNAL         |
-| **short_range**        | **FORECAST**         |
-| live                   | LIVE                 |
-| **past-due, not yet archived** | **WINDING DOWN** |
+Why three sub-fields and not free text: it forces the model to actually do the three things the user asked for instead of producing a vague paragraph. The UI joins them into 2–3 sentences for display, but the structure makes the reasoning auditable and lets us regenerate just one piece if needed later.
 
-"Past-due" means `event_at < now()` and `archived_at is null`. This matches the new 2-hour auto-archive window — users will see *Winding down* briefly before the card moves to Archive.
+In `validateWeatherAnswer`, normalize:
+- If `verdict_word !== 'MAYBE'` → set `maybe_explanation = null`.
+- If `verdict_word === 'MAYBE'` but `maybe_explanation` missing or any sub-field empty → leave it `null` and log a warning. UI then falls back to the existing `summary`. We do NOT block the response.
+- Strip jargon from the strings (CAPE / CIN / TPW / dBZ / shear / hodograph / LI) — same regex pattern already used elsewhere in the schema layer.
 
-### C. Backfill the existing bad row
+### 2b. Prompt changes (`src/lib/systemPrompt.ts`)
 
-The Monday row in the database currently has `current_verdict_word = "NO"` but `current_verdict_sentence = "Rain is very likely…"`. After fix A the screen will be correct regardless, but I'll also patch the system prompt in `askWeather.functions.ts` so future LLM calls set `verdict_word` to literally answer the question (YES = rain expected). No DB migration — the next refresh will overwrite it.
+Add a new STEP between current STEP 4 and STEP 5:
+
+```
+STEP 4b — MAYBE GROUNDING (only when leaning toward verdict_word = "MAYBE")
+
+If the answer is genuinely uncertain (POP 26-59% for rain questions, or model
+spread spans the decision threshold), you MUST:
+  1. Locate the AFD section that covers the user's event time. The briefing
+     marks it as "PERIOD COVERING THE USER'S PLAN".
+  2. Identify ONE concrete mechanism from that section — front, trough, ridge,
+     sea-breeze, dryline, MCS, capping inversion, upper low, etc. Do not
+     accept generic phrases like "unsettled weather".
+  3. Compare the AFD's stated timing to HRRR (0-18h) or ECMWF (24-72h) timing.
+     Name the disagreement: timing, coverage ("scattered" vs "widespread"),
+     intensity, or borderline POP.
+  4. Tie it to the user's actual hour. The user's plan is at {EVENT_HOUR}.
+
+Write the answer into `maybe_explanation`:
+  - afd_quote: paraphrase the AFD mechanism in plain English. Reference the
+    forecaster's own framing (e.g. "the Houston office expects a cold front
+    sliding south through the metro late afternoon"). Max 25 words.
+  - model_reconciliation: how the model runs line up with that timing.
+    (e.g. "HRRR pushes the front past your address by 5 PM but ECMWF runs
+    two hours slower"). Max 25 words.
+  - why_uncertain: one sentence naming the specific source of uncertainty
+    relative to the user's hour. (e.g. "Your 6:30 PM is right on the edge
+    of when the cell coverage drops off.") Max 20 words.
+
+If the AFD section is missing from the briefing, set maybe_explanation to null.
+Never invent forecaster language. Never quote percentages or jargon.
+```
+
+Update OUTPUT FORMAT JSON to include `maybe_explanation` with the three sub-fields.
+
+Add HARD RULE: *"If verdict_word is MAYBE and the AFD section is present, maybe_explanation is required. If verdict_word is YES or NO, maybe_explanation must be null."*
+
+### 2c. Pass the user's hour into the prompt
+
+`buildSystemPrompt` already takes context but doesn't get a clean "event hour in the office's local time" string. Add an `eventHourLabel` argument computed in `askWeather.functions.ts` from `event_at` + the office's timezone (we have lat/lon → tz lookup is a small helper or we can use an existing one — confirm during implementation). Substitute it into the `{EVENT_HOUR}` placeholder in STEP 4b.
+
+---
+
+## Layer 3 — Persist and render
+
+### Schema migration
+
+Add to `tracked_events`:
+```sql
+ALTER TABLE public.tracked_events
+  ADD COLUMN current_maybe_explanation jsonb;
+```
+JSONB instead of text so we keep the three sub-fields. Nullable. No backfill — next refresh writes it.
+
+### Persistence
+
+Update both write paths to store `current_maybe_explanation`:
+- `src/routes/event.$id.tsx` (in-card refresh handler)
+- `src/routes/api/public/refresh-events.tsx` (background sweep)
+
+Also add the field to the snapshots table payload? Not in this round — snapshots stay focused on stage/verdict/percentage diffs. The MAYBE explanation is a "current state" thing.
+
+### Dashboard card (`src/routes/dashboard.tsx`)
+
+When `displayWord` is `MAYBE` (or `LEAN ...` at model_trend) AND `current_maybe_explanation` is present, render a small block under the percentage line:
+
+```
+┌────────────────────────────────────────┐
+│ [WHY MAYBE]                            │
+│ {afd_quote}                            │
+│ {model_reconciliation}                 │
+│ {why_uncertain}                        │
+└────────────────────────────────────────┘
+```
+
+Styling: small uppercase `WHY MAYBE` chip in the accent color, then 3 short sentences in muted serif, max 5 lines total with `-webkit-line-clamp`. Only renders if all three sub-fields exist; otherwise the card looks like today.
+
+### Event detail (`src/routes/event.$id.tsx`)
+
+Same block but uncollapsed and full-width, placed directly under the headline word and above the existing summary. Bigger text, no clamp. Heading: "Why we're saying MAYBE".
+
+---
+
+## Layer 4 — Edge cases and guardrails
+
+- **Non-rain MAYBE questions** ("Is it safe to surf?", "Should I move the picnic indoors?"): the same structure works — the AFD discusses winds, marine conditions, fronts. Keep the field generic, no rain-specific wording in the schema.
+- **AFD unavailable**: card falls back to today's behavior. We don't show a half-empty block.
+- **AFD doesn't mention the user's period clearly** (rare in practice, but possible — e.g. an AFD focused on a current event): the period extractor returns the SHORT TERM section as default, and the model is told to set `maybe_explanation = null` if it can't honestly cite a mechanism. Better to show nothing than to bluff.
+- **Model returns garbage for `maybe_explanation`** (empty strings, jargon that survived the regex, suspiciously generic phrases like "unsettled weather"): the validator drops it to null and the card falls back. We log the issue so we can iterate on the prompt.
+- **Prompt tokens**: the full AFD adds ~6 KB. Combined with the rest of the briefing this is still well within Gemini's window. We're not adding a second LLM call.
+
+---
 
 ## Files to change
 
-- `src/routes/dashboard.tsx` — rain-question detection, new stage tag map, past-due tag
-- `src/routes/event.$id.tsx` — same headline-word logic so the detail screen matches
-- `src/lib/askWeather.functions.ts` — tighten the system-prompt rule for `verdict_word` on rain questions
-- `src/i18n/translations.ts` — add `stage.forecast` and `stage.winding_down` strings (EN + ES)
+| File | Change |
+|---|---|
+| `src/lib/metDataFetcher.ts` | Stop truncating AFD; parse sections; pick the period covering `event_at`; expose structured AFD in briefing |
+| `src/lib/systemPrompt.ts` | Add STEP 4b, `maybe_explanation` in OUTPUT FORMAT, hard rule, `{EVENT_HOUR}` placeholder |
+| `src/lib/weatherAnswerSchema.ts` | Add `maybe_explanation` shape + normalization (null when not MAYBE; jargon scrub) |
+| `src/lib/askWeather.functions.ts` | Compute event hour in the office's local TZ and pass into the prompt; pass through `maybe_explanation` |
+| `src/routes/api/public/refresh-events.tsx` | Persist `current_maybe_explanation` |
+| `src/routes/event.$id.tsx` | Persist on in-card refresh; render the "Why we're saying MAYBE" block |
+| `src/routes/dashboard.tsx` | Render the compact "WHY MAYBE" block on MAYBE cards |
+| New migration | `current_maybe_explanation jsonb` on `tracked_events` |
+
+---
 
 ## Out of scope
 
-- Archive screen rework
-- Climate card layout
-- Refresh logic / sweep timing (already fixed last round)
+- Reworking the confidence calculator
+- Changing how YES/NO answers look
+- A separate AFD viewer screen
+- Storing AFD per-snapshot
+- Adding a second LLM call (we're enriching the existing one)
