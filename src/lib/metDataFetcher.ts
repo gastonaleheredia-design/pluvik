@@ -588,6 +588,8 @@ export interface NearbyCellProbe {
   distanceMiles: number;
   bearingFromUser: string;
   motionRelativeToUser: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary' | 'unknown';
+  /** Synthetic reflectivity in dBZ for the selected cell, if known. */
+  dbz?: number;
 }
 
 const COMPASS_DEG: Record<string, number> = {
@@ -598,8 +600,14 @@ function classifyRelativeMotion(
   bearingFromUser: string,
   motionDirDeg: number | null,
   speedMph: number | null,
+  distanceMiles?: number,
 ): NearbyCellProbe['motionRelativeToUser'] {
   if (speedMph == null || speedMph < 5) return 'stationary';
+  // For cells right next to the user, the bearing-vs-steering-flow geometry
+  // is brittle: a typical W→E flow with a cell sitting just N can be
+  // mislabeled "moving_away" while it's actually about to pass overhead.
+  // Treat any moving cell within 8 mi as approaching.
+  if (distanceMiles != null && distanceMiles <= 8) return 'approaching';
   if (motionDirDeg == null) return 'parallel';
   const userBearingDeg = COMPASS_DEG[bearingFromUser] ?? 0;
   // Direction from the cell toward the user (opposite of where the cell sits).
@@ -609,17 +617,21 @@ function classifyRelativeMotion(
   if (diff < 30) return 'approaching';
   if (diff < 60) return 'drifting_toward';
   if (diff < 120) return 'parallel';
+  // Within 5 mi, even a "parallel" cell will likely brush the user — bias
+  // toward drifting_toward so the briefing doesn't say "moving away".
+  if (distanceMiles != null && distanceMiles <= 5) return 'drifting_toward';
   return 'moving_away';
 }
 
 export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyCellProbe | null> {
   try {
-    // Tight 5-mile grid covering ±25 mi around the user. The wider LLM-facing
+    // Tight ~2.5 mi grid covering ±~25 mi around the user. The wider LLM-facing
     // sampler uses ~12 mi spacing — fine for analysis but it routinely misses
-    // a compact cell sitting between two grid points. This dedicated pass fixes
-    // that for the home-screen "nearby cell" line.
-    const STEP_DEG = 0.07;
-    const N = 5;
+    // a compact cell sitting between two grid points. The denser pass also
+    // makes the reported "distance" reflect the near edge of a cell instead
+    // of the closest sampled point ~5 mi away.
+    const STEP_DEG = 0.035;
+    const N = 10;
     const lats: number[] = [];
     const lons: number[] = [];
     const cosLat = Math.cos(lat * Math.PI / 180) || 1;
@@ -686,7 +698,8 @@ export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyC
     return {
       distanceMiles: c.dist,
       bearingFromUser: c.bearing,
-      motionRelativeToUser: classifyRelativeMotion(c.bearing, c.motionDir, c.speed),
+      motionRelativeToUser: classifyRelativeMotion(c.bearing, c.motionDir, c.speed, c.dist),
+      dbz: c.dbz,
     };
   } catch {
     return null;
