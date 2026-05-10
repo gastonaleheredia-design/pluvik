@@ -584,19 +584,47 @@ function AnswerPage() {
             {contextLine}
           </div>
 
-          {/* big verdict word */}
-          <div
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontWeight: 400,
-              fontSize: 'clamp(5rem, 24vw, 9rem)',
-              lineHeight: 0.92,
-              letterSpacing: '-0.03em',
-              marginBottom: '20px',
-            }}
-          >
-            {verdictWord}
-          </div>
+          {/* big verdict word — sized by stage */}
+          {displayVerdictWord && (
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontWeight: 400,
+                fontSize: isClimate
+                  ? 'clamp(2.2rem, 9vw, 3.4rem)'
+                  : isModelTrend
+                  ? 'clamp(3rem, 14vw, 5rem)'
+                  : 'clamp(5rem, 24vw, 9rem)',
+                lineHeight: 0.95,
+                letterSpacing: '-0.03em',
+                marginBottom: '20px',
+                color: isClimate ? MUTED : INK,
+              }}
+            >
+              {displayVerdictWord}
+            </div>
+          )}
+
+          {/* outlook tendency chip */}
+          {isOutlook && decisionLabel && (
+            <div
+              style={{
+                display: 'inline-block',
+                alignSelf: 'flex-start',
+                padding: '8px 16px',
+                borderRadius: '999px',
+                border: `1.5px solid ${ACCENT}`,
+                color: ACCENT,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.72rem',
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                marginBottom: '20px',
+              }}
+            >
+              {decisionLabel}
+            </div>
+          )}
 
           {/* sentence */}
           <div
@@ -606,14 +634,29 @@ function AnswerPage() {
               fontSize: 'clamp(1.05rem, 4.5vw, 1.35rem)',
               lineHeight: 1.35,
               maxWidth: '480px',
-              marginBottom: headlineNumber ? '40px' : '32px',
+              marginBottom: headlineForStage ? '40px' : '32px',
             }}
           >
-            {verdictSentence}
+            {isClimate ? climateBody : verdictSentence}
           </div>
 
-          {/* headline number */}
-          {headlineNumber && (
+          {/* climate / outlook outro line */}
+          {(isClimate || isOutlook) && (
+            <div
+              style={{
+                fontSize: '0.85rem',
+                color: MUTED,
+                lineHeight: 1.5,
+                maxWidth: '420px',
+                marginBottom: '32px',
+              }}
+            >
+              {stageOutro || climateOutro}
+            </div>
+          )}
+
+          {/* headline number — never shown at climate/outlook */}
+          {headlineForStage && (
             <div style={{ marginBottom: '32px' }}>
               <div
                 style={{
@@ -622,7 +665,7 @@ function AnswerPage() {
                   lineHeight: 1,
                 }}
               >
-                {headlineNumber.value}
+                {headlineForStage.value}
               </div>
               <div
                 style={{
@@ -631,7 +674,7 @@ function AnswerPage() {
                   fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
                 }}
               >
-                {headlineNumber.label}
+                {headlineForStage.label}
               </div>
             </div>
           )}
@@ -660,7 +703,7 @@ function AnswerPage() {
                 color: saving ? MUTED : INK,
               }}
             >
-              {saving ? '…' : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase()}
+              {saving ? '…' : saveCtaLabel}
             </button>
           </div>
         </div>
