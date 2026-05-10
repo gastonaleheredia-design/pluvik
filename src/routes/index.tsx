@@ -11,6 +11,8 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
 import { transcribeVoice } from '../lib/transcribeVoice.functions';
+import { QuestionChips } from '../components/QuestionChips';
+import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
@@ -54,6 +56,13 @@ function HomePage() {
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
+  // Question chips: detected / picked event time + place. Picked values
+  // override detection; null means "use the default" (now / here).
+  const [pickedTime, setPickedTime] = useState<Date | null>(null);
+  const [pickedTimeManual, setPickedTimeManual] = useState(false);
+  const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
+  const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
+  const [placeResolving, setPlaceResolving] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -301,11 +310,58 @@ function HomePage() {
 
   const handleSubmit = () => {
     if (!questionText.trim()) return;
+    const finalPlace = pickedPlace;
+    const finalTime = pickedTime;
     navigate({
       to: '/answer',
-      search: { q: questionText.trim(), address: selectedAddress.label },
+      search: {
+        q: questionText.trim(),
+        address: finalPlace?.label ?? selectedAddress.label,
+        lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
+        lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
+        eventAtIso: finalTime ? finalTime.toISOString() : undefined,
+      },
     });
   };
+
+  // Debounced auto-detection of time + place from the question text.
+  // Manual picks (chip editor) are sticky — we only refresh auto-detection
+  // when the user hasn't taken over that chip yet.
+  useEffect(() => {
+    const text = questionText.trim();
+    if (text.length < 4) {
+      if (!pickedTimeManual) setPickedTime(null);
+      if (!pickedPlaceManual) { setPickedPlace(null); setPlaceResolving(false); }
+      return;
+    }
+    const id = setTimeout(() => {
+      // Time
+      if (!pickedTimeManual) {
+        const t0 = extractEventTimeFromQuestion(text);
+        setPickedTime(t0?.eventAt ?? null);
+      }
+      // Place — try the lightweight extractor first, then venue + geocode.
+      if (!pickedPlaceManual) {
+        const direct = extractPlaceFromQuestion(text);
+        const venue = direct ?? extractVenueCandidate(text);
+        if (!venue) { setPickedPlace(null); setPlaceResolving(false); return; }
+        setPlaceResolving(true);
+        const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
+          ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
+          : null;
+        let cancelled = false;
+        geocodeVenueNear(venue, proximity).then((p) => {
+          if (cancelled) return;
+          setPlaceResolving(false);
+          if (p) setPickedPlace(p);
+          else setPickedPlace(null);
+        });
+        return () => { cancelled = true; };
+      }
+    }, 450);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionText, pickedTimeManual, pickedPlaceManual, selectedAddress.lat, selectedAddress.lon]);
 
   // Translate motion enum and bearing for the nearby-cell line.
   const renderNearby = () => {
@@ -809,58 +865,22 @@ function HomePage() {
           </div>
         )}
       </form>
-      {/* Date-echo chip: show the user what date we parsed from their question */}
-      {questionText.trim().length > 4 && (() => {
-        const parsed = extractEventTimeFromQuestion(questionText);
-        const place = extractPlaceFromQuestion(questionText);
-        if (!parsed && !place) return null;
-        const dateLabel = parsed
-          ? parsed.eventAt.toLocaleDateString('en-US', {
-              weekday: 'short', month: 'short', day: 'numeric',
-              ...(parsed.eventAt.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
-            }) + (parsed.hoursAhead < 24 * 365 * 2
-              ? ' · ' + parsed.eventAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-              : '')
-          : null;
-        return (
-          <div style={{
-            padding: '0 28px 14px',
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 8,
-            flexWrap: 'wrap',
-          }}>
-            {dateLabel && (
-              <span style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem',
-                letterSpacing: '0.14em',
-                color: ACCENT,
-                background: '#fff',
-                border: `1px solid ${ACCENT}33`,
-                padding: '4px 10px',
-                borderRadius: 100,
-              }}>
-                📅 {dateLabel.toUpperCase()}
-              </span>
-            )}
-            {place && (
-              <span style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem',
-                letterSpacing: '0.14em',
-                color: ACCENT,
-                background: '#fff',
-                border: `1px solid ${ACCENT}33`,
-                padding: '4px 10px',
-                borderRadius: 100,
-              }}>
-                📍 {place.toUpperCase()}
-              </span>
-            )}
-          </div>
-        );
-      })()}
+      {questionText.trim().length > 2 && (
+        <QuestionChips
+          time={pickedTime}
+          timeDetected={pickedTime != null && !pickedTimeManual}
+          place={pickedPlace}
+          placeDetected={pickedPlace != null && !pickedPlaceManual}
+          placeResolving={placeResolving}
+          here={
+            selectedAddress.lat != null && selectedAddress.lon != null
+              ? { lat: selectedAddress.lat, lon: selectedAddress.lon, label: selectedAddress.label }
+              : null
+          }
+          onChangeTime={(d) => { setPickedTime(d); setPickedTimeManual(true); }}
+          onChangePlace={(p) => { setPickedPlace(p); setPickedPlaceManual(true); }}
+        />
+      )}
 
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}

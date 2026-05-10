@@ -23,6 +23,11 @@ export const Route = createFileRoute('/answer')({
   validateSearch: (search: Record<string, unknown>) => ({
     q: String(search.q ?? ''),
     address: String(search.address ?? ''),
+    lat: typeof search.lat === 'number' ? search.lat
+      : (typeof search.lat === 'string' && search.lat ? Number(search.lat) : undefined),
+    lon: typeof search.lon === 'number' ? search.lon
+      : (typeof search.lon === 'string' && search.lon ? Number(search.lon) : undefined),
+    eventAtIso: typeof search.eventAtIso === 'string' && search.eventAtIso ? search.eventAtIso : undefined,
   }),
   component: AnswerPage,
 });
@@ -64,7 +69,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -141,9 +146,15 @@ function AnswerPage() {
       try {
         let coords: { lat: number; lon: number } | null = null;
         let effectiveAddress = address;
+        // Fast path: caller (home page chips) already resolved coords.
+        if (typeof searchLat === 'number' && typeof searchLon === 'number'
+            && Number.isFinite(searchLat) && Number.isFinite(searchLon)) {
+          coords = { lat: searchLat, lon: searchLon };
+          effectiveAddress = address;
+        }
         // If the question mentions a different US place, geocode that
         // place and use it instead of the home address.
-        const placeOverride = extractPlaceFromQuestion(question);
+        const placeOverride = !coords ? extractPlaceFromQuestion(question) : null;
         if (placeOverride) {
           const geo = await geocodeAddress(placeOverride);
           if (geo.ok) {
@@ -172,8 +183,15 @@ function AnswerPage() {
         // Compute hoursAhead from the question text so the server can pick
         // the right forecast-maturity stage (climate / outlook / model_trend
         // / short_range / live). Without this every question defaults to 24h.
-        const eventTime = extractEventTimeFromQuestion(question);
-        const hoursAhead = eventTime ? Math.max(0, eventTime.hoursAhead) : undefined;
+        let hoursAhead: number | undefined;
+        if (eventAtIso) {
+          const t = new Date(eventAtIso).getTime();
+          if (Number.isFinite(t)) hoursAhead = Math.max(0, (t - Date.now()) / 3_600_000);
+        }
+        if (hoursAhead == null) {
+          const eventTime = extractEventTimeFromQuestion(question);
+          if (eventTime) hoursAhead = Math.max(0, eventTime.hoursAhead);
+        }
 
         const result = await askWeather({
           data: {
