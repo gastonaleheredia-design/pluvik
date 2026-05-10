@@ -149,6 +149,8 @@ export interface PlainLanguageContextInput {
   eventMonth: number;
   normals: ClimateNormals | null;
   outlooks: CpcOutlooks | null;
+  /** ISO timestamp of the user's event — used to derive the "we'll start watching on …" line. */
+  eventAtIso?: string | null;
 }
 
 export interface PlainLanguageContext {
@@ -158,6 +160,8 @@ export interface PlainLanguageContext {
   stageOutro: string | null;
   /** Markdown-ish block to splice into the user message. */
   promptBlock: string;
+  /** Friendly date phrase ("Oct 22, 2026") for the next-check hint. */
+  nextCheckAt: string | null;
 }
 
 export function buildPlainLanguageContext(
@@ -174,12 +178,32 @@ export function buildPlainLanguageContext(
 
   const stageOutro = STAGE_OUTRO[input.stage];
 
+  // Compute when we'll start watching this seriously: ~15 days before the
+  // event for climate, ~5 days for outlook. Returned as a friendly phrase.
+  let nextCheckAt: string | null = null;
+  if (input.eventAtIso) {
+    const eventMs = new Date(input.eventAtIso).getTime();
+    if (Number.isFinite(eventMs)) {
+      const leadDays = input.stage === 'climate' ? 15 : input.stage === 'outlook' ? 5 : 1;
+      const checkMs = eventMs - leadDays * 24 * 3_600_000;
+      const d = new Date(Math.max(checkMs, Date.now() + 24 * 3_600_000));
+      nextCheckAt = d.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+      });
+    }
+  }
+
   const lines: string[] = [];
   lines.push('PRE-DIGESTED PLAIN-LANGUAGE CONTEXT (use these sentences as-is — do NOT re-introduce numbers, percentages, or technical terms):');
   if (sentences.length === 0) {
     lines.push('- No long-range signals available; rely on the briefing only.');
   } else {
     for (const s of sentences) lines.push(`- ${s}`);
+  }
+  if (nextCheckAt) {
+    lines.push('');
+    lines.push(`NEXT CHECK-IN DATE for this answer (use verbatim in "next_check_at" and reference in your meteorologist_take): "${nextCheckAt}"`);
   }
   if (stageOutro) {
     lines.push('');
@@ -190,5 +214,6 @@ export function buildPlainLanguageContext(
     sentences,
     stageOutro,
     promptBlock: lines.join('\n'),
+    nextCheckAt,
   };
 }
