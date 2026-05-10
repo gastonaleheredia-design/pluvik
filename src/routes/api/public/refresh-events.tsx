@@ -95,29 +95,51 @@ async function refreshOne(
     event_at?: string;
   };
 
+  // Treat the answer as usable only if it has at least a verdict or summary
+  // and isn't an UNKNOWN placeholder. Otherwise we just bump last_checked_at
+  // and skip overwriting the existing forecast / writing a UNKNOWN snapshot.
+  const verdictUpper = (a.verdict ?? '').toString().toUpperCase();
+  const isUsable =
+    verdictUpper !== '' &&
+    verdictUpper !== 'UNKNOWN' &&
+    (typeof a.percentage === 'number' && Number.isFinite(a.percentage) ||
+      (a.summary ?? '').trim().length > 0);
+
   const nowIso = new Date().toISOString();
   const resolvedEventAtIso = Number.isFinite(resolvedEventAtMs)
     ? new Date(resolvedEventAtMs).toISOString()
     : null;
+  const updatePayload: Record<string, unknown> = {
+    last_checked_at: nowIso,
+    event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
+    event_phrase: parsedTime?.sourcePhrase ?? null,
+  };
+  if (isUsable) {
+    updatePayload.current_verdict = a.verdict ?? null;
+    updatePayload.current_percentage =
+      typeof a.percentage === 'number' && Number.isFinite(a.percentage)
+        ? a.percentage
+        : null;
+    updatePayload.current_summary = a.summary ?? null;
+    updatePayload.current_confidence = a.confidence ?? null;
+    updatePayload.current_verdict_word = a.verdict_word ?? null;
+    updatePayload.current_verdict_sentence = a.verdict_sentence ?? null;
+    updatePayload.current_forecast_stage = a.forecast_stage ?? null;
+  }
   const { error: updErr } = await supabaseAdmin
     .from('tracked_events')
-    .update({
-      current_verdict: a.verdict ?? null,
-      current_percentage:
-        typeof a.percentage === 'number' && Number.isFinite(a.percentage)
-          ? a.percentage
-          : null,
-      current_summary: a.summary ?? null,
-      current_confidence: a.confidence ?? null,
-      current_verdict_word: a.verdict_word ?? null,
-      current_verdict_sentence: a.verdict_sentence ?? null,
-      current_forecast_stage: a.forecast_stage ?? null,
-      last_checked_at: nowIso,
-      event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
-      event_phrase: parsedTime?.sourcePhrase ?? null,
-    })
+    .update(updatePayload)
     .eq('id', event.id);
   if (updErr) return { id: event.id, ok: false, error: updErr.message };
+
+  if (!isUsable) {
+    console.warn('[refresh-events] skipping snapshot — unusable answer', {
+      id: event.id,
+      verdict: a.verdict,
+      percentage: a.percentage,
+    });
+    return { id: event.id, ok: false, error: 'unusable_answer' };
+  }
 
   // Pull previous snapshot for change classification.
   const { data: prevRows, error: prevErr } = await supabaseAdmin
