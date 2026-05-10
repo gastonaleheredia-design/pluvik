@@ -66,6 +66,10 @@ export const WeatherAnswerSchema = z.object({
   plain_english_summary: z.string().optional(),
   /** Closing line — e.g. "As your event gets closer, this will move into a real forecast." */
   stage_outro: z.string().optional(),
+  /** 2–3 sentence climate "read" — narrative interpretation of normals. */
+  climate_interpretation: z.string().nullable().optional(),
+  /** Single italic disclaimer line shown under the read. */
+  climate_framing: z.string().nullable().optional(),
 
   // Accept either `impact_percent` (new prompt) or `percentage` (legacy).
   impact_percent: z.number().min(0).max(100).optional(),
