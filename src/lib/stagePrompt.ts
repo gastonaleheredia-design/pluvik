@@ -62,12 +62,39 @@ ${hasPlainLanguageDigest ? '- The user message already contains a pre-digested p
   "plain_english_summary": "same as summary, plain English",
   "recommended_action": "1 friendly suggestion (e.g. 'Check back in a week for a real forecast.')",
   "stage_outro": "${outro}",
+  "meteorologist_take": "1 person-to-person guidance sentence in second person — e.g. 'If I were you, I'd lock in the venue but keep the tent vendor's number handy. We'll start watching this around <date>.'",
+  "next_check_at": "friendly date phrase, e.g. 'Oct 22, 2026' — about 15 days before the event",
+  "hazards": null,
+  "timeline": null,
+  "event_window": null,
   "confidence": "VERY_LOW" | "LOW"
 }
 `;
   }
 
   // Trend / Forecast / Live — augment the regular prompt with stage framing only.
+  if (stage.stage === 'model_trend') {
+    return `
+## FORECAST STAGE: ${stage.label.toUpperCase()}
+${stage.explanation}
+
+## STRICT OUTPUT RULES — MODEL TREND (3–10 days out)
+The single % is misleading at this lead time. You MUST return a RANGE, not a hard number.
+
+- "forecast_stage": "model_trend"
+- "verdict_word" must be "LEAN GO" / "LEAN WAIT" / "LEAN NO" / "WATCH" — NEVER bare "GO" / "NO-GO".
+  (Map verdict_word → verdict: LEAN GO → "GO", LEAN WAIT/WATCH → "CAUTION", LEAN NO → "NO-GO".)
+- "chance_of_impact" is the midpoint, but you MUST also return:
+  - "chance_of_impact_range": [low, high] — a realistic ±15–25 point band.
+  - "volatility_note": one short sentence telling the user to check back later
+    (e.g. "Models still spread — re-check Wednesday morning.")
+- "next_check_at": a friendly date phrase like "Wed, May 14" — when the user should re-check.
+- "meteorologist_take": one sentence in the voice of a person ("If I were you, I'd keep a backup tent on standby and re-check Wednesday.")
+- "hazards": object covering rain, snow, ice, wind, cold_front, heat, lightning, fog, visibility — set { active: true, severity, note } only for the relevant ones.
+- "headline_number": { value: "low–high%", label: "RANGE" }.
+- Confidence ceiling: ${stage.confidenceCeiling}.
+`;
+  }
   return `
 ## FORECAST STAGE: ${stage.label.toUpperCase()}
 ${stage.explanation}
@@ -75,5 +102,9 @@ ${stage.explanation}
 - Include "forecast_stage": "${stage.stage}" in the JSON output.
 - Confidence ceiling for this stage: ${stage.confidenceCeiling}. Do not exceed it.
 - Verdicts (GO / CAUTION / NO-GO) and chance_of_impact ARE allowed at this stage.
+- ALWAYS return a "meteorologist_take" — one sentence in the voice of a person, second-person, telling the user what *they* should do (and when to re-check if relevant). Example: "If I were you, I'd start the pour by 6 AM to beat the line moving in around noon."
+- ALWAYS return a "hazards" object covering rain, snow, ice, wind, cold_front, heat, lightning, fog, visibility. Mark { active: true, severity: 'low'|'med'|'high', note } only for the relevant ones; everything else { active: false }.
+- ALWAYS return a "timeline" array of 5–7 entries (hour_label, headline, severity) covering ~3 hours before through ~3 hours after the event time, drawn from HRRR/NDFD hourly data in the briefing. This is what tells the user what happens *before and after* the moment they asked about, not just at the moment.
+- ALWAYS return an "event_window" object with before/during/after sentences ("Before: dry roads through 10 AM." / "During: light rain at 11." / "After: storms move in around 4 PM — watch the drive home.").
 `;
 }

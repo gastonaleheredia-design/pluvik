@@ -18,6 +18,7 @@ interface TrackedEvent {
   created_at: string;
   archived_at?: string | null;
   event_at?: string | null;
+  current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
 }
 
 interface SnapshotMini {
@@ -410,7 +411,16 @@ function DashboardPage() {
           const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
           const eventSnaps = snapshots.filter((s) => s.event_id === event.id);
           const latest = eventSnaps[0];
-          const stage = latest?.stage ?? 'short_range';
+          // Trust the row's current_forecast_stage first (always fresh after refresh),
+          // fall back to latest snapshot, then to a hoursAhead-derived guess so old
+          // rows with stale verdict words don't render decisive copy at climate range.
+          let stage = event.current_forecast_stage ?? latest?.stage ?? 'short_range';
+          if (event.event_at) {
+            const hours = (new Date(event.event_at).getTime() - Date.now()) / 3_600_000;
+            if (hours > 360) stage = 'climate';
+            else if (hours > 240) stage = 'outlook';
+            else if (hours > 72 && stage === 'short_range') stage = 'model_trend';
+          }
           const isClimate = stage === 'climate';
           const isOutlook = stage === 'outlook';
           const isModelTrend = stage === 'model_trend';

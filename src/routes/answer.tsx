@@ -227,6 +227,8 @@ function AnswerPage() {
           current_confidence: answer.confidence,
           current_verdict_word: verdictWord,
           current_verdict_sentence: verdictSentence,
+          current_forecast_stage: a.forecast_stage ?? null,
+          event_phrase: extractEventTimeFromQuestion(question)?.sourcePhrase ?? null,
           event_at: a.event_at ?? null,
         })
         .select()

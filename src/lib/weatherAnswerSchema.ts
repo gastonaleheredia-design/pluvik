@@ -21,6 +21,42 @@ export const WeatherAnswerSchema = z.object({
   forecast_stage: z.enum(['climate', 'outlook', 'model_trend', 'short_range', 'live']).optional(),
   decision_label: z.string().optional(),
   chance_of_impact: z.number().min(0).max(100).nullable().optional(),
+  /** [low, high] band for model_trend / outlook stages — drives "40–70%" UI. */
+  chance_of_impact_range: z.tuple([z.number().min(0).max(100), z.number().min(0).max(100)]).nullable().optional(),
+  /** One short sentence: "models still spreading — check back Wed." */
+  volatility_note: z.string().nullable().optional(),
+  /** Person-to-person guidance line, always present. */
+  meteorologist_take: z.string().nullable().optional(),
+  /** When we'll start watching this seriously ("June 25" or ISO date). */
+  next_check_at: z.string().nullable().optional(),
+
+  /** Multi-hazard breakdown. Each entry inactive ⇒ active=false. */
+  hazards: z.object({
+    rain:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    snow:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    ice:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    wind:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    cold_front: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    heat:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    lightning:  z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    fog:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    visibility: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+  }).partial().nullable().optional(),
+
+  /** Hour-by-hour mini-timeline around the event time. */
+  timeline: z.array(z.object({
+    hour_label: z.string(),               // "8 AM", "11 AM", "2 PM"
+    headline:   z.string(),               // "Dry", "Rain begins", "Storms"
+    severity:   z.enum(['ok','watch','bad']).optional(),
+  })).nullable().optional(),
+
+  /** "Before / during / after" sentences around the event window. */
+  event_window: z.object({
+    before: z.string().nullable().optional(),
+    during: z.string().nullable().optional(),
+    after:  z.string().nullable().optional(),
+  }).nullable().optional(),
+
   main_threat: z.string().optional(),
   event_time: z.string().optional(),
   event_location: z.string().optional(),

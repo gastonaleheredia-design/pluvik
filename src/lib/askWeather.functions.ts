@@ -47,6 +47,20 @@ export interface ExtendedWeatherAnswer {
   event_at?: string;
   /** Source families that fed this answer — used as snapshot dataSources. */
   data_sources?: string[];
+  /** Range band for model_trend (low,high). */
+  chance_of_impact_range?: [number, number] | null;
+  /** Volatility note for trend stages. */
+  volatility_note?: string | null;
+  /** Person-to-person guidance line. */
+  meteorologist_take?: string | null;
+  /** Friendly date phrase telling the user when we'll start watching. */
+  next_check_at?: string | null;
+  /** Multi-hazard breakdown. */
+  hazards?: Record<string, { active: boolean; severity?: 'low' | 'med' | 'high'; note?: string | null }> | null;
+  /** Hour-by-hour mini timeline around the event window. */
+  timeline?: Array<{ hour_label: string; headline: string; severity?: 'ok' | 'watch' | 'bad' }> | null;
+  /** Before / during / after sentences. */
+  event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
   decision?: 'GOOD_TO_GO' | 'WATCH_IT' | 'BACKUP' | 'MOVE_IT' | 'CHECK_AGAIN' | 'UNKNOWN';
   percentage: number;
   summary: string;
@@ -353,6 +367,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
     let plainLanguageBlock = '';
     let plainLanguageOutro: string | null = null;
+    let plainLanguageNextCheckAt: string | null = null;
     if (needsLongRange) {
       const eventDate = new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
@@ -367,14 +382,19 @@ export const askWeather = createServerFn({ method: 'POST' })
         eventMonth,
         normals,
         outlooks,
+        eventAtIso: new Date(
+          Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
+        ).toISOString(),
       });
       plainLanguageBlock = ctx.promptBlock;
       plainLanguageOutro = ctx.stageOutro;
+      plainLanguageNextCheckAt = ctx.nextCheckAt;
       console.log('[askWeather:diag] plain-language context', {
         stage: stageInfo.stage,
         sentenceCount: ctx.sentences.length,
         hasNormals: !!normals,
         hasOutlooks: !!outlooks,
+        nextCheckAt: ctx.nextCheckAt,
       });
     }
 
@@ -475,6 +495,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       mode,
       forecast_stage: stageInfo.stage,
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
+      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),

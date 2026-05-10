@@ -80,7 +80,10 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   }, [query]);
 
   const handleCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported in this browser.');
+      return;
+    }
     setDetectingLocation(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -111,10 +114,17 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
         }
         setDetectingLocation(false);
       },
-      () => {
+      (err) => {
         setDetectingLocation(false);
-        alert(t('picker.location_error'));
-      }
+        console.error('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
+        const msg =
+          err.code === 1 ? 'Location is blocked. Enable it in Settings → Safari → Location, then try again.' :
+          err.code === 2 ? "Couldn't read your GPS. Try again in a moment." :
+          err.code === 3 ? 'Took too long to find you. Try again.' :
+          t('picker.location_error');
+        alert(msg);
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 }
     );
   };
 
