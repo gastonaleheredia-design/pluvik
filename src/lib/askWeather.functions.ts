@@ -211,6 +211,12 @@ export interface ExtendedWeatherAnswer {
   verdict_word?: 'YES' | 'NO' | 'MAYBE';
   verdict_sentence?: string;
   headline_number?: { value: string; label: string } | null;
+  /** Three-part rationale shown only when verdict_word === 'MAYBE'. */
+  maybe_explanation?: {
+    afd_quote: string;
+    model_reconciliation: string;
+    why_uncertain: string;
+  } | null;
   // Plan-aware context (kept for backward compatibility with answer.tsx)
   plan_type?: string;
   time_context?: string;
