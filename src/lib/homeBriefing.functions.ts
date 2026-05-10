@@ -76,7 +76,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // Resilient fetch: 8s timeout + one retry on network/5xx errors.
     const fetchOnce = async (): Promise<Response> => {
       const ctl = new AbortController();
-      const tid = setTimeout(() => ctl.abort(), 8000);
+      const tid = setTimeout(() => ctl.abort(), 12000);
       try {
         return await fetch(url, { signal: ctl.signal });
       } finally {
@@ -86,7 +86,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     let res: Response | null = null;
     let lastErr: unknown = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const RETRY_DELAYS = [400, 1200, 3000];
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const r = await fetchOnce();
         if (r.ok) { res = r; break; }
@@ -97,7 +98,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         lastErr = err;
         console.error('[homeBriefing] open-meteo fetch failed', { attempt, err: (err as Error)?.message });
       }
-      if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+      const delay = RETRY_DELAYS[attempt];
+      if (delay != null) await new Promise((r) => setTimeout(r, delay));
     }
 
     if (!res) {
