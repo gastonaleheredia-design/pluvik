@@ -510,157 +510,95 @@ function HomePage() {
           </button>
         )}
 
-        {/* Location block — kicker + city + tap hint, all tappable. */}
-        <button
-          type="button"
-          onClick={() => setShowPicker(true)}
+        {/* ─── ZONE A ─ Context bar (location + updated) ───────────── */}
+        <div
           style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '4px 8px',
+            alignSelf: 'stretch',
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
-            gap: '6px',
-            marginBottom: '28px',
-            maxWidth: '90vw',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: '36px',
           }}
-          aria-label={t('home.address_change', { defaultValue: 'Change address' })}
         >
-          <span
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            aria-label={t('home.address_change', { defaultValue: 'Change address' })}
             style={{
-              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.6rem',
-              letterSpacing: '0.22em',
-              color: MUTED,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 8,
+              minWidth: 0, flex: '1 1 auto',
             }}
           >
             <span
               aria-hidden
-              title={
-                freshness === 'live' ? 'Live GPS' :
-                freshness === 'stale' ? 'Last known location' :
-                'Pinned address'
-              }
+              title={freshness === 'live' ? 'Live GPS' : freshness === 'stale' ? 'Last known location' : 'Pinned address'}
               style={{
-                width: 6, height: 6, borderRadius: '50%',
+                width: 7, height: 7, borderRadius: '50%',
                 backgroundColor:
                   freshness === 'live' ? '#16a34a' :
                   freshness === 'stale' ? '#f59e0b' :
                   '#9ca3af',
                 animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
-                display: 'inline-block',
+                flexShrink: 0,
               }}
             />
-            {t('home.right_now_at', { defaultValue: 'RIGHT NOW AT' })}
-          </span>
-          <span
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '1.05rem',
-              color: INK,
-              maxWidth: '90vw',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-            suppressHydrationWarning
-          >
-            {selectedAddress.label || '＋ Add address'}
-          </span>
-          {showAddrHint && (
             <span
+              suppressHydrationWarning
               style={{
-                fontFamily: 'Fraunces, serif',
-                fontStyle: 'italic',
-                fontSize: '0.75rem',
-                color: MUTED,
+                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: INK,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
-              {t('home.tap_to_change', { defaultValue: '(tap to change)' })}
+              {selectedAddress.label || '＋ Add address'}
             </span>
-          )}
-        </button>
-
-        {/* "Use my current location" link — shown when the user is on a manually pinned address. */}
-        {freshness === 'manual' && (
-          <button
-            type="button"
-            onClick={resumeFollowing}
-            style={{
-              marginTop: '-12px',
-              marginBottom: '20px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.58rem',
-              letterSpacing: '0.16em',
-              color: ACCENT,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-            </svg>
-            {t('home.use_my_location', { defaultValue: 'USE MY CURRENT LOCATION' })}
+            {freshness === 'manual' && selectedAddress.label && (
+              <span
+                role="button"
+                aria-label={t('home.use_my_location', { defaultValue: 'Use my current location' })}
+                onClick={(e) => { e.stopPropagation(); resumeFollowing(); }}
+                style={{
+                  marginLeft: 2, color: ACCENT, fontSize: '0.95rem',
+                  lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+                }}
+              >↺</span>
+            )}
           </button>
-        )}
+
+          {briefing?.updated_at_local && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+                setBriefingLoading(true);
+                getHomeBriefing({ data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language } })
+                  .then((b) => { setBriefing(b); setBriefingLoading(false); })
+                  .catch(() => setBriefingLoading(false));
+              }}
+              aria-label={t('home.refresh', { defaultValue: 'Refresh' })}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.55rem', letterSpacing: '0.16em', color: MUTED,
+                display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+              }}
+            >
+              <span aria-hidden style={{ fontSize: '0.7rem' }}>⟳</span>
+              {briefing.updated_at_local}
+            </button>
+          )}
+        </div>
         {followError && (
           <div style={{
-            marginTop: '-12px', marginBottom: '16px',
+            marginBottom: '16px',
             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
             fontSize: '0.58rem', color: WARN, letterSpacing: '0.1em',
             maxWidth: 320, textAlign: 'center',
           }}>{followError}</div>
         )}
 
-        {/* Always-visible radar pill (works even with no active warning) */}
-        {selectedAddress.lat != null &&
-          selectedAddress.lon != null &&
-          (() => {
-            // Only show the radar pill when there's something worth looking at:
-            //   - an active NWS warning, or
-            //   - it's actively raining/storming/snowing, or
-            //   - a precip cell is within ~25 mi.
-            if (warning) return true;
-            const w = briefing?.word;
-            if (w === 'RAINING' || w === 'STORMS' || w === 'SNOW' || w === 'RAIN SOON') return true;
-            const cell = briefing?.nearby_cell;
-            if (cell && cell.distance_mi <= 25) return true;
-            return false;
-          })() && (
-          <button
-            type="button"
-            onClick={() => setSheetMode('radar')}
-            style={{
-              marginBottom: '20px',
-              padding: '6px 14px',
-              borderRadius: '100px',
-              border: `1px solid rgba(11,16,24,0.12)`,
-              backgroundColor: 'transparent',
-              cursor: 'pointer',
-              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.62rem',
-              letterSpacing: '0.18em',
-              color: MUTED,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span aria-hidden style={{ fontSize: '0.8rem', lineHeight: 1 }}>◎</span>
-            RADAR
-          </button>
-        )}
-
+        {/* ─── ZONE B ─ Hero (word + temperature + sentence) ───────── */}
         {briefingLoading ? (
           <div
             style={{
@@ -731,14 +669,40 @@ function HomePage() {
           <>
             <div
               style={{
-                fontFamily: 'Fraunces, serif',
-                fontWeight: 400,
-                fontSize: 'clamp(4rem, 18vw, 7rem)',
-                lineHeight: 0.95,
-                letterSpacing: '-0.02em',
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                gap: 14,
               }}
             >
-              {briefing.word}
+              <div
+                style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontWeight: 400,
+                  fontSize: 'clamp(4rem, 18vw, 7rem)',
+                  lineHeight: 0.95,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {briefing.word}
+              </div>
+              {typeof briefing.temp_f === 'number' && (
+                <div
+                  aria-label={`${briefing.temp_f} degrees Fahrenheit`}
+                  style={{
+                    fontFamily: 'Fraunces, serif',
+                    fontWeight: 400,
+                    fontSize: 'clamp(1.2rem, 5vw, 2rem)',
+                    lineHeight: 1,
+                    color: MUTED,
+                    marginTop: '0.4em',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {briefing.temp_f}°
+                </div>
+              )}
             </div>
             <div
               style={{
@@ -754,67 +718,71 @@ function HomePage() {
             >
               {briefing.sentence}
             </div>
-            {nearbyLine && (
+
+            {/* ─── ZONE C ─ Action chips ───────────────────────────── */}
+            {(() => {
+              const showRadarChip = selectedAddress.lat != null && selectedAddress.lon != null && (() => {
+                if (warning) return true;
+                const w = briefing.word;
+                if (w === 'RAINING' || w === 'STORMS' || w === 'SNOW' || w === 'RAIN SOON') return true;
+                const cell = briefing.nearby_cell;
+                if (cell && cell.distance_mi <= 25) return true;
+                return false;
+              })();
+              const chipBase: React.CSSProperties = {
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 13px', borderRadius: 100,
+                border: `1px solid rgba(11,16,24,0.12)`, background: 'transparent',
+                cursor: 'pointer',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.6rem', letterSpacing: '0.16em',
+              };
+              return (
+                <div style={{
+                  marginTop: '24px',
+                  display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+                  gap: 8, maxWidth: 420,
+                }}>
+                  {briefing.next_rain_caption && (
+                    <span style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'default' }}>
+                      <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
+                      {briefing.next_rain_caption}
+                    </span>
+                  )}
+                  {showRadarChip && (
+                    <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: INK }}>
+                      <span aria-hidden style={{ fontSize: '0.75rem' }}>◎</span>
+                      {t('home.radar_chip', { defaultValue: 'RADAR' })}
+                    </button>
+                  )}
+                  {briefing.verdict_reason && (
+                    <button
+                      type="button"
+                      onClick={() => setSheetMode('radar')}
+                      aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
+                      title={briefing.verdict_reason.detail}
+                      style={{ ...chipBase, color: MUTED }}
+                    >
+                      <span aria-hidden style={{ fontSize: '0.75rem' }}>ⓘ</span>
+                      {t('home.why', { defaultValue: 'WHY' })}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+            {nearbyLine && !warning && (
               <div
                 style={{
-                  marginTop: '10px',
+                  marginTop: '14px',
                   fontFamily: 'Fraunces, serif',
                   fontStyle: 'italic',
-                  fontSize: '0.95rem',
+                  fontSize: '0.9rem',
                   color: ACCENT,
-                  maxWidth: '420px',
+                  maxWidth: '380px',
                 }}
               >
                 {nearbyLine}
-              </div>
-            )}
-            {briefing.next_rain_caption && (
-              <div
-                style={{
-                  marginTop: '18px',
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.18em',
-                  color: ACCENT,
-                }}
-              >
-                {briefing.next_rain_caption}
-              </div>
-            )}
-            {briefing.verdict_reason && (
-              <button
-                type="button"
-                onClick={() => setSheetMode('radar')}
-                style={{
-                  marginTop: '14px',
-                  background: 'none',
-                  border: 'none',
-                  padding: '4px 8px',
-                  cursor: 'pointer',
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem',
-                  letterSpacing: '0.16em',
-                  color: MUTED,
-                  textTransform: 'uppercase',
-                  maxWidth: 360,
-                  lineHeight: 1.5,
-                }}
-                aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
-              >
-                {t('home.because', { defaultValue: 'BECAUSE' })} · {briefing.verdict_reason.detail}
-              </button>
-            )}
-            {briefing.updated_at_local && (
-              <div
-                style={{
-                  marginTop: '10px',
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem',
-                  letterSpacing: '0.18em',
-                  color: MUTED,
-                }}
-              >
-                {t('home.updated', { defaultValue: 'UPDATED' })} {briefing.updated_at_local}
               </div>
             )}
           </>
