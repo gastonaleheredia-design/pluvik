@@ -28,6 +28,7 @@ export const Route = createFileRoute('/answer')({
     lon: typeof search.lon === 'number' ? search.lon
       : (typeof search.lon === 'string' && search.lon ? Number(search.lon) : undefined),
     eventAtIso: typeof search.eventAtIso === 'string' && search.eventAtIso ? search.eventAtIso : undefined,
+    eventEndIso: typeof search.eventEndIso === 'string' && search.eventEndIso ? search.eventEndIso : undefined,
   }),
   component: AnswerPage,
 });
@@ -69,7 +70,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -184,13 +185,23 @@ function AnswerPage() {
         // the right forecast-maturity stage (climate / outlook / model_trend
         // / short_range / live). Without this every question defaults to 24h.
         let hoursAhead: number | undefined;
+        let endHoursAhead: number | undefined;
         if (eventAtIso) {
           const t = new Date(eventAtIso).getTime();
           if (Number.isFinite(t)) hoursAhead = Math.max(0, (t - Date.now()) / 3_600_000);
         }
+        if (eventEndIso) {
+          const t = new Date(eventEndIso).getTime();
+          if (Number.isFinite(t)) endHoursAhead = Math.max(0, (t - Date.now()) / 3_600_000);
+        }
         if (hoursAhead == null) {
           const eventTime = extractEventTimeFromQuestion(question);
-          if (eventTime) hoursAhead = Math.max(0, eventTime.hoursAhead);
+          if (eventTime) {
+            hoursAhead = Math.max(0, eventTime.hoursAhead);
+            if (eventTime.endAt) {
+              endHoursAhead = Math.max(0, (eventTime.endAt.getTime() - Date.now()) / 3_600_000);
+            }
+          }
         }
 
         const result = await askWeather({
@@ -204,6 +215,7 @@ function AnswerPage() {
             windUnit,
             timeFormat,
             hoursAhead,
+            endHoursAhead,
           },
         });
 

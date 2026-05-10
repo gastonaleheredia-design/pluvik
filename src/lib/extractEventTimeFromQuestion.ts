@@ -9,6 +9,8 @@
 
 export interface ExtractedEventTime {
   eventAt: Date;
+  /** Optional end of the event window when the question expresses a range. */
+  endAt?: Date;
   hoursAhead: number;
   sourcePhrase: string;
 }
@@ -67,6 +69,77 @@ function build(
   return { eventAt, hoursAhead, sourcePhrase };
 }
 
+/** Parse a single clock token: "9", "9pm", "9:30", "noon", "midnight". */
+function parseClock(s: string): { hour: number; minute: number } | null {
+  const trimmed = s.toLowerCase().trim();
+  if (trimmed === 'noon') return { hour: 12, minute: 0 };
+  if (trimmed === 'midnight') return { hour: 0, minute: 0 };
+  const m = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/);
+  if (!m) return null;
+  let hour = parseInt(m[1], 10);
+  const minute = m[2] ? parseInt(m[2], 10) : 0;
+  const ap = m[3]?.replace(/\./g, '');
+  if (ap === 'pm' && hour < 12) hour += 12;
+  if (ap === 'am' && hour === 12) hour = 0;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+/** Detect "from X to Y", "X to/till/until Y", "between X and Y", "X-Y am/pm". */
+function parseTimeRange(q: string): { start: { hour: number; minute: number }; end: { hour: number; minute: number } } | null {
+  const text = q.toLowerCase();
+  const tokenRe = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)?|noon|midnight)';
+  const patterns: RegExp[] = [
+    new RegExp(`(?:from\\s+)?${tokenRe}\\s*(?:to|till|til|until|through|thru|–|—|-)\\s*${tokenRe}`),
+    new RegExp(`between\\s+${tokenRe}\\s+and\\s+${tokenRe}`),
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (!m) continue;
+    let start = parseClock(m[1]);
+    let end = parseClock(m[2]);
+    if (!start || !end) continue;
+    const startHadAp = /am|pm|noon|midnight/i.test(m[1]);
+    const endHadAp = /am|pm|noon|midnight/i.test(m[2]);
+    if (!startHadAp && endHadAp && end.hour >= 12 && start.hour < 12 && start.hour !== 0) {
+      start = { hour: start.hour + 12, minute: start.minute };
+    }
+    if (startHadAp && !endHadAp && start.hour >= 12 && end.hour < 12 && end.hour !== 0) {
+      end = { hour: end.hour + 12, minute: end.minute };
+    }
+    return { start, end };
+  }
+  return null;
+}
+
+function fuzzyWindow(label: string): { start: number; end: number } | null {
+  if (/morning/.test(label)) return { start: 8, end: 11 };
+  if (/afternoon/.test(label)) return { start: 12, end: 17 };
+  if (/evening/.test(label)) return { start: 17, end: 21 };
+  if (/night/.test(label)) return { start: 20, end: 23 };
+  return null;
+}
+
+function buildFuzzy(date: Date, fz: { start: number; end: number }, now: Date, sourcePhrase: string): ExtractedEventTime {
+  const start = new Date(date); start.setHours(fz.start, 0, 0, 0);
+  const end = new Date(date); end.setHours(fz.end, 0, 0, 0);
+  return { eventAt: start, endAt: end, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
+}
+
+function applyRangeToDate(
+  date: Date,
+  range: { start: { hour: number; minute: number }; end: { hour: number; minute: number } },
+  now: Date,
+  sourcePhrase: string,
+): ExtractedEventTime {
+  const start = new Date(date);
+  start.setHours(range.start.hour, range.start.minute, 0, 0);
+  const end = new Date(date);
+  end.setHours(range.end.hour, range.end.minute, 0, 0);
+  if (end.getTime() <= start.getTime()) end.setDate(end.getDate() + 1);
+  return { eventAt: start, endAt: end, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
+}
+
 export function extractEventTimeFromQuestion(
   question: string,
   now: Date = new Date(),
@@ -75,6 +148,7 @@ export function extractEventTimeFromQuestion(
   if (!q) return null;
 
   const time = parseTime(q);
+  const range = parseTimeRange(q);
 
   // ── Relative: tonight / tomorrow / today / now ────────────────────
   if (/\b(right now|currently|this moment)\b/.test(q)) {
@@ -82,15 +156,30 @@ export function extractEventTimeFromQuestion(
   }
   if (/\btonight\b|\bthis evening\b/.test(q)) {
     const d = new Date(now);
+    if (range) return applyRangeToDate(d, range, now, 'tonight');
+    if (!time) return buildFuzzy(d, { start: 19, end: 22 }, now, 'tonight');
     return build(d, time, 20, now, 'tonight');
   }
   if (/\btomorrow\b/.test(q)) {
     const d = new Date(now);
     d.setDate(d.getDate() + 1);
+    if (range) return applyRangeToDate(d, range, now, 'tomorrow');
+    const fzMatch = q.match(/tomorrow\s+(morning|afternoon|evening|night)/);
+    if (fzMatch) {
+      const fz = fuzzyWindow(fzMatch[1])!;
+      return buildFuzzy(d, fz, now, `tomorrow ${fzMatch[1]}`);
+    }
     return build(d, time, 9, now, 'tomorrow');
   }
   if (/\btoday\b/.test(q)) {
-    return build(new Date(now), time, Math.max(now.getHours() + 1, 12), now, 'today');
+    const d = new Date(now);
+    if (range) return applyRangeToDate(d, range, now, 'today');
+    const fzMatch = q.match(/this\s+(morning|afternoon|evening|night)/);
+    if (fzMatch) {
+      const fz = fuzzyWindow(fzMatch[1])!;
+      return buildFuzzy(d, fz, now, `today ${fzMatch[1]}`);
+    }
+    return build(d, time, Math.max(now.getHours() + 1, 12), now, 'today');
   }
 
   // ── "in N day(s)/week(s)/month(s)" ────────────────────────────────
@@ -186,6 +275,11 @@ export function extractEventTimeFromQuestion(
   }
 
   // Time-only "at 11am" with no other date markers → today/tonight
+  if (range) {
+    const d = new Date(now);
+    if (range.start.hour < now.getHours()) d.setDate(d.getDate() + 1);
+    return applyRangeToDate(d, range, now, `${range.start.hour}-${range.end.hour}`);
+  }
   if (time) {
     const d = new Date(now);
     if (time.hour < now.getHours()) d.setDate(d.getDate() + 1);

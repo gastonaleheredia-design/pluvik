@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { GeocodedPlace } from '../lib/geocodeVenue';
-import { TimeEditorSheet } from './TimeEditorSheet';
+import { TimeEditorSheet, type TimeRange } from './TimeEditorSheet';
 import { PlaceEditorSheet } from './PlaceEditorSheet';
 
 const ACCENT = '#c2410c';
@@ -12,8 +12,8 @@ const AMBER = '#b45309';
 type ChipState = 'detected' | 'default' | 'missing';
 
 interface Props {
-  /** User-picked or auto-detected event time. null = "right now" default. */
-  time: Date | null;
+  /** User-picked or auto-detected event time window. null = "right now". */
+  time: TimeRange | null;
   /** Whether `time` was extracted from the question text (vs user-picked). */
   timeDetected: boolean;
   /** User-picked or auto-detected place. null = current location default. */
@@ -24,7 +24,7 @@ interface Props {
   placeResolving: boolean;
   /** Current location (used as the default when `place` is null). */
   here: { lat: number; lon: number; label: string } | null;
-  onChangeTime: (next: Date | null) => void;
+  onChangeTime: (next: TimeRange | null) => void;
   onChangePlace: (next: GeocodedPlace | null) => void;
 }
 
@@ -65,6 +65,21 @@ function formatTime(d: Date): string {
   return `${datePart} · ${timePart}`;
 }
 
+function formatRange(r: TimeRange): string {
+  if (!r.end) return formatTime(r.start);
+  const startTime = r.start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const endTime = r.end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const today = new Date();
+  const sameDayAsToday = r.start.toDateString() === today.toDateString();
+  const sameDayInRange = r.start.toDateString() === r.end.toDateString();
+  const datePart = sameDayAsToday
+    ? 'Today'
+    : r.start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  if (sameDayInRange) return `${datePart} · ${startTime} → ${endTime}`;
+  const endDate = r.end.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return `${datePart} ${startTime} → ${endDate} ${endTime}`;
+}
+
 export function QuestionChips({
   time, timeDetected, place, placeDetected, placeResolving,
   here, onChangeTime, onChangePlace,
@@ -78,7 +93,7 @@ export function QuestionChips({
     : (here ? 'default' : 'missing');
 
   const timeLabel = time
-    ? formatTime(time).toUpperCase()
+    ? formatRange(time).toUpperCase()
     : t('chips.time_default', { defaultValue: 'RIGHT NOW' });
   const placeLabel = place
     ? place.label.split(',').slice(0, 2).join(',').toUpperCase()
