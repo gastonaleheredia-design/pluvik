@@ -9,7 +9,8 @@ const savedLang =
 
 const supportedLang = ['en', 'es'].includes(savedLang) ? savedLang : 'en';
 
-i18n.use(initReactI18next).init({
+if (!i18n.isInitialized) {
+  i18n.use(initReactI18next).init({
   resources: translations,
   lng: supportedLang,
   fallbackLng: 'en',
@@ -18,7 +19,7 @@ i18n.use(initReactI18next).init({
   react: { useSuspense: false },
   returnNull: false,
   initImmediate: false,
-} as any);
-
+  } as any);
+}
 
 export default i18n;
