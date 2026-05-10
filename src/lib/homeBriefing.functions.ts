@@ -32,6 +32,20 @@ export interface HomeBriefing {
     expires_local: string | null;
     expires_iso: string | null;
   } | null;
+  /** Why the verdict word was chosen — for transparency on the home screen. */
+  verdict_reason?: {
+    code:
+      | 'point_thunder'
+      | 'point_precip'
+      | 'imminent_radar_cell'
+      | 'active_alert'
+      | 'nearby_strong_cell'
+      | 'forecast_soon'
+      | 'forecast_clear'
+      | 'cloudy_point';
+    /** Short human-readable explanation, localized. */
+    detail: string;
+  };
   /** Set when the upstream weather provider could not be reached. */
   error?: 'upstream_unavailable';
 }
