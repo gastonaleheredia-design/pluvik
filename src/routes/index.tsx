@@ -307,16 +307,19 @@ function HomePage() {
     let cancelled = false;
     const fetchOnce = (showLoading: boolean) => {
       if (showLoading) setBriefingLoading(true);
-      // TEMP debug: confirm coords match the displayed label.
-      console.log('[briefing] fetching for', {
-        label: selectedAddress.label,
-        lat: selectedAddress.lat,
-        lon: selectedAddress.lon,
-      });
+      // Snapshot the coords this fetch was issued for, so a stale response
+      // from a prior address can't overwrite a newer one.
+      const reqLat = selectedAddress.lat;
+      const reqLon = selectedAddress.lon;
       getHomeBriefing({
         data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
       })
-        .then((b) => { if (!cancelled) { setBriefing(b); setBriefingLoading(false); } })
+        .then((b) => {
+          if (cancelled) return;
+          if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
+          setBriefing(b);
+          setBriefingLoading(false);
+        })
         .catch(() => {
           if (cancelled) return;
           setBriefing({
