@@ -102,6 +102,9 @@ async function refreshOne(
     main_threat?: string;
     data_sources?: string[];
     event_at?: string;
+    climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
+    climate_interpretation?: string | null;
+    climate_framing?: string | null;
   };
 
   // Treat the answer as usable only if it has at least a verdict or summary
@@ -130,6 +133,9 @@ async function refreshOne(
         current_verdict_word: a.verdict_word ?? null,
         current_verdict_sentence: a.verdict_sentence ?? null,
         current_forecast_stage: a.forecast_stage ?? null,
+        current_climate_facts: (a.climate_facts ?? null) as never,
+        current_climate_interpretation: a.climate_interpretation ?? null,
+        current_climate_framing: a.climate_framing ?? null,
       }
     : {};
   const { error: updErr } = await supabaseAdmin
