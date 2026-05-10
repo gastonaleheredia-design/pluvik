@@ -333,6 +333,21 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       hoursUntilRain,
     });
 
+    const isEs = language.startsWith('es');
+    let reasonCode: NonNullable<HomeBriefing['verdict_reason']>['code'] =
+      thunderNow ? 'point_thunder'
+      : liveRainingNow ? 'point_precip'
+      : snowNow ? 'point_precip'
+      : (hoursUntilRain != null && hoursUntilRain <= 6) ? 'forecast_soon'
+      : (cloudCover >= 70) ? 'cloudy_point'
+      : 'forecast_clear';
+    let reasonDetail: string =
+      reasonCode === 'point_thunder' ? (isEs ? 'Tormenta detectada en tu punto' : 'Thunder detected at your point')
+      : reasonCode === 'point_precip' ? (isEs ? 'Precipitación cayendo en tu punto' : 'Precipitation falling at your point')
+      : reasonCode === 'forecast_soon' ? (isEs ? `Pronóstico: lluvia en ~${hoursUntilRain} h` : `Forecast: rain in ~${hoursUntilRain} h`)
+      : reasonCode === 'cloudy_point' ? (isEs ? `Nubosidad ${cloudCover}%` : `${cloudCover}% cloud cover`)
+      : (isEs ? 'Sin lluvia en el horizonte cercano' : 'No rain in the near horizon');
+
     // Radar-aware override: if a real cell is approaching within 90 min,
     // promote to STORMS so the home screen agrees with Ask. Best-effort —
     // probe failures fall through to the point-only verdict.
@@ -342,6 +357,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       if (probe.approaching && probe.etaMinutes != null) {
         word = 'STORMS';
         stormOverride = { eta: probe.etaMinutes, bearing: probe.bearingFromUser };
+        reasonCode = 'imminent_radar_cell';
+        reasonDetail = isEs
+          ? `Celda en radar acercándose desde el ${probe.bearingFromUser ?? 'oeste'} — ~${probe.etaMinutes} min`
+          : `Radar cell closing from the ${probe.bearingFromUser ?? 'west'} — ~${probe.etaMinutes} min out`;
       }
     } catch { /* keep point-only verdict */ }
 
@@ -353,6 +372,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       activeAlert = await getActiveWarning(lat, lon);
       if (activeAlert) {
         word = 'STORMS';
+        reasonCode = 'active_alert';
+        reasonDetail = isEs
+          ? `Aviso activo del NWS: ${activeAlert.event}`
+          : `Active NWS alert: ${activeAlert.event}`;
       }
     } catch { /* keep current verdict */ }
 
@@ -376,6 +399,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // what the smoothed hourly point forecast says.
     if (nearbyProbe && (nearbyProbe.dbz ?? 0) >= 35 && nearbyProbe.distanceMiles <= 10) {
       word = (nearbyProbe.dbz ?? 0) >= 50 ? 'STORMS' : 'RAINING';
+      reasonCode = 'nearby_strong_cell';
+      reasonDetail = isEs
+        ? `Celda de ${nearbyProbe.dbz} dBZ a ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}`
+        : `${nearbyProbe.dbz} dBZ cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}`;
     } else if (
       nearbyProbe &&
       nearbyProbe.distanceMiles <= 25 &&
@@ -385,6 +412,28 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     ) {
       word = 'RAIN SOON';
       if (hoursUntilRain == null) hoursUntilRain = 1;
+      reasonCode = 'nearby_strong_cell';
+      reasonDetail = isEs
+        ? `Celda a ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser} — acercándose`
+        : `Cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser} — closing in`;
+    }
+
+    // Guardrail: if a "nearby strong cell" was the ONLY reason we said STORMS,
+    // and that cell is moving away AND >12 mi out, downgrade so the headline
+    // doesn't scream about a weakening cell over the bay. Active alerts and
+    // imminent radar overrides are NOT downgraded.
+    if (
+      reasonCode === 'nearby_strong_cell' &&
+      nearbyProbe &&
+      nearbyProbe.motionRelativeToUser === 'moving_away' &&
+      nearbyProbe.distanceMiles > 12 &&
+      (word === 'STORMS' || word === 'RAINING')
+    ) {
+      word = cloudCover >= 70 ? 'CLOUDY' : 'DRY';
+      reasonDetail = isEs
+        ? `Celda a ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser} — alejándose`
+        : `Cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser} — moving away`;
+      reasonCode = 'cloudy_point';
     }
 
     // One-line italic summary.
