@@ -64,6 +64,74 @@ function DashboardPage() {
   const [view, setView] = useState<'active' | 'archived'>('active');
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadEvents = async () => {
+    if (!user) return;
+    setLoadingEvents(true);
+    const query = supabase
+      .from('tracked_events')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    const filtered =
+      view === 'active'
+        ? query.is('archived_at', null)
+        : query.not('archived_at', 'is', null);
+    const { data } = await filtered;
+    const list = (data ?? []) as TrackedEvent[];
+    setEvents(list);
+    if (list.length > 0) {
+      const { data: snaps } = await supabase
+        .from('event_forecast_snapshots')
+        .select('event_id, created_at, decision_label, stage, change_tag, is_final')
+        .in('event_id', list.map((e) => e.id))
+        .order('created_at', { ascending: false });
+      setSnapshots((snaps ?? []) as SnapshotMini[]);
+    } else {
+      setSnapshots([]);
+    }
+    setLoadingEvents(false);
+  };
+
+  const handleRefreshAll = async () => {
+    if (refreshing || !user) return;
+    setRefreshing(true);
+    try {
+      const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
+        method: 'POST',
+        headers: { apikey },
+      });
+      await reloadEvents();
+    } catch (err) {
+      console.error('[dashboard] refresh-all failed', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // One-time auto-heal: if any active event still shows the old GO/WAIT/NO
+  // verdict for a date that's >15 days out, force a refresh once per device
+  // so existing rows pick up the new stage-aware logic.
+  useEffect(() => {
+    if (!user || events.length === 0) return;
+    if (typeof window === 'undefined') return;
+    const KEY = 'pluvik-stage-heal-v1';
+    if (localStorage.getItem(KEY) === 'done') return;
+    const FIFTEEN_DAYS_MS = 15 * 24 * 3600 * 1000;
+    const stale = events.some((e) => {
+      if (!e.event_at) return false;
+      const dt = new Date(e.event_at).getTime() - Date.now();
+      const looksDecisive = ['GO', 'CAUTION', 'NO-GO'].includes(e.current_verdict ?? '');
+      return dt > FIFTEEN_DAYS_MS && looksDecisive;
+    });
+    if (stale) {
+      localStorage.setItem(KEY, 'done');
+      handleRefreshAll();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -220,14 +288,41 @@ function DashboardPage() {
               letterSpacing: '0.1em',
               color: MUTED,
               marginTop: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
             }}
           >
-            {events.length === 1
-              ? t('dashboard.events_count_one')
-              : t('dashboard.events_count_other').replace(
-                  '{{count}}',
-                  String(events.length)
-                )}
+            <span>
+              {events.length === 1
+                ? t('dashboard.events_count_one')
+                : t('dashboard.events_count_other').replace(
+                    '{{count}}',
+                    String(events.length)
+                  )}
+            </span>
+            {view === 'active' && events.length > 0 && (
+              <button
+                type="button"
+                onClick={handleRefreshAll}
+                disabled={refreshing}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  color: ACCENT,
+                  fontFamily: 'inherit',
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  cursor: refreshing ? 'wait' : 'pointer',
+                  opacity: refreshing ? 0.6 : 1,
+                }}
+              >
+                {refreshing ? t('dashboard.refreshing', { defaultValue: 'Refreshing…' }) : t('dashboard.refresh_all', { defaultValue: 'Refresh all' })}
+              </button>
+            )}
           </div>
           {/* Active / Archived toggle */}
           <div style={{ display: 'flex', gap: '6px', marginTop: '14px' }}>
