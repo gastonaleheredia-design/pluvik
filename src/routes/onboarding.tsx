@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import iconWeddings from '../assets/icons/usecase-weddings.png';
+import iconConstruction from '../assets/icons/usecase-construction.png';
+import iconParties from '../assets/icons/usecase-parties.png';
+import iconSports from '../assets/icons/usecase-sports.png';
+import iconFishing from '../assets/icons/usecase-fishing.png';
+import iconStorms from '../assets/icons/usecase-storms.png';
 
 export const Route = createFileRoute('/onboarding')({
   component: OnboardingPage,
@@ -11,12 +17,12 @@ export const Route = createFileRoute('/onboarding')({
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 
 const USE_CASES = [
-  { emoji: '💍', key: 'weddings' },
-  { emoji: '🏗️', key: 'construction' },
-  { emoji: '🎉', key: 'parties' },
-  { emoji: '🏈', key: 'sports' },
-  { emoji: '🎣', key: 'fishing' },
-  { emoji: '🌪️', key: 'storms' },
+  { icon: iconWeddings, key: 'weddings' },
+  { icon: iconConstruction, key: 'construction' },
+  { icon: iconParties, key: 'parties' },
+  { icon: iconSports, key: 'sports' },
+  { icon: iconFishing, key: 'fishing' },
+  { icon: iconStorms, key: 'storms' },
 ] as const;
 
 function OnboardingPage() {
