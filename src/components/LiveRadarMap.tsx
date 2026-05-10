@@ -11,6 +11,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN } from "@/config/keys";
 import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 import { nearestSites, type NexradSite } from "@/lib/nexradSites";
+import { useAddress } from "@/lib/addressContext";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -192,6 +193,7 @@ interface MiniCardData {
 
 export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
   const navigate = useNavigate();
+  const { setAddress, resumeFollowing } = useAddress();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
@@ -213,16 +215,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const [source, setSource] = useState<"mosaic" | "station">("mosaic");
   const [stationId, setStationId] = useState<string | null>(null);
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
-  const [gpsCoord, setGpsCoord] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [tool, setTool] = useState<"none" | "ruler" | "pin">("none");
   const [rulerPts, setRulerPts] = useState<[number, number][]>([]); // [lon,lat]
   const [pinInfo, setPinInfo] = useState<{ lon: number; lat: number; label: string | null; distMi: number | null } | null>(null);
 
-  // Effective "you are here" coords: prefer real GPS fix when present.
-  const meLat = gpsCoord?.lat ?? lat;
-  const meLon = gpsCoord?.lon ?? lon;
+  // Single source of truth: the global selected address (passed in as props).
+  // The GPS button updates the global address via context, so the radar marker
+  // and the home screen always agree on "where I am".
+  const meLat = lat;
+  const meLon = lon;
   // Mirror of meLat/meLon held in a ref so long-lived effects (init,
   // 120s refresher) can read the latest coords without being closures
   // over a stale first-mount value.
@@ -510,22 +513,50 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     }
     setGpsBusy(true);
     setGpsError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsBusy(false);
-        const next = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        setGpsCoord(next);
-        const map = mapRef.current;
-        if (map) {
-          map.flyTo({ center: [next.lon, next.lat], zoom: 9, essential: true });
+    let settled = false;
+    const hardTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setGpsBusy(false);
+      setGpsError("Took too long to find you");
+    }, 12_000);
+    const onOk = async (pos: GeolocationPosition) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hardTimer);
+      setGpsBusy(false);
+      const la = pos.coords.latitude;
+      const lo = pos.coords.longitude;
+      // Reverse geocode best-effort for a friendly label.
+      let label = `${la.toFixed(4)}, ${lo.toFixed(4)}`;
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${lo},${la}.json?access_token=${MAPBOX_TOKEN}&limit=1`,
+        );
+        if (res.ok) {
+          const f = (await res.json())?.features?.[0];
+          if (f?.place_name) label = f.place_name;
         }
-      },
-      (err) => {
-        setGpsBusy(false);
-        setGpsError(err.code === 1 ? "Permission denied" : "Couldn't get location");
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 },
-    );
+      } catch { /* keep coord label */ }
+      // Update the global address — this re-renders the radar with new
+      // lat/lon props, which centers the map and refreshes warnings.
+      setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
+      resumeFollowing();
+    };
+    const onErr = (err: GeolocationPositionError) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hardTimer);
+      setGpsBusy(false);
+      setGpsError(
+        err.code === 1 ? "Location is blocked. Enable it in your browser/system settings." :
+        err.code === 2 ? "Couldn't read your GPS" :
+        err.code === 3 ? "Took too long to find you" :
+        "Location error",
+      );
+    };
+    navigator.geolocation.getCurrentPosition(onOk, onErr,
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 });
   };
 
   // --- Ruler tool: render a line + label between rulerPts ---
