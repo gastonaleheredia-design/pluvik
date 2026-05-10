@@ -61,6 +61,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
             borderTopLeftRadius: isFull ? 0 : 20,
             borderTopRightRadius: isFull ? 0 : 20,
             maxHeight: '100dvh',
+            height: isFull ? '100dvh' : undefined,
             outline: 'none',
           }}
         >
