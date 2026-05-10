@@ -628,47 +628,54 @@ export const askWeather = createServerFn({ method: 'POST' })
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
-        system: systemPrompt,
-        messages: [
-          { role: 'user', content: userMessage },
-          // Prefill so the model starts the JSON object immediately and
-          // never wraps it in prose or markdown fences.
-          { role: 'assistant', content: '{' },
-        ],
-      }),
-    }).finally(() => clearTimeout(timeout));
+    let rawAnswer: any = null;
+    let modelError: string | null = null;
+    try {
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1500,
+          system: systemPrompt,
+          messages: [
+            { role: 'user', content: userMessage },
+          ],
+        }),
+      }).finally(() => clearTimeout(timeout));
 
-    if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
+      if (!claudeRes.ok) {
+        const errBody = await claudeRes.text().catch(() => '');
+        throw new Error(`Claude API error: ${claudeRes.status} ${errBody.slice(0, 300)}`);
+      }
 
-    const claudeData = await claudeRes.json();
-    const stopReason = claudeData.stop_reason ?? 'unknown';
-    const rawText = claudeData.content?.[0]?.text ?? '';
-    // We prefilled '{' so the model continues from there. Re-attach it.
-    const responseText = (rawText.startsWith('{') ? rawText : '{' + rawText).trim();
-    const rawAnswer = extractJsonFromLlmResponse(responseText);
-    if (!rawAnswer) {
-      console.warn('[askWeather] failed to parse LLM JSON', {
-        stop_reason: stopReason,
-        len: responseText.length,
-        head: responseText.slice(0, 200),
-        tail: responseText.slice(-200),
-      });
+      const claudeData = await claudeRes.json();
+      const stopReason = claudeData.stop_reason ?? 'unknown';
+      const rawText = claudeData.content?.[0]?.text ?? '';
+      const responseText = rawText.trim();
+      rawAnswer = extractJsonFromLlmResponse(responseText);
+      if (!rawAnswer) {
+        console.warn('[askWeather] failed to parse LLM JSON', {
+          stop_reason: stopReason,
+          len: responseText.length,
+          head: responseText.slice(0, 200),
+          tail: responseText.slice(-200),
+        });
+      }
+    } catch (err) {
+      modelError = err instanceof Error ? err.message : String(err);
+      console.warn('[askWeather] model call failed:', modelError);
     }
 
     const validated = validateWeatherAnswer(rawAnswer);
-    if (!validated.ok) {
-      console.warn('[askWeather] schema validation failed:', validated.issues);
+    if (!validated.ok || modelError) {
+      if (modelError) console.warn('[askWeather] using HRRR fallback due to model error');
+      else console.warn('[askWeather] schema validation failed:', validated.issues);
       // Try a deterministic fallback derived from HRRR hourly data so the
       // user still gets a meaningful rain answer.
       const fb =
