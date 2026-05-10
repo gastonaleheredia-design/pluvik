@@ -30,9 +30,10 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
   const isFull = snap === 1;
   const isRadarOnly = !alert;
 
-  // Radar fills the whole sheet at full snap; otherwise leaves room for text.
+  // Radar fills the whole viewport at full snap (edge-to-edge); otherwise
+  // leaves room for text in the half-sheet.
   const radarHeight = isFull
-    ? 'calc(100vh - 160px)'
+    ? '100dvh'
     : isRadarOnly
       ? 'calc(70vh - 140px)'
       : 320;
@@ -57,9 +58,9 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
             display: 'flex',
             flexDirection: 'column',
             backgroundColor: PAGE_BG,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            maxHeight: '100vh',
+            borderTopLeftRadius: isFull ? 0 : 20,
+            borderTopRightRadius: isFull ? 0 : 20,
+            maxHeight: '100dvh',
             outline: 'none',
           }}
         >
@@ -69,15 +70,28 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
           </Drawer.Title>
           <div
             style={{
-              width: 40, height: 4, borderRadius: 2,
-              backgroundColor: 'rgba(11,16,24,0.18)',
-              margin: '12px auto 8px',
+              width: isFull ? 56 : 40,
+              height: isFull ? 5 : 4,
+              borderRadius: 3,
+              backgroundColor: isFull ? 'rgba(255,255,255,0.55)' : 'rgba(11,16,24,0.18)',
+              margin: isFull ? '10px auto 6px' : '12px auto 8px',
               flexShrink: 0,
+              position: isFull ? 'absolute' : 'relative',
+              top: isFull ? 'env(safe-area-inset-top, 8px)' : undefined,
+              left: isFull ? 0 : undefined,
+              right: isFull ? 0 : undefined,
+              zIndex: isFull ? 2 : undefined,
             }}
           />
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 32px' }}>
-            {alert ? (
+          <div
+            style={{
+              flex: 1,
+              overflowY: isFull ? 'hidden' : 'auto',
+              padding: isFull ? 0 : '8px 20px 32px',
+            }}
+          >
+            {!isFull && alert ? (
               <div
                 style={{
                   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
@@ -90,7 +104,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 {alert.event.toUpperCase()}
                 {alert.expires_local ? ` · UNTIL ${alert.expires_local}` : ''}
               </div>
-            ) : (
+            ) : !isFull ? (
               <div
                 style={{
                   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
@@ -102,9 +116,9 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               >
                 LIVE RADAR
               </div>
-            )}
+            ) : null}
 
-            {alert?.headline && (
+            {!isFull && alert?.headline && (
               <div
                 style={{
                   marginTop: 10,
@@ -119,11 +133,17 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               </div>
             )}
 
-            <div style={{ marginTop: 14, borderRadius: 12, overflow: 'hidden' }}>
+            <div
+              style={{
+                marginTop: isFull ? 0 : 14,
+                borderRadius: isFull ? 0 : 12,
+                overflow: 'hidden',
+              }}
+            >
               <LiveRadarMap lat={lat} lon={lon} height={radarHeight} />
             </div>
 
-            {alert?.description && (
+            {!isFull && alert?.description && (
               <div
                 style={{
                   marginTop: 18,
@@ -137,7 +157,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 {alert.description.trim()}
               </div>
             )}
-            {alert?.instruction && (
+            {!isFull && alert?.instruction && (
               <div
                 style={{
                   marginTop: 14,
@@ -155,25 +175,27 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                marginTop: 20,
-                width: '100%',
-                padding: '12px',
-                border: 'none',
-                borderRadius: 100,
-                backgroundColor: INK,
-                color: PAGE_BG,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem',
-                letterSpacing: '0.18em',
-                cursor: 'pointer',
-              }}
-            >
-              CLOSE
-            </button>
+            {!isFull && (
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  marginTop: 20,
+                  width: '100%',
+                  padding: '12px',
+                  border: 'none',
+                  borderRadius: 100,
+                  backgroundColor: INK,
+                  color: PAGE_BG,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.18em',
+                  cursor: 'pointer',
+                }}
+              >
+                CLOSE
+              </button>
+            )}
           </div>
         </Drawer.Content>
       </Drawer.Portal>
