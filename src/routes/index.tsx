@@ -307,6 +307,12 @@ function HomePage() {
     let cancelled = false;
     const fetchOnce = (showLoading: boolean) => {
       if (showLoading) setBriefingLoading(true);
+      // TEMP debug: confirm coords match the displayed label.
+      console.log('[briefing] fetching for', {
+        label: selectedAddress.label,
+        lat: selectedAddress.lat,
+        lon: selectedAddress.lon,
+      });
       getHomeBriefing({
         data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
       })
