@@ -14,6 +14,7 @@ import { AuthModal } from '../components/AuthModal';
 import { useAddress } from '../lib/addressContext';
 import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
+import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -129,6 +130,12 @@ function AnswerPage() {
         }
         setResolvedAddress(effectiveAddress);
 
+        // Compute hoursAhead from the question text so the server can pick
+        // the right forecast-maturity stage (climate / outlook / model_trend
+        // / short_range / live). Without this every question defaults to 24h.
+        const eventTime = extractEventTimeFromQuestion(question);
+        const hoursAhead = eventTime ? Math.max(0, eventTime.hoursAhead) : undefined;
+
         const result = await askWeather({
           data: {
             question,
@@ -139,6 +146,7 @@ function AnswerPage() {
             tempUnit,
             windUnit,
             timeFormat,
+            hoursAhead,
           },
         });
 
