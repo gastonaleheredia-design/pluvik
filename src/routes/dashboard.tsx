@@ -233,6 +233,34 @@ function DashboardPage() {
     });
   }, [user, view]);
 
+  // Realtime: when the server (refresh-all or cron) updates a tracked event,
+  // patch it into local state immediately so the card snaps to the new
+  // verdict without waiting for a manual refetch.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`tracked_events_user_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tracked_events',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Partial<TrackedEvent> & { id: string };
+          setEvents((prev) =>
+            prev.map((e) => (e.id === next.id ? { ...e, ...(next as TrackedEvent) } : e)),
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   const handleDelete = async (e: React.MouseEvent, eventId: string) => {
     e.preventDefault();
     e.stopPropagation();
