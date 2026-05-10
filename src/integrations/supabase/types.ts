@@ -208,6 +208,8 @@ export type Database = {
           archived_at: string | null
           created_at: string | null
           current_climate_facts: Json | null
+          current_climate_framing: string | null
+          current_climate_interpretation: string | null
           current_confidence: string | null
           current_forecast_stage: string | null
           current_percentage: number | null
@@ -235,6 +237,8 @@ export type Database = {
           archived_at?: string | null
           created_at?: string | null
           current_climate_facts?: Json | null
+          current_climate_framing?: string | null
+          current_climate_interpretation?: string | null
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_percentage?: number | null
@@ -262,6 +266,8 @@ export type Database = {
           archived_at?: string | null
           created_at?: string | null
           current_climate_facts?: Json | null
+          current_climate_framing?: string | null
+          current_climate_interpretation?: string | null
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_percentage?: number | null
