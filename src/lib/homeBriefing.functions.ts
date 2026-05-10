@@ -27,7 +27,10 @@ export interface HomeBriefing {
   alert: {
     event: string;
     headline: string;
+    description: string;
+    instruction: string;
     expires_local: string | null;
+    expires_iso: string | null;
   } | null;
 }
 
@@ -163,9 +166,26 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // One-line italic summary.
     let sentence: string;
     if (activeAlert) {
-      // Warning headline takes priority over the generic summary.
-      sentence = activeAlert.headline ||
-        (language.startsWith('es') ? 'Aviso meteorológico activo en tu zona.' : 'Active weather warning for your area.');
+      // Short, scannable impact line built from NWS parameters when present.
+      const bits: string[] = [];
+      if (activeAlert.maxWindGustMph) bits.push(language.startsWith('es')
+        ? `vientos hasta ${activeAlert.maxWindGustMph} mph`
+        : `winds to ${activeAlert.maxWindGustMph} mph`);
+      if (activeAlert.maxHailInches) bits.push(language.startsWith('es')
+        ? `granizo de ${activeAlert.maxHailInches}"`
+        : `hail ${activeAlert.maxHailInches}"`);
+      if (activeAlert.tornadoDetected) bits.unshift(language.startsWith('es')
+        ? 'tornado posible'
+        : 'tornado possible');
+      if (bits.length > 0) {
+        sentence = language.startsWith('es')
+          ? `Tormenta entrando — ${bits.join(', ')}.`
+          : `Storm moving in — ${bits.join(', ')}.`;
+      } else {
+        sentence = language.startsWith('es')
+          ? 'Tormenta entrando — toca el aviso para detalles.'
+          : 'Storm moving in — tap the alert for details.';
+      }
     } else if (language.startsWith('es')) {
       if (word === 'STORMS' && stormOverride)
         sentence = `Tormenta acercándose desde el ${stormOverride.bearing ?? 'oeste'} — ~${stormOverride.eta} min al impacto.`;
@@ -211,14 +231,19 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       alertOut = {
         event: activeAlert.event,
         headline: activeAlert.headline,
+        description: activeAlert.description,
+        instruction: activeAlert.instruction,
         expires_local: expiresLocal,
+        expires_iso: activeAlert.expiresIso,
       };
     }
 
     return {
       word,
       sentence,
-      next_rain_caption: nextRainCaption,
+      // When a warning is active, the warning IS the next rain — hide the
+      // long-range Open-Meteo caption to avoid contradicting reality.
+      next_rain_caption: activeAlert ? null : nextRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
       alert: alertOut,
