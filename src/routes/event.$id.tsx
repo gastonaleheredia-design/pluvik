@@ -543,6 +543,43 @@ function EventPage() {
               >
                 CLIMATE FOR THIS DATE
               </div>
+              {event.current_climate_interpretation && (
+                <div style={{ marginBottom: '14px' }}>
+                  <div
+                    style={{
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.14em',
+                      color: MUTED,
+                      marginBottom: '6px',
+                    }}
+                  >
+                    THE READ
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: '1rem',
+                      lineHeight: 1.5,
+                      color: INK,
+                    }}
+                  >
+                    {event.current_climate_interpretation}
+                  </div>
+                  {event.current_climate_framing && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        fontSize: '0.78rem',
+                        fontStyle: 'italic',
+                        color: MUTED,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {event.current_climate_framing}
+                    </div>
+                  )}
+                </div>
+              )}
               <div
                 style={{
                   display: 'grid',
