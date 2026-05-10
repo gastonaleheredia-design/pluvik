@@ -696,7 +696,7 @@ function EventPage() {
             marginBottom: '32px',
           }}
         >
-          {!event.archived_at && (
+          {!event.archived_at && !(event.event_at && new Date(event.event_at).getTime() < Date.now()) && (
             <button
               onClick={handleRefresh}
               disabled={refreshing || busy}
@@ -717,6 +717,19 @@ function EventPage() {
             >
               {refreshing ? 'Refreshing forecast…' : '↻  Refresh forecast'}
             </button>
+          )}
+          {!event.archived_at && event.event_at && new Date(event.event_at).getTime() < Date.now() && (
+            <div
+              style={{
+                fontSize: '0.82rem',
+                color: MUTED,
+                textAlign: 'center',
+                lineHeight: 1.5,
+                padding: '10px 14px',
+              }}
+            >
+              {t('event.time_passed')}
+            </div>
           )}
           {refreshError && (
             <div
