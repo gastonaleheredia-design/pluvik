@@ -614,6 +614,7 @@ export const translations = {
         save_place_placeholder: 'Apodo (ej. Casa, Obra)',
         save_place_cta: 'Guardar lugar',
         save_place_cancel: 'Cancelar',
+        save_place_skip: 'Usar sin guardar',
         no_results: 'Sin resultados.',
         location_error: 'No pude obtener tu ubicación. Intenta escribir una dirección.',
         saved_success: 'Lugar guardado.',
