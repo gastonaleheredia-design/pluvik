@@ -1,104 +1,83 @@
-## Goal
+## What you reported
 
-Take the raw NOAA daily-normals numbers we now fetch and turn them into a short, plain-English **interpretation** the user can actually act on — not a wall of stats, not jargon, and with a clear "this is climate, not a forecast" framing. Keep the card you liked; layer narrative on top.
-
-## What's wrong today
-
-Looking at your Jul 4 / Houston screenshot:
-
-1. **Headline sentence is incomplete** — `"Jul 4 in Houston measurable rain on about 29% of years."` is missing the temperature half. That's because the nearest station the fetcher landed on (HOUSTON HTS, a small co-op site) reports precip but no `DLY-TMAX-NORMAL` / `DLY-TMIN-NORMAL`. The candidate filter accepts any station with temp OR precip, so we picked the closest one even though it's missing half the data.
-2. **No interpretation** — the card just lists numbers. No "typically a hot, humid evening with afternoon storms possible" type read.
-3. **No framing** — the user has to infer that "29% of years" is a long-term average, not a forecast for *this* July 4.
+1. **Tracking list "Refresh" button doesn't fully update older questions.** You tapped Refresh on the tracking list — Nov 5 still showed nothing. You opened the question, tapped the refresh inside the card, and *then* the climate info appeared.
+2. **Climate card is too dense.** You like it, but it has too much text and too many stat tiles. Make it cleaner and easier to read.
+3. **Action buttons (Refresh / Mark complete / Delete) look dated and oversized.** Redesign them to feel modern.
 
 ## Plan
 
-### 1. Pick a better station (small fix, big payoff)
+### 1. Fix the list-screen Refresh so it actually refreshes everything
 
-In `fetchDailyClimateNormal`, prefer stations that carry **both** temperature and precip normals. Fall back to precip-only or temp-only only if no fully-equipped station exists in radius. For Houston this naturally lands on **HOUSTON INTERCONT AP** (USW00012960: 93.6° / 75.3° / 32.8% rain) — the same source NOWData uses in your reference screenshot.
+**The bug, in one sentence:** the list-screen "Refresh" and the in-card "Refresh" call two different code paths, and only the in-card one writes the climate data (interpretation, framing, facts) to the row. So when the list-screen refresh runs, the verdict updates but the climate card on Nov 5 stays empty.
 
-### 2. Build a "Meteorologist's read" paragraph (the interpretation)
+**The fix:** make the list-screen refresh write the same climate fields the in-card refresh already writes. After this, one tap on the tracking list updates everything for every question — no need to open each card.
 
-A new helper `buildClimateInterpretation(daily, eventIso, address, hourLocal)` in `src/lib/longRangeDigest.ts` that emits **2–3 short sentences** stitched from rules, no LLM call needed:
+I'll also add a tiny visible confirmation on the list-screen Refresh button ("Refreshed ✓" for ~1.5s) so you can tell it actually finished.
 
-- **Sentence 1 — the temperature character of the day**, derived from `maxTempF` + month:
-  - ≥95°: "Early July in Houston is peak summer — afternoons typically push into the mid-90s with high humidity, so plan for hot."
-  - 85–94°: "It's usually a warm, summery day, with afternoon highs in the low 90s and muggy evenings."
-  - 70–84°: "Expect a mild, pleasant day on average."
-  - 50–69° / <50°: cool / cold variants.
-  - If `maxTempF` is null, skip this sentence rather than fake it.
-- **Sentence 2 — the rain character**, from `precipPctMeasurable` + `precipP75In`:
-  - <20%: "Rain on this date is uncommon — only about X in 5 years see measurable rainfall."
-  - 20–40%: "Rain is occasional — roughly 1 in 3 years sees measurable rainfall, usually a brief afternoon shower."
-  - 40–60%: "Rain is fairly common — about half of all years see measurable rainfall on this date."
-  - >60%: "Rain is the norm — most years see measurable rainfall on this date."
-  - If `precipP75In` ≥ 0.5″, append: "When it does rain, it's usually around X inches — enough to interrupt outdoor plans."
-- **Sentence 3 — the "for your 7 PM" hook** when the question carries an hour:
-  - Evening (5–9 PM) in summer: "By 7 PM, the worst of the heat is easing but storms — when they come — most often fire late afternoon, so a 7 PM event is *usually* in the clear."
-  - Other time-of-day rules for morning, midday, late evening.
+### 2. Simplify the climate card
 
-Total: ≤ ~280 chars, written like a friend with a meteorology background, not a data sheet.
+Use the Nov 5 screenshot as the baseline. Today the card is:
+- 4-line paragraph
+- italic disclaimer
+- 4 stat tiles (Normal high, Normal low, Rain frequency, Typical wet-day rain)
+- Station block
+- A second NOAA disclaimer at the bottom
 
-### 3. Add a single-line "What this means" framing
+That's two disclaimers, four numeric tiles, and a five-line paragraph for what is essentially "mild day, rain unlikely."
 
-A short, italic disclaimer line under the paragraph:
+**New shape — one read, two facts, one source line:**
 
-> "This is the historical average for July 4 — what *usually* happens, not a forecast for this specific year. We'll start showing a real forecast for your date around June 20."
+```text
+CLIMATE FOR THIS DATE                    Nov 5
 
-The "around June 20" part is already computed (`nextCheckAt`).
+Mild and pleasant on average — highs near 75°,
+lows around 56°. Rain is uncommon, only about
+1 in 6 years see a measurable shower.
 
-### 4. Card layout — keep what you liked, add one row
+   75° / 56°            ~16% chance of rain
+   typical high / low    historical, this date
 
-The card stays the same shape (CLIMATE FOR THIS DATE → grid of facts → source line). We add **one new section above the grid**:
+This is the historical average — not a forecast.
+Real forecast around Wed, Oct 21.
 
-```
-CLIMATE FOR THIS DATE
-─────────────────────
-THE READ
-Early July in Houston is peak summer — afternoons typically push
-into the mid-90s with high humidity. Rain is occasional, about 1
-in 3 years see a measurable shower. By 7 PM the worst of the heat
-is easing and most evenings stay dry.
-
-  This is the historical average — not a forecast for this year.
-  We'll start showing a real forecast around Jun 20.
-
-NORMAL HIGH    NORMAL LOW    RAIN FREQUENCY    TYPICAL WET-DAY RAIN
-94°F           75°F          33% of years      0.16"
-1991–2020 avg  1991–2020 avg measurable rain   75th-percentile
-
-STATION
-HOUSTON INTERCONT AP, TX US
-NOAA GHCN · 8 mi away
-
-NOAA 1991–2020 daily normals — historical baseline, not a forecast.
+   Source: NOAA · Houston-Port (5.5 mi) ▾
 ```
 
-The grid stays compact (4 facts), THE READ is the new narrative section, and the dim italic line right under it sets expectations. Everything reuses tokens already in `src/styles.css`.
+What changes vs. today:
+- **Paragraph trimmed to 2 sentences.** Drop the filler ("Late-night hours are usually the coolest of the day"). The "wet-day rainfall amount" only appears in the sentence when it's notable (≥0.5″) — it doesn't deserve its own tile.
+- **Four tiles → two facts.** Combine high+low into "75° / 56°" and keep "~16% chance of rain". Drop the standalone "TYPICAL WET-DAY RAIN" tile.
+- **Two disclaimers → one.** Keep the italic "historical average — not a forecast" line under the read; remove the second NOAA-footer disclaimer at the bottom.
+- **Station info collapsed** to a single muted line at the bottom (tap to expand if curious). No big "STATION" block.
+- **Date chip in the header** ("Nov 5") so the user immediately sees what date this read is for.
 
-### 5. Wire-through
+### 3. Redesign the action buttons
 
-- `buildLongRangeDigest` returns a new field `interpretation: string` and `framing: string` alongside the existing `facts`.
-- `homeBriefing.functions.ts` (and the corresponding event-snapshot writer) persist these to the event row so the detail screen can render them without a re-fetch.
-- `event.$id.tsx` and `answer.tsx` render the new section above the grid when `interpretation` is present.
-- Spanish strings get the equivalent rule-based sentences in `src/i18n/translations.ts`.
+Today: four equal-weight pill buttons stacked vertically (Edit, Refresh, Mark complete, Delete). Looks like a settings menu, not an action area, and Delete is one mis-tap away.
 
-## Out of scope (for this turn)
+**New layout:**
 
-- Dragging in record extremes ("Record high 101° in 2009 / Record low 68° in 1985"). NOAA's normals dataset doesn't carry those; that's a separate GHCN-Daily extremes call. Worth doing as a follow-up since it would add real "color" to the read, but it's a second integration.
-- Hour-by-hour climatology (we only have daily). The "by 7 PM" hook is a rule-based read on top of daily numbers, not real hourly normals.
+```text
+   ┌───────────────────────────────────────────┐
+   │   ↻  Refresh forecast                      │   ← primary, filled accent
+   └───────────────────────────────────────────┘
 
-## Files
+      ✎ Edit            ✓ Mark complete         ← secondary row, ghost
 
-- `src/lib/fetchers/fetchClimateNormals.ts` — prefer fully-equipped stations.
-- `src/lib/longRangeDigest.ts` — add `buildClimateInterpretation`, return `interpretation` + `framing`.
-- `src/lib/homeBriefing.functions.ts` — persist the two new strings to the event row.
-- `src/routes/event.$id.tsx`, `src/routes/answer.tsx` — render the new "THE READ" + framing section.
-- `src/i18n/translations.ts` — Spanish equivalents.
+                         Delete                  ← tertiary, tiny + muted
+```
 
-## Verification
+- **Refresh** is the primary action — full-width, filled accent color, white text, the only button that draws the eye. It's the one you actually use.
+- **Edit + Mark complete** are secondary — side-by-side, ghost (transparent + thin border), smaller.
+- **Delete** is demoted to a small muted text link below, and tapping it asks for confirmation inline ("Delete this question? — Cancel · Delete") so it can't be hit by accident.
+- All colors come from the existing tokens in `src/styles.css` (no hard-coded hex), so it stays consistent with the rest of the app.
 
-1. Jul 4 / Houston card now leads with a 2–3 sentence read that mentions "peak summer", "mid-90s", "rain occasional", "7 PM usually clear".
-2. The 4-fact grid shows 94°F / 75°F / 33% / 0.16″ (Houston Intercontinental, ~8 mi).
-3. Try Nov 5 / Denver → "Late fall in Denver is when winter starts to bite — daytime highs in the low 50s but freezing some nights" type read.
-4. Try Jan 15 / Miami → "Mild, dry winter day — rain is uncommon" type read.
-5. Italic framing line is present and references the same `nextCheckAt` date the system already computes.
+## What I'm NOT changing this turn
+
+- The tracking-list cards themselves (the "TOO FAR OUT · TRACKING" tiles). Once the list Refresh actually works, those cards will populate correctly — no visual rework needed yet.
+- The underlying data sources (no new NOAA endpoints, no record extremes).
+
+## How we'll know it worked
+
+1. On the tracking list, tap Refresh once → open Nov 5 → climate card is fully populated. No need to tap the in-card refresh.
+2. The Nov 5 card shows: 2-sentence read, 2 facts, one disclaimer, one muted source line — not 4 tiles + 2 disclaimers + a station block.
+3. On the question detail screen, the bottom shows one prominent Refresh button, two smaller secondary actions, and a tiny Delete link that asks before deleting.
