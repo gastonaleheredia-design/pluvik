@@ -79,6 +79,7 @@ function DashboardPage() {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshedJustNow, setRefreshedJustNow] = useState(false);
 
   const reloadEvents = async () => {
     if (!user) return;
@@ -118,6 +119,8 @@ function DashboardPage() {
         headers: { apikey },
       });
       await reloadEvents();
+      setRefreshedJustNow(true);
+      setTimeout(() => setRefreshedJustNow(false), 1800);
     } catch (err) {
       console.error('[dashboard] refresh-all failed', err);
     } finally {
@@ -356,7 +359,11 @@ function DashboardPage() {
                   opacity: refreshing ? 0.6 : 1,
                 }}
               >
-                {refreshing ? t('dashboard.refreshing', { defaultValue: 'Refreshing…' }) : t('dashboard.refresh_all', { defaultValue: 'Refresh all' })}
+                {refreshing
+                  ? t('dashboard.refreshing', { defaultValue: 'Refreshing…' })
+                  : refreshedJustNow
+                    ? t('dashboard.refreshed', { defaultValue: 'Refreshed ✓' })
+                    : t('dashboard.refresh_all', { defaultValue: 'Refresh all' })}
               </button>
             )}
           </div>

@@ -63,6 +63,8 @@ function EventPage() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [stationOpen, setStationOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -523,168 +525,197 @@ function EventPage() {
 
         {/* Climate facts (climate / outlook stage only) */}
         {Array.isArray(event.current_climate_facts) &&
-          event.current_climate_facts.length > 0 && (
-            <div
-              style={{
-                backgroundColor: '#fff',
-                border: `1px solid ${INK}14`,
-                borderRadius: '16px',
-                padding: '18px 18px 8px',
-                marginBottom: '32px',
-              }}
-            >
+          event.current_climate_facts.length > 0 &&
+          (() => {
+            const facts = event.current_climate_facts!;
+            const findVal = (label: string) =>
+              facts.find((f) => f.label === label)?.value ?? null;
+            const high = findVal('NORMAL HIGH');
+            const low = findVal('NORMAL LOW');
+            const meanTemp = findVal('NORMAL TEMP');
+            const rainPct = findVal('RAIN FREQUENCY');
+            const station = facts.find((f) => f.label === 'STATION');
+            const tempDisplay =
+              high && low ? `${high} / ${low}` : high ?? low ?? meanTemp ?? null;
+            const dateChip = event.event_at
+              ? new Date(event.event_at).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })
+              : null;
+            return (
               <div
                 style={{
-                  fontSize: '0.7rem',
-                  letterSpacing: '0.12em',
-                  color: MUTED,
-                  marginBottom: '14px',
+                  backgroundColor: '#fff',
+                  border: `1px solid ${INK}14`,
+                  borderRadius: '16px',
+                  padding: '18px 18px 14px',
+                  marginBottom: '24px',
                 }}
               >
-                CLIMATE FOR THIS DATE
-              </div>
-              {event.current_climate_interpretation && (
-                <div style={{ marginBottom: '14px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: '14px',
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: '0.62rem',
-                      letterSpacing: '0.14em',
+                      fontSize: '0.7rem',
+                      letterSpacing: '0.12em',
                       color: MUTED,
-                      marginBottom: '6px',
                     }}
                   >
-                    THE READ
+                    CLIMATE FOR THIS DATE
                   </div>
+                  {dateChip && (
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '0.95rem',
+                        color: INK,
+                      }}
+                    >
+                      {dateChip}
+                    </div>
+                  )}
+                </div>
+
+                {event.current_climate_interpretation && (
                   <div
                     style={{
                       fontFamily: 'Fraunces, serif',
                       fontSize: '1rem',
                       lineHeight: 1.5,
                       color: INK,
+                      marginBottom: '14px',
                     }}
                   >
                     {event.current_climate_interpretation}
                   </div>
-                  {event.current_climate_framing && (
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        fontSize: '0.78rem',
-                        fontStyle: 'italic',
-                        color: MUTED,
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {event.current_climate_framing}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '14px 18px',
-                }}
-              >
-                {event.current_climate_facts.map((f) => (
-                  <div key={f.label} style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: '0.62rem',
-                        letterSpacing: '0.14em',
-                        color: MUTED,
-                        marginBottom: '4px',
-                      }}
-                    >
-                      {f.label}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '1.15rem',
-                        color: INK,
-                        lineHeight: 1.2,
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {f.value}
-                    </div>
-                    {f.hint && (
-                      <div
-                        style={{
-                          fontSize: '0.7rem',
-                          color: MUTED,
-                          marginTop: '2px',
-                        }}
-                      >
-                        {f.hint}
+                )}
+
+                {(tempDisplay || rainPct) && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '12px 18px',
+                      paddingTop: '4px',
+                      paddingBottom: '4px',
+                    }}
+                  >
+                    {tempDisplay && (
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: '1.25rem',
+                            color: INK,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {tempDisplay}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
+                          typical high / low
+                        </div>
+                      </div>
+                    )}
+                    {rainPct && (
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: '1.25rem',
+                            color: INK,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          ~{rainPct}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
+                          chance of rain, this date
+                        </div>
                       </div>
                     )}
                   </div>
-                ))}
+                )}
+
+                {event.current_climate_framing && (
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      fontSize: '0.78rem',
+                      fontStyle: 'italic',
+                      color: MUTED,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {event.current_climate_framing}
+                  </div>
+                )}
+
+                {station && (
+                  <button
+                    type="button"
+                    onClick={() => setStationOpen((v) => !v)}
+                    style={{
+                      marginTop: '12px',
+                      paddingTop: '10px',
+                      borderTop: `1px solid ${INK}0d`,
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '10px 0 0',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      fontSize: '0.7rem',
+                      color: MUTED,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Source: NOAA · {station.value}
+                    {stationOpen && station.hint ? ` — ${station.hint}` : ' ▾'}
+                  </button>
+                )}
               </div>
-              <div
-                style={{
-                  fontSize: '0.68rem',
-                  color: MUTED,
-                  marginTop: '14px',
-                  paddingTop: '10px',
-                  borderTop: `1px solid ${INK}0d`,
-                  lineHeight: 1.4,
-                }}
-              >
-                NOAA 1991–2020 daily normals — historical baseline, not a forecast.
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
         {/* Actions */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
+            gap: '10px',
+            marginTop: '8px',
             marginBottom: '32px',
           }}
         >
-          <button
-            onClick={() => {
-              setEditText(event.question);
-              setEditing(true);
-            }}
-            disabled={editing || busy}
-            style={{
-              padding: '12px',
-              background: 'transparent',
-              color: INK,
-              border: `1px solid ${INK}1a`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: editing ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              opacity: editing ? 0.5 : 1,
-            }}
-          >
-            {t('event.action_edit')}
-          </button>
           {!event.archived_at && (
             <button
               onClick={handleRefresh}
               disabled={refreshing || busy}
               style={{
-                padding: '12px',
-                background: 'transparent',
-                color: ACCENT,
-                border: `1px solid ${ACCENT}33`,
+                padding: '14px',
+                background: ACCENT,
+                color: '#faf7f0',
+                border: 'none',
                 borderRadius: '100px',
-                fontSize: '0.85rem',
+                fontSize: '0.92rem',
+                fontWeight: 600,
+                letterSpacing: '0.01em',
                 cursor: refreshing || busy ? 'default' : 'pointer',
                 fontFamily: 'inherit',
                 opacity: refreshing || busy ? 0.6 : 1,
+                boxShadow: `0 6px 16px -8px ${ACCENT}80`,
               }}
             >
-              {refreshing ? 'Refreshing forecast…' : '↻ Refresh forecast'}
+              {refreshing ? 'Refreshing forecast…' : '↻  Refresh forecast'}
             </button>
           )}
           {refreshError && (
@@ -698,38 +729,115 @@ function EventPage() {
               {refreshError}
             </div>
           )}
-          <button
-            onClick={handleComplete}
-            disabled={busy}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => {
+                setEditText(event.question);
+                setEditing(true);
+              }}
+              disabled={editing || busy}
+              style={{
+                flex: 1,
+                padding: '11px',
+                background: 'transparent',
+                color: INK,
+                border: `1px solid ${INK}1f`,
+                borderRadius: '100px',
+                fontSize: '0.82rem',
+                cursor: editing ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: editing ? 0.5 : 1,
+              }}
+            >
+              ✎  {t('event.action_edit')}
+            </button>
+            <button
+              onClick={handleComplete}
+              disabled={busy}
+              style={{
+                flex: 1,
+                padding: '11px',
+                background: 'transparent',
+                color: INK,
+                border: `1px solid ${INK}1f`,
+                borderRadius: '100px',
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              ✓  {t('event.action_complete')}
+            </button>
+          </div>
+          <div
             style={{
-              padding: '12px',
-              background: 'transparent',
-              color: '#15803d',
-              border: `1px solid #15803d33`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '12px',
+              marginTop: '6px',
+              minHeight: '24px',
             }}
           >
-            ✓ {t('event.action_complete')}
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={busy}
-            style={{
-              padding: '12px',
-              background: 'transparent',
-              color: '#b91c1c',
-              border: `1px solid #b91c1c33`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            {t('event.action_delete')}
-          </button>
+            {confirmingDelete ? (
+              <>
+                <span style={{ fontSize: '0.78rem', color: MUTED }}>
+                  Delete this question?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: MUTED,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    padding: '4px 6px',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={busy}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#b91c1c',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: busy ? 'default' : 'pointer',
+                    fontFamily: 'inherit',
+                    padding: '4px 6px',
+                  }}
+                >
+                  Delete
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: MUTED,
+                  fontSize: '0.75rem',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '3px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  padding: '4px 8px',
+                }}
+              >
+                {t('event.action_delete')}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tracking journal */}

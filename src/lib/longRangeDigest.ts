@@ -240,16 +240,13 @@ function timeOfDaySentence(hour: number, month: number, maxF: number | null): st
     if (isSummer && maxF != null && maxF >= 85) {
       return `By that hour the worst of the heat is easing, and afternoon storms — when they fire — usually move out before evening.`;
     }
-    return `Evenings on this date tend to be settled.`;
+    return null;
   }
   if (hour >= 12 && hour < 17) {
     if (isSummer) return `Mid-afternoon is the warmest stretch of the day, and any rain that does form usually pops up in this window.`;
-    return `Afternoons on this date are typically the warmest part of the day.`;
+    return null;
   }
-  if (hour >= 6 && hour < 12) {
-    return `Mornings are typically the coolest, calmest part of the day.`;
-  }
-  return `Late-night hours are usually the coolest of the day.`;
+  return null;
 }
 
 export function buildClimateInterpretation(
