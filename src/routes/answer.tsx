@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { useAddress } from '../lib/addressContext';
 import { usePreferences } from '../lib/preferencesContext';
+import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -73,6 +74,7 @@ function AnswerPage() {
   const [saving, setSaving] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
+  const [resolvedAddress, setResolvedAddress] = useState<string>(address);
 
   const loadingPhrases = [
     t('answer.loading_1'),
@@ -98,16 +100,34 @@ function AnswerPage() {
     const fetchAnswer = async () => {
       try {
         let coords: { lat: number; lon: number } | null = null;
-        if (selectedAddress.lat && selectedAddress.lon) {
-          coords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
-        } else {
-          const geo = await geocodeAddress(address);
-          if (!geo.ok) {
-            setStatus(geo.reason === 'out_of_coverage' ? 'out_of_coverage' : 'error');
+        let effectiveAddress = address;
+        // If the question mentions a different US place, geocode that
+        // place and use it instead of the home address.
+        const placeOverride = extractPlaceFromQuestion(question);
+        if (placeOverride) {
+          const geo = await geocodeAddress(placeOverride);
+          if (geo.ok) {
+            coords = { lat: geo.lat, lon: geo.lon };
+            effectiveAddress = placeOverride;
+          } else if (geo.reason === 'out_of_coverage') {
+            setStatus('out_of_coverage');
             return;
           }
-          coords = { lat: geo.lat, lon: geo.lon };
+          // If not_found / network, silently fall back to the home address.
         }
+        if (!coords) {
+          if (selectedAddress.lat && selectedAddress.lon) {
+            coords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
+          } else {
+            const geo = await geocodeAddress(address);
+            if (!geo.ok) {
+              setStatus(geo.reason === 'out_of_coverage' ? 'out_of_coverage' : 'error');
+              return;
+            }
+            coords = { lat: geo.lat, lon: geo.lon };
+          }
+        }
+        setResolvedAddress(effectiveAddress);
 
         const result = await askWeather({
           data: {
@@ -115,7 +135,7 @@ function AnswerPage() {
             lat: coords.lat,
             lon: coords.lon,
             language: i18n.language,
-            address,
+            address: effectiveAddress,
             tempUnit,
             windUnit,
             timeFormat,
@@ -261,7 +281,12 @@ function AnswerPage() {
           &ldquo;{question}&rdquo;
         </div>
         <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em' }}>
-          {t('answer.for_location')} {address}
+          {t('answer.for_location')} {resolvedAddress}
+          {resolvedAddress !== address && (
+            <div style={{ marginTop: 6, fontSize: '0.7rem', color: ACCENT, letterSpacing: '0.1em' }}>
+              ↳ FROM YOUR QUESTION
+            </div>
+          )}
         </div>
       </div>
     );
@@ -417,7 +442,7 @@ function AnswerPage() {
   const topicTag = answer.mode === 'severe' ? 'SEVERE'
     : answer.mode === 'hurricane' ? 'STORM'
     : 'RAIN';
-  const contextLine = `${address.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
+  const contextLine = `${resolvedAddress.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
 
   if (!showWhy) {
     return (
