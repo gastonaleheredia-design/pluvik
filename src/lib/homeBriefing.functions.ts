@@ -131,9 +131,15 @@ async function fetchNwsFallback(lat: number, lon: number): Promise<OpenMeteoLite
       /fog/.test(curSf) ? 45 :
       /cloud/.test(curSf) ? 3 : 0;
     const curCloud = /partly cloudy/.test(curSf) ? 50 : /cloud|overcast/.test(curSf) ? 90 : /clear|sunny/.test(curSf) ? 5 : 30;
+    // NWS hourly periods include `temperature` in `temperatureUnit` ('F' usually).
+    const curTempRaw = (cur as unknown as { temperature?: number; temperatureUnit?: string })?.temperature;
+    const curTempUnit = (cur as unknown as { temperatureUnit?: string })?.temperatureUnit ?? 'F';
+    const curTempF = typeof curTempRaw === 'number'
+      ? (curTempUnit === 'C' ? curTempRaw * 9 / 5 + 32 : curTempRaw)
+      : undefined;
 
     return {
-      current: { weather_code: curCode, precipitation: curCode >= 50 ? 0.1 : 0, cloud_cover: curCloud },
+      current: { weather_code: curCode, precipitation: curCode >= 50 ? 0.1 : 0, cloud_cover: curCloud, temperature_2m: curTempF },
       hourly: { time, precipitation_probability: probs, precipitation: precs, weather_code: codes },
       timezone: tz,
     };
