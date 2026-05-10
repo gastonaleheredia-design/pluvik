@@ -487,6 +487,18 @@ function DashboardPage() {
           const finalSnap = eventSnaps.find((s) => s.is_final);
           const isArchived = !!event.archived_at;
           const allClear = isArchived && finalSnap?.change_tag === 'RESOLVED_BENIGN';
+          const hasUnseenChange = (() => {
+            const changed = event.last_significant_change_at
+              ? new Date(event.last_significant_change_at).getTime()
+              : 0;
+            const seen = event.user_seen_change_at
+              ? new Date(event.user_seen_change_at).getTime()
+              : 0;
+            return changed > 0 && changed > seen;
+          })();
+          const archivesAtIso = event.event_at
+            ? new Date(new Date(event.event_at).getTime() + 24 * 3600 * 1000).toISOString()
+            : null;
           return (
             <Link
               key={event.id}
@@ -635,6 +647,38 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
+                    {hasUnseenChange && (
+                      <span
+                        style={{
+                          marginLeft: '8px',
+                          padding: '2px 8px',
+                          borderRadius: '100px',
+                          backgroundColor: ACCENT + '1a',
+                          color: ACCENT,
+                          fontWeight: 700,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          fontSize: '0.6rem',
+                        }}
+                      >
+                        Updated
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Auto-archive countdown for active events */}
+                {!isArchived && archivesAtIso && (
+                  <div
+                    style={{
+                      fontSize: '0.65rem',
+                      letterSpacing: '0.06em',
+                      color: MUTED,
+                      opacity: 0.7,
+                      marginTop: '-2px',
+                    }}
+                  >
+                    Auto-archives {relFuture(archivesAtIso)}
                   </div>
                 )}
               </div>
