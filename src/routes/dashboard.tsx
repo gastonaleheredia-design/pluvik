@@ -22,6 +22,8 @@ interface TrackedEvent {
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
+  current_verdict_word?: string | null;
+  current_verdict_sentence?: string | null;
   current_maybe_explanation?: {
     afd_quote: string;
     model_reconciliation: string;
@@ -86,6 +88,11 @@ function DashboardPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedJustNow, setRefreshedJustNow] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'partial'; ok: number; total: number }
+    | { kind: 'failed' }
+  >({ kind: 'idle' });
 
   const reloadEvents = async () => {
     if (!user) return;
@@ -118,17 +125,36 @@ function DashboardPage() {
   const handleRefreshAll = async () => {
     if (refreshing || !user) return;
     setRefreshing(true);
+    setRefreshStatus({ kind: 'idle' });
     try {
       const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-      await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
+      const res = await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
         method: 'POST',
         headers: { apikey },
       });
+      let summary: { refreshed?: number; results?: Array<{ ok: boolean }> } | null = null;
+      try {
+        summary = await res.json();
+      } catch {
+        summary = null;
+      }
       await reloadEvents();
-      setRefreshedJustNow(true);
-      setTimeout(() => setRefreshedJustNow(false), 1800);
+      const total = summary?.results?.length ?? 0;
+      const ok = summary?.refreshed ?? 0;
+      if (!res.ok || (total > 0 && ok === 0)) {
+        setRefreshStatus({ kind: 'failed' });
+        setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
+      } else if (total > 0 && ok < total) {
+        setRefreshStatus({ kind: 'partial', ok, total });
+        setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
+      } else {
+        setRefreshedJustNow(true);
+        setTimeout(() => setRefreshedJustNow(false), 1800);
+      }
     } catch (err) {
       console.error('[dashboard] refresh-all failed', err);
+      setRefreshStatus({ kind: 'failed' });
+      setTimeout(() => setRefreshStatus({ kind: 'idle' }), 3500);
     } finally {
       setRefreshing(false);
     }
@@ -206,6 +232,34 @@ function DashboardPage() {
       }
     });
   }, [user, view]);
+
+  // Realtime: when the server (refresh-all or cron) updates a tracked event,
+  // patch it into local state immediately so the card snaps to the new
+  // verdict without waiting for a manual refetch.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`tracked_events_user_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tracked_events',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Partial<TrackedEvent> & { id: string };
+          setEvents((prev) =>
+            prev.map((e) => (e.id === next.id ? { ...e, ...(next as TrackedEvent) } : e)),
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const handleDelete = async (e: React.MouseEvent, eventId: string) => {
     e.preventDefault();
@@ -355,7 +409,7 @@ function DashboardPage() {
                   background: 'transparent',
                   border: 'none',
                   padding: 0,
-                  color: ACCENT,
+                  color: refreshStatus.kind === 'failed' ? '#b91c1c' : ACCENT,
                   fontFamily: 'inherit',
                   fontSize: '0.7rem',
                   letterSpacing: '0.12em',
@@ -367,7 +421,13 @@ function DashboardPage() {
               >
                 {refreshing
                   ? t('dashboard.refreshing', { defaultValue: 'Refreshing…' })
-                  : refreshedJustNow
+                  : refreshStatus.kind === 'failed'
+                    ? t('dashboard.refresh_failed', { defaultValue: "Couldn't refresh — try again" })
+                    : refreshStatus.kind === 'partial'
+                    ? t('dashboard.refresh_partial', {
+                        defaultValue: `Refreshed ${refreshStatus.ok} of ${refreshStatus.total}`,
+                      })
+                    : refreshedJustNow
                     ? t('dashboard.refreshed', { defaultValue: 'Refreshed ✓' })
                     : t('dashboard.refresh_all', { defaultValue: 'Refresh all' })}
               </button>
@@ -456,7 +516,11 @@ function DashboardPage() {
 
         {/* Event cards */}
         {events.map((event) => {
-          const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
+          // Prefer the persisted verdict_word the model wrote (single source
+          // of truth shared with the event detail page). Fall back to the
+          // GO/WAIT/NO-GO plan-label map only when verdict_word is missing.
+          const planWord = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
+          const word = event.current_verdict_word ?? planWord;
           const eventSnaps = snapshots.filter((s) => s.event_id === event.id);
           const latest = eventSnaps[0];
           // Trust the row's current_forecast_stage first (always fresh after refresh),
@@ -492,7 +556,7 @@ function DashboardPage() {
             ? pickHeadlineWord({
                 question: event.question,
                 percentage: event.current_percentage,
-                fallbackWord: word,
+                fallbackWord: event.current_verdict_word ?? planWord,
               })
             : null;
           const baseWord = literalRainWord ?? word;

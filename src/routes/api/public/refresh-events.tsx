@@ -147,7 +147,11 @@ async function refreshOne(
   const { error: updErr } = await supabaseAdmin
     .from('tracked_events')
     .update({
-      last_checked_at: nowIso,
+      // Always record that we tried; only bump last_checked_at when we
+      // actually got a usable answer so the "Updated …" timestamp on the
+      // card reflects real freshness, not silent failures.
+      last_refresh_attempt_at: nowIso,
+      ...(isUsable ? { last_checked_at: nowIso } : {}),
       event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
       event_phrase: parsedTime?.sourcePhrase ?? null,
       ...usableFields,
@@ -260,17 +264,28 @@ async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}
     return ageMin >= intervalMin;
   }).slice(0, MAX_EVENTS_PER_RUN);
 
-  // Run sequentially to avoid hammering upstream weather sources.
+  // Run with a small concurrency pool so the worker fits its response budget
+  // when there are several events. 3-wide is a safe trade-off between
+  // upstream load (NWS + Gemini) and total latency.
+  const CONCURRENCY = 3;
   const results: Awaited<ReturnType<typeof refreshOne>>[] = [];
-  for (const ev of candidates) {
-    results.push(await refreshOne(ev));
+  let cursor = 0;
+  async function worker() {
+    while (cursor < candidates.length) {
+      const idx = cursor++;
+      results.push(await refreshOne(candidates[idx]));
+    }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, () => worker()),
+  );
 
   return {
     scanned: candidates.length,
     eligible: events?.length ?? 0,
     refreshed: results.filter((r) => r.ok).length,
     failed: results.filter((r) => !r.ok),
+    results,
     tags: results.filter((r) => r.ok).map((r) => r.tag),
   };
 }

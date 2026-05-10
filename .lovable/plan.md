@@ -1,185 +1,76 @@
-## Goal
+## Why "Refresh all" looks broken
 
-When the headline answer is **MAYBE**, give the user a short, honest explanation of *why it's a coin-flip* — anchored in the local NWS forecaster's narrative (AFD), reconciled with what the models are showing, and tied to the user's specific hour and address. YES and NO answers stay as they are.
+Two real bugs combine to produce what you saw (card = NO 85%, detail = YES):
 
-This plan also fixes the real reasons MAYBE answers feel thin today — not just the prompt — so the explanation has good source material to draw from.
+**Bug 1 — Dashboard ignores the freshest field.** The detail page renders the headline from `current_verdict_word` (the literal "YES / NO / MAYBE" the model wrote). The dashboard ignores that column entirely and re-derives the word from `current_verdict` (the GO / WAIT / NO-GO plan label) via a hard-coded map (`NO-GO → "NO"`). So even after a refresh writes a fresh `current_verdict_word = "YES"`, the card still shows "NO" because it never looks at that field. The two pages are reading different columns for the same headline.
 
----
+**Bug 2 — "Updated just now" lies on partial failures.** `refresh-events` always bumps `last_checked_at = now()`, even when `askWeather` comes back UNKNOWN/unusable. In that branch it deliberately *does not* overwrite the verdict fields. Result: the card timestamp resets to "just now" while the verdict stays stale. The button shows the green "Refreshed ✓" because the HTTP call succeeded — but nothing actually changed.
 
-## Today's situation (what actually happens on a MAYBE)
+There is also a secondary issue: the refresh runs all events sequentially server-side. With 5 events × ~5–15 s each, the Worker can hit its response budget; the client sees a clean response for the first events processed and stale data for the rest.
 
-1. `fetchAFD()` returns the latest discussion for the user's local NWS office, **truncated to 2000 chars**. AFDs are 4–8 KB and split into labeled sections: `.SHORT TERM...`, `.LONG TERM...`, `.AVIATION...`, `.MARINE...`. The 2 KB cap usually clips just the SYNOPSIS, so the period covering the user's actual day is often missing from what the model sees.
-2. The AFD text is dropped into the briefing as one blob with no section labeling, no marker for which period covers `event_at`, and no instruction to quote from it.
-3. The schema has `mechanism`, `main_concern`, and `confidence_reason` fields the model already fills, but nothing is reserved specifically for the MAYBE rationale, so it gets compressed into the same one-liner used for confident answers.
-4. The dashboard card and event detail page have no slot for a "why MAYBE" block — the card just shows the verdict word and percentage line.
+## Plan
 
-That's the gap. The fix has three layers: better data going in, a dedicated reasoning step, and a UI block to render it.
+### 1. Single source of truth for the headline (fixes bug 1)
 
----
-
-## Layer 1 — Get the right AFD content into the prompt
-
-`src/lib/metDataFetcher.ts` → upgrade `fetchAFD()`:
-
-- Pull the **full** product text (current API response field is already `productText`; just stop truncating).
-- Parse the standard `.SECTION...` headers. AFDs use a stable pattern: lines starting with a period, all-caps section name, dot, then content until the next `.SECTION` header or `&&`.
-- Pick the section(s) whose period covers the user's `event_at`. The header line for each period usually carries the days (e.g. `.SHORT TERM (Today through Monday Night)...`). Resolve "today / tonight / Monday / Tuesday" into dates against the office's local timezone (we already know `cwa` and the user's lat/lon).
-- Return a structured object:
-  ```ts
-  { office: "HGX", issuedAt: "...", relevantSection: { label, periodLabel, body }, fullText: "..." }
+- Extend `TrackedEvent` in `src/routes/dashboard.tsx` to include `current_verdict_word`, `current_verdict_sentence`, and `current_percentage` (already there).
+- Replace the `VERDICT_WORD[event.current_verdict]` map with the same logic the detail page uses:
   ```
-- Update `MetBriefing.afd` to carry both the targeted excerpt AND the full text. The targeted excerpt becomes the primary thing the LLM cites; the full text stays as a fallback.
+  const word = isRainQ
+    ? pickHeadlineWord({ question, percentage, fallbackWord: current_verdict_word ?? current_verdict })
+    : (current_verdict_word ?? VERDICT_WORD[current_verdict] ?? '—');
+  ```
+- Use `current_verdict_sentence` (when present) for any subhead text, matching the detail page.
+- Keep the GO/WAIT/NO-GO plan label in the small `pctLine` row only — that's the "plan" tag, not the headline answer.
 
-In `assembleBriefingText` (same file), render the AFD section with explicit framing the model can't miss:
+After this change, dashboard and detail can never disagree because both render from the same persisted columns.
 
+### 2. Don't lie about freshness (fixes bug 2)
+
+In `src/routes/api/public/refresh-events.tsx`:
+- Add a new column `last_refresh_attempt_at timestamptz` via migration.
+- On every attempt, write `last_refresh_attempt_at = now()`.
+- Only write `last_checked_at = now()` when `isUsable === true` (i.e. we actually have a fresh verdict).
+- Return a per-event result array: `[{ id, ok, tag, error }]`.
+
+In `dashboard.tsx`:
+- After `await fetch(...)`, parse the JSON and count `ok` vs failed.
+- The button label becomes:
+  - all ok → "Refreshed ✓"
+  - some failed → "Refreshed N of M" (orange)
+  - all failed → "Couldn't refresh — try again" (red, no green check)
+- The card's "Updated …" line keeps reading `last_checked_at`, so it now only resets when the verdict actually changed.
+
+### 3. Make the refresh fit the Worker budget
+
+In `runRefresh` (`refresh-events.tsx`):
+- Replace the sequential `for` loop with a small concurrency pool (3 in parallel) using a tiny inline `pLimit`-style helper. No new dependency.
+- Keep the `MAX_EVENTS_PER_RUN` cap. With 5 events at concurrency 3, total latency drops from ~5×N to ~2×N.
+
+### 4. Realtime safety net (cheap, optional but recommended)
+
+In `dashboard.tsx`, subscribe once per mount:
 ```
-NWS FORECAST DISCUSSION — {OFFICE} (issued {time})
-PERIOD COVERING THE USER'S PLAN: {periodLabel}
-"""
-{relevantSection.body}
-"""
-(Full discussion follows for context.)
-{fullText}
+supabase.channel('tracked_events_user')
+  .on('postgres_changes', {
+    event: 'UPDATE', schema: 'public', table: 'tracked_events',
+    filter: `user_id=eq.${user.id}`,
+  }, (payload) => setEvents(prev => prev.map(e => e.id === payload.new.id ? { ...e, ...payload.new } : e)))
+  .subscribe();
 ```
+This guarantees the card snaps to the new verdict the moment the server writes it, even if a future race re-introduces a refetch ordering bug. Requires `ALTER PUBLICATION supabase_realtime ADD TABLE tracked_events;` in the migration.
 
-If the AFD fetch fails, set `relevantSection: null` and downstream code knows to skip the MAYBE explanation cleanly instead of fabricating one.
+### 5. Out of scope
 
----
+- Reworking `askWeather` itself, the MAYBE explanation, or the AFD pipeline.
+- Removing the button — keeping it; once 1+2 land, it will tell the truth.
+- Changing the cron-driven background refresh schedule.
 
-## Layer 2 — Force a structured "why MAYBE" reasoning step
+## Files touched
 
-### 2a. New answer field
+- `src/routes/dashboard.tsx` — interface, headline logic, refresh button states, realtime subscription.
+- `src/routes/api/public/refresh-events.tsx` — separate `last_refresh_attempt_at`, only bump `last_checked_at` on usable answers, parallelize with a 3-wide pool, return per-event results.
+- New migration — add `tracked_events.last_refresh_attempt_at`, add `tracked_events` to `supabase_realtime` publication.
 
-Add to `src/lib/weatherAnswerSchema.ts`:
+## Acceptance check
 
-```ts
-maybe_explanation: z.object({
-  afd_quote: z.string().min(1),          // a short paraphrase of the relevant AFD line
-  model_reconciliation: z.string().min(1), // how HRRR/ECMWF/NDFD timing lines up with that
-  why_uncertain: z.string().min(1),        // one sentence: the specific source of uncertainty
-}).nullable().optional()
-```
-
-Why three sub-fields and not free text: it forces the model to actually do the three things the user asked for instead of producing a vague paragraph. The UI joins them into 2–3 sentences for display, but the structure makes the reasoning auditable and lets us regenerate just one piece if needed later.
-
-In `validateWeatherAnswer`, normalize:
-- If `verdict_word !== 'MAYBE'` → set `maybe_explanation = null`.
-- If `verdict_word === 'MAYBE'` but `maybe_explanation` missing or any sub-field empty → leave it `null` and log a warning. UI then falls back to the existing `summary`. We do NOT block the response.
-- Strip jargon from the strings (CAPE / CIN / TPW / dBZ / shear / hodograph / LI) — same regex pattern already used elsewhere in the schema layer.
-
-### 2b. Prompt changes (`src/lib/systemPrompt.ts`)
-
-Add a new STEP between current STEP 4 and STEP 5:
-
-```
-STEP 4b — MAYBE GROUNDING (only when leaning toward verdict_word = "MAYBE")
-
-If the answer is genuinely uncertain (POP 26-59% for rain questions, or model
-spread spans the decision threshold), you MUST:
-  1. Locate the AFD section that covers the user's event time. The briefing
-     marks it as "PERIOD COVERING THE USER'S PLAN".
-  2. Identify ONE concrete mechanism from that section — front, trough, ridge,
-     sea-breeze, dryline, MCS, capping inversion, upper low, etc. Do not
-     accept generic phrases like "unsettled weather".
-  3. Compare the AFD's stated timing to HRRR (0-18h) or ECMWF (24-72h) timing.
-     Name the disagreement: timing, coverage ("scattered" vs "widespread"),
-     intensity, or borderline POP.
-  4. Tie it to the user's actual hour. The user's plan is at {EVENT_HOUR}.
-
-Write the answer into `maybe_explanation`:
-  - afd_quote: paraphrase the AFD mechanism in plain English. Reference the
-    forecaster's own framing (e.g. "the Houston office expects a cold front
-    sliding south through the metro late afternoon"). Max 25 words.
-  - model_reconciliation: how the model runs line up with that timing.
-    (e.g. "HRRR pushes the front past your address by 5 PM but ECMWF runs
-    two hours slower"). Max 25 words.
-  - why_uncertain: one sentence naming the specific source of uncertainty
-    relative to the user's hour. (e.g. "Your 6:30 PM is right on the edge
-    of when the cell coverage drops off.") Max 20 words.
-
-If the AFD section is missing from the briefing, set maybe_explanation to null.
-Never invent forecaster language. Never quote percentages or jargon.
-```
-
-Update OUTPUT FORMAT JSON to include `maybe_explanation` with the three sub-fields.
-
-Add HARD RULE: *"If verdict_word is MAYBE and the AFD section is present, maybe_explanation is required. If verdict_word is YES or NO, maybe_explanation must be null."*
-
-### 2c. Pass the user's hour into the prompt
-
-`buildSystemPrompt` already takes context but doesn't get a clean "event hour in the office's local time" string. Add an `eventHourLabel` argument computed in `askWeather.functions.ts` from `event_at` + the office's timezone (we have lat/lon → tz lookup is a small helper or we can use an existing one — confirm during implementation). Substitute it into the `{EVENT_HOUR}` placeholder in STEP 4b.
-
----
-
-## Layer 3 — Persist and render
-
-### Schema migration
-
-Add to `tracked_events`:
-```sql
-ALTER TABLE public.tracked_events
-  ADD COLUMN current_maybe_explanation jsonb;
-```
-JSONB instead of text so we keep the three sub-fields. Nullable. No backfill — next refresh writes it.
-
-### Persistence
-
-Update both write paths to store `current_maybe_explanation`:
-- `src/routes/event.$id.tsx` (in-card refresh handler)
-- `src/routes/api/public/refresh-events.tsx` (background sweep)
-
-Also add the field to the snapshots table payload? Not in this round — snapshots stay focused on stage/verdict/percentage diffs. The MAYBE explanation is a "current state" thing.
-
-### Dashboard card (`src/routes/dashboard.tsx`)
-
-When `displayWord` is `MAYBE` (or `LEAN ...` at model_trend) AND `current_maybe_explanation` is present, render a small block under the percentage line:
-
-```
-┌────────────────────────────────────────┐
-│ [WHY MAYBE]                            │
-│ {afd_quote}                            │
-│ {model_reconciliation}                 │
-│ {why_uncertain}                        │
-└────────────────────────────────────────┘
-```
-
-Styling: small uppercase `WHY MAYBE` chip in the accent color, then 3 short sentences in muted serif, max 5 lines total with `-webkit-line-clamp`. Only renders if all three sub-fields exist; otherwise the card looks like today.
-
-### Event detail (`src/routes/event.$id.tsx`)
-
-Same block but uncollapsed and full-width, placed directly under the headline word and above the existing summary. Bigger text, no clamp. Heading: "Why we're saying MAYBE".
-
----
-
-## Layer 4 — Edge cases and guardrails
-
-- **Non-rain MAYBE questions** ("Is it safe to surf?", "Should I move the picnic indoors?"): the same structure works — the AFD discusses winds, marine conditions, fronts. Keep the field generic, no rain-specific wording in the schema.
-- **AFD unavailable**: card falls back to today's behavior. We don't show a half-empty block.
-- **AFD doesn't mention the user's period clearly** (rare in practice, but possible — e.g. an AFD focused on a current event): the period extractor returns the SHORT TERM section as default, and the model is told to set `maybe_explanation = null` if it can't honestly cite a mechanism. Better to show nothing than to bluff.
-- **Model returns garbage for `maybe_explanation`** (empty strings, jargon that survived the regex, suspiciously generic phrases like "unsettled weather"): the validator drops it to null and the card falls back. We log the issue so we can iterate on the prompt.
-- **Prompt tokens**: the full AFD adds ~6 KB. Combined with the rest of the briefing this is still well within Gemini's window. We're not adding a second LLM call.
-
----
-
-## Files to change
-
-| File | Change |
-|---|---|
-| `src/lib/metDataFetcher.ts` | Stop truncating AFD; parse sections; pick the period covering `event_at`; expose structured AFD in briefing |
-| `src/lib/systemPrompt.ts` | Add STEP 4b, `maybe_explanation` in OUTPUT FORMAT, hard rule, `{EVENT_HOUR}` placeholder |
-| `src/lib/weatherAnswerSchema.ts` | Add `maybe_explanation` shape + normalization (null when not MAYBE; jargon scrub) |
-| `src/lib/askWeather.functions.ts` | Compute event hour in the office's local TZ and pass into the prompt; pass through `maybe_explanation` |
-| `src/routes/api/public/refresh-events.tsx` | Persist `current_maybe_explanation` |
-| `src/routes/event.$id.tsx` | Persist on in-card refresh; render the "Why we're saying MAYBE" block |
-| `src/routes/dashboard.tsx` | Render the compact "WHY MAYBE" block on MAYBE cards |
-| New migration | `current_maybe_explanation jsonb` on `tracked_events` |
-
----
-
-## Out of scope
-
-- Reworking the confidence calculator
-- Changing how YES/NO answers look
-- A separate AFD viewer screen
-- Storing AFD per-snapshot
-- Adding a second LLM call (we're enriching the existing one)
+After this lands: open the same "Will it rain Monday at 6:30 PM?" event, hit Refresh all, and the card headline must match what the detail page shows — both reading from the same `current_verdict_word`. If the underlying refresh fails, the button says so and "Updated …" does not reset.
