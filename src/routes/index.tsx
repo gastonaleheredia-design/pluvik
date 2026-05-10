@@ -11,6 +11,8 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
 import { transcribeVoice } from '../lib/transcribeVoice.functions';
+import { QuestionChips } from '../components/QuestionChips';
+import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
@@ -54,6 +56,13 @@ function HomePage() {
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
+  // Question chips: detected / picked event time + place. Picked values
+  // override detection; null means "use the default" (now / here).
+  const [pickedTime, setPickedTime] = useState<Date | null>(null);
+  const [pickedTimeManual, setPickedTimeManual] = useState(false);
+  const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
+  const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
+  const [placeResolving, setPlaceResolving] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -301,9 +310,17 @@ function HomePage() {
 
   const handleSubmit = () => {
     if (!questionText.trim()) return;
+    const finalPlace = pickedPlace;
+    const finalTime = pickedTime;
     navigate({
       to: '/answer',
-      search: { q: questionText.trim(), address: selectedAddress.label },
+      search: {
+        q: questionText.trim(),
+        address: finalPlace?.label ?? selectedAddress.label,
+        lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
+        lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
+        eventAtIso: finalTime ? finalTime.toISOString() : undefined,
+      },
     });
   };
 
