@@ -191,6 +191,26 @@ function normalizeRawAnswer(raw: unknown): unknown {
     else r.verdict_word = 'MAYBE';
   }
 
+  // maybe_explanation cleanup. Null it out unless verdict_word === 'MAYBE'.
+  // Strip jargon. If any sub-field is empty after cleaning, null the whole block.
+  const me = r.maybe_explanation as Record<string, unknown> | null | undefined;
+  if (r.verdict_word !== 'MAYBE') {
+    r.maybe_explanation = null;
+  } else if (me && typeof me === 'object') {
+    const jargon = /\b(CAPE|CIN|LI|TPW|dBZ|hodograph|shear|MUCAPE|MLCAPE|SBCAPE|0[-–]6\s?km|bulk shear)\b/gi;
+    const clean = (v: unknown): string => typeof v === 'string' ? v.replace(jargon, '').replace(/\s+/g, ' ').trim() : '';
+    const a = clean(me.afd_quote);
+    const b = clean(me.model_reconciliation);
+    const c = clean(me.why_uncertain);
+    if (a && b && c) {
+      r.maybe_explanation = { afd_quote: a, model_reconciliation: b, why_uncertain: c };
+    } else {
+      r.maybe_explanation = null;
+    }
+  } else {
+    r.maybe_explanation = null;
+  }
+
   if (typeof r.verdict === 'string') {
     const v = r.verdict.trim().toUpperCase().replace('NOGO', 'NO-GO').replace('NO_GO', 'NO-GO');
     if (['GO', 'CAUTION', 'NO-GO', 'UNKNOWN'].includes(v)) r.verdict = v;
@@ -285,6 +305,8 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       const pct = typeof d.percentage === 'number' ? d.percentage : (typeof d.impact_percent === 'number' ? d.impact_percent : null);
       d.headline_number = pct != null ? { value: `${pct}%`, label: 'CHANCE OF RAIN' } : null;
     }
+    // Final guard: maybe_explanation is only meaningful when verdict_word === 'MAYBE'.
+    if (d.verdict_word !== 'MAYBE') d.maybe_explanation = null;
     return { ok: true, data: d };
   }
   const issues = parsed.error.issues.map(i => `${i.path.join('.') || '<root>'}: ${i.message}`);
