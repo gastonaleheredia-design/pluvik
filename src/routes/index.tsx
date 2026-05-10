@@ -15,6 +15,8 @@ const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const ACCENT = '#c2410c';
 const MUTED = '#6b6357';
+const WARN = '#b91c1c';
+const WARN_BG = '#fef2f2';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -174,6 +176,7 @@ function HomePage() {
       motion === 'drifting_toward' ? 'home.motion_drifting_toward' :
       motion === 'parallel' ? 'home.motion_parallel' :
       motion === 'moving_away' ? 'home.motion_moving_away' :
+      motion === 'unknown' ? 'home.motion_unknown' :
       'home.motion_stationary';
     return t('home.nearby_storm', {
       distance: distance_mi,
@@ -182,6 +185,7 @@ function HomePage() {
     });
   };
   const nearbyLine = renderNearby();
+  const warning = briefing?.alert ?? null;
 
   return (
     <div
@@ -208,6 +212,52 @@ function HomePage() {
           textAlign: 'center',
         }}
       >
+        {/* Active NWS warning banner */}
+        {warning && (
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              marginBottom: '20px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              backgroundColor: WARN_BG,
+              border: `1px solid ${WARN}`,
+              textAlign: 'left',
+            }}
+            role="alert"
+          >
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.62rem',
+                letterSpacing: '0.18em',
+                color: WARN,
+                fontWeight: 700,
+              }}
+            >
+              {warning.event.toUpperCase()}
+              {warning.expires_local
+                ? ` · ${t('home.warning_until', { defaultValue: 'UNTIL' })} ${warning.expires_local}`
+                : ` · ${t('home.warning_active', { defaultValue: 'ACTIVE' })}`}
+            </div>
+            {warning.headline && (
+              <div
+                style={{
+                  marginTop: '4px',
+                  fontFamily: 'Fraunces, serif',
+                  fontStyle: 'italic',
+                  fontSize: '0.85rem',
+                  color: INK,
+                  lineHeight: 1.35,
+                }}
+              >
+                {warning.headline}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Location block — kicker + city + tap hint, all tappable. */}
         <button
           type="button"
@@ -234,7 +284,7 @@ function HomePage() {
               color: MUTED,
             }}
           >
-            {t('home.right_now_at')}
+            {t('home.right_now_at', { defaultValue: 'RIGHT NOW AT' })}
           </span>
           <span
             style={{
@@ -258,7 +308,7 @@ function HomePage() {
                 color: MUTED,
               }}
             >
-              {t('home.tap_to_change')}
+              {t('home.tap_to_change', { defaultValue: '(tap to change)' })}
             </span>
           )}
         </button>
@@ -337,7 +387,7 @@ function HomePage() {
                   color: MUTED,
                 }}
               >
-                {t('home.updated')} {briefing.updated_at_local}
+                {t('home.updated', { defaultValue: 'UPDATED' })} {briefing.updated_at_local}
               </div>
             )}
           </>

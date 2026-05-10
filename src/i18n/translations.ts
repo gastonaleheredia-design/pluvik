@@ -54,6 +54,9 @@ export const translations = {
         motion_parallel: 'moving parallel',
         motion_moving_away: 'moving away',
         motion_stationary: 'stationary',
+        motion_unknown: 'nearby',
+        warning_until: 'UNTIL',
+        warning_active: 'ACTIVE',
       },
       // Answer
       answer: {
@@ -326,6 +329,9 @@ export const translations = {
         motion_parallel: 'movimiento paralelo',
         motion_moving_away: 'alejándose',
         motion_stationary: 'estacionaria',
+        motion_unknown: 'cercana',
+        warning_until: 'HASTA',
+        warning_active: 'ACTIVO',
       },
       // Answer
       answer: {

@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { probeImminentStorm, probeNearbyCell, type NearbyCellProbe } from './metDataFetcher';
+import { probeImminentStorm, probeNearbyCell, getActiveWarning, type NearbyCellProbe, type ActiveAlert } from './metDataFetcher';
 
 interface HomeBriefingRequest {
   lat: number;
@@ -19,10 +19,16 @@ export interface HomeBriefing {
     distance_mi: number;
     bearing: string;
     /** approaching | drifting_toward | parallel | moving_away | stationary */
-    motion: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary';
+    motion: 'approaching' | 'drifting_toward' | 'parallel' | 'moving_away' | 'stationary' | 'unknown';
   } | null;
   /** Local-time string like "8:06 PM" of when this briefing was generated. */
   updated_at_local: string;
+  /** Active NWS warning (Tornado / Flash Flood / Severe Thunderstorm), or null. */
+  alert: {
+    event: string;
+    headline: string;
+    expires_local: string | null;
+  } | null;
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -74,6 +80,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         next_rain_caption: null,
         nearby_cell: null,
         updated_at_local: '',
+        alert: null,
       } satisfies HomeBriefing;
     }
     const j = await res.json();
@@ -127,6 +134,17 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     } catch { /* keep point-only verdict */ }
 
+    // NWS active-warning override — authoritative for severe weather. Runs
+    // in parallel with the radar probe; if a warning is active we promote
+    // the verdict to STORMS regardless of what HRRR forecast precip says.
+    let activeAlert: ActiveAlert | null = null;
+    try {
+      activeAlert = await getActiveWarning(lat, lon);
+      if (activeAlert) {
+        word = 'STORMS';
+      }
+    } catch { /* keep current verdict */ }
+
     // Nearby (non-imminent) cell — only render when verdict isn't already STORMS/RAINING.
     let nearbyCell: HomeBriefing['nearby_cell'] = null;
     if (word === 'DRY' || word === 'CLOUDY' || word === 'RAIN SOON') {
@@ -144,7 +162,11 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     // One-line italic summary.
     let sentence: string;
-    if (language.startsWith('es')) {
+    if (activeAlert) {
+      // Warning headline takes priority over the generic summary.
+      sentence = activeAlert.headline ||
+        (language.startsWith('es') ? 'Aviso meteorológico activo en tu zona.' : 'Active weather warning for your area.');
+    } else if (language.startsWith('es')) {
       if (word === 'STORMS' && stormOverride)
         sentence = `Tormenta acercándose desde el ${stormOverride.bearing ?? 'oeste'} — ~${stormOverride.eta} min al impacto.`;
       else if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
@@ -175,11 +197,30 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       timeZone: tz,
     });
 
+    let alertOut: HomeBriefing['alert'] = null;
+    if (activeAlert) {
+      let expiresLocal: string | null = null;
+      if (activeAlert.expiresIso) {
+        try {
+          expiresLocal = new Date(activeAlert.expiresIso).toLocaleTimeString(
+            language.startsWith('es') ? 'es-US' : 'en-US',
+            { hour: 'numeric', minute: '2-digit', timeZone: tz },
+          );
+        } catch { /* ignore */ }
+      }
+      alertOut = {
+        event: activeAlert.event,
+        headline: activeAlert.headline,
+        expires_local: expiresLocal,
+      };
+    }
+
     return {
       word,
       sentence,
       next_rain_caption: nextRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
+      alert: alertOut,
     } satisfies HomeBriefing;
   });
