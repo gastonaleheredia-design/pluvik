@@ -627,6 +627,58 @@ function HomePage() {
           </div>
         )}
       </form>
+      {/* Date-echo chip: show the user what date we parsed from their question */}
+      {questionText.trim().length > 4 && (() => {
+        const parsed = extractEventTimeFromQuestion(questionText);
+        const place = extractPlaceFromQuestion(questionText);
+        if (!parsed && !place) return null;
+        const dateLabel = parsed
+          ? parsed.eventAt.toLocaleDateString('en-US', {
+              weekday: 'short', month: 'short', day: 'numeric',
+              ...(parsed.eventAt.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+            }) + (parsed.hoursAhead < 24 * 365 * 2
+              ? ' · ' + parsed.eventAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+              : '')
+          : null;
+        return (
+          <div style={{
+            padding: '0 28px 14px',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}>
+            {dateLabel && (
+              <span style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.6rem',
+                letterSpacing: '0.14em',
+                color: ACCENT,
+                background: '#fff',
+                border: `1px solid ${ACCENT}33`,
+                padding: '4px 10px',
+                borderRadius: 100,
+              }}>
+                📅 {dateLabel.toUpperCase()}
+              </span>
+            )}
+            {place && (
+              <span style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.6rem',
+                letterSpacing: '0.14em',
+                color: ACCENT,
+                background: '#fff',
+                border: `1px solid ${ACCENT}33`,
+                padding: '4px 10px',
+                borderRadius: 100,
+              }}>
+                📍 {place.toUpperCase()}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
