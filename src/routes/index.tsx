@@ -401,36 +401,59 @@ function HomePage() {
           )}
         </button>
 
-        {/* Follow my location toggle */}
-        <button
-          type="button"
-          onClick={() => setFollowing(!following)}
+        {/* Location mode segmented toggle: FIXED ↔ FOLLOW ME */}
+        <div
+          role="group"
+          aria-label="Location mode"
           style={{
             marginTop: '-18px',
             marginBottom: '24px',
-            padding: '4px 12px',
-            borderRadius: '100px',
-            border: `1px solid ${following ? ACCENT : 'rgba(11,16,24,0.12)'}`,
-            background: following ? `${ACCENT}14` : 'transparent',
-            cursor: 'pointer',
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.55rem',
-            letterSpacing: '0.18em',
-            color: following ? ACCENT : MUTED,
             display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
+            padding: '3px',
+            borderRadius: '100px',
+            border: '1px solid rgba(11,16,24,0.12)',
+            background: 'rgba(11,16,24,0.04)',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.58rem',
+            letterSpacing: '0.18em',
           }}
-          aria-pressed={following}
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-          </svg>
-          {following
-            ? t('home.following_on', { defaultValue: 'FOLLOWING MY LOCATION' })
-            : t('home.following_off', { defaultValue: 'FOLLOW MY LOCATION' })}
-        </button>
+          {([
+            { key: 'fixed', active: !following, label: t('home.mode_fixed', { defaultValue: 'FIXED' }) },
+            { key: 'follow', active: following, label: t('home.mode_follow', { defaultValue: 'FOLLOW ME' }) },
+          ] as const).map((seg) => (
+            <button
+              key={seg.key}
+              type="button"
+              onClick={() => setFollowing(seg.key === 'follow')}
+              aria-pressed={seg.active}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '100px',
+                border: 'none',
+                cursor: 'pointer',
+                background: seg.active ? ACCENT : 'transparent',
+                color: seg.active ? PAGE_BG : MUTED,
+                fontFamily: 'inherit',
+                fontSize: 'inherit',
+                letterSpacing: 'inherit',
+                fontWeight: seg.active ? 700 : 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'background-color 120ms ease, color 120ms ease',
+              }}
+            >
+              {seg.key === 'follow' && (
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                </svg>
+              )}
+              {seg.label}
+            </button>
+          ))}
+        </div>
         {followError && (
           <div style={{
             marginTop: '-12px', marginBottom: '16px',
