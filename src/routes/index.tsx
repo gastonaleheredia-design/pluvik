@@ -34,7 +34,8 @@ function HomePage() {
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [showAddrHint, setShowAddrHint] = useState(false);
   const [listening, setListening] = useState(false);
-  const [micSupported, setMicSupported] = useState(false);
+  const [micSupported, setMicSupported] = useState(true);
+  const [micError, setMicError] = useState<string | null>(null);
   const [sheetMode, setSheetMode] = useState<'closed' | 'alert' | 'radar'>('closed');
   const recognitionRef = useRef<any>(null);
 
@@ -108,23 +109,35 @@ function HomePage() {
     setMicSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
   }, []);
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (typeof window === 'undefined') return;
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) {
+      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
+      return;
+    }
 
     if (listening && recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       return;
     }
 
+    // Create the recognition object SYNCHRONOUSLY first so iOS Safari
+    // keeps the user-gesture context. We request mic permission separately
+    // only if it has not already been granted.
+    let rec: any;
     try {
-      const rec = new SR();
+      rec = new SR();
       rec.lang = i18n.language?.startsWith('es') ? 'es-ES' : 'en-US';
       rec.continuous = false;
       rec.interimResults = true;
-      let finalText = '';
+    } catch {
+      setMicError(t('home.mic_unsupported', { defaultValue: 'Voice input is not supported in this browser.' }));
+      return;
+    }
+
+    let finalText = '';
       rec.onresult = (e: any) => {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -134,13 +147,26 @@ function HomePage() {
         }
         setQuestionText((finalText + interim).trimStart());
       };
-      rec.onerror = () => setListening(false);
+      rec.onerror = (e: any) => {
+        setListening(false);
+        const err = e?.error ?? '';
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          setMicError(t('home.mic_blocked', { defaultValue: 'Microphone blocked. Enable it in browser settings.' }));
+        } else if (err === 'no-speech') {
+          setMicError(t('home.mic_no_speech', { defaultValue: "Didn't catch that — try again." }));
+        } else if (err) {
+          setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
+        }
+      };
       rec.onend = () => { setListening(false); recognitionRef.current = null; };
       recognitionRef.current = rec;
+    setMicError(null);
+    try {
       rec.start();
       setListening(true);
     } catch {
       setListening(false);
+      setMicError(t('home.mic_error', { defaultValue: 'Voice input failed. Try again.' }));
     }
   };
 
