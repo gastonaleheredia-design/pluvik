@@ -353,6 +353,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
     let plainLanguageBlock = '';
     let plainLanguageOutro: string | null = null;
+    let plainLanguageNextCheckAt: string | null = null;
     if (needsLongRange) {
       const eventDate = new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
@@ -373,6 +374,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       });
       plainLanguageBlock = ctx.promptBlock;
       plainLanguageOutro = ctx.stageOutro;
+      plainLanguageNextCheckAt = ctx.nextCheckAt;
       console.log('[askWeather:diag] plain-language context', {
         stage: stageInfo.stage,
         sentenceCount: ctx.sentences.length,
@@ -479,6 +481,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       mode,
       forecast_stage: stageInfo.stage,
       stage_outro: validated.data.stage_outro ?? plainLanguageOutro ?? undefined,
+      next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? plainLanguageNextCheckAt ?? undefined,
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),
