@@ -96,6 +96,7 @@ function deriveRainFallback(
   hourlyForecast: string,
   hoursAhead: number,
   stage: 'short_range' | 'model_trend',
+  endHoursAhead?: number,
 ): null | {
   verdict: 'GO' | 'CAUTION' | 'NO-GO';
   verdict_word: 'YES' | 'NO' | 'MAYBE';
@@ -111,9 +112,12 @@ function deriveRainFallback(
   if (lines.length === 0) return null;
 
   // Pick a window centered on the event hour (±2h).
-  const targetIdx = Math.max(0, Math.round(hoursAhead));
-  const lo = Math.max(0, targetIdx - 2);
-  const hi = Math.min(lines.length - 1, targetIdx + 2);
+  const startIdx = Math.max(0, Math.round(hoursAhead));
+  const endIdx = typeof endHoursAhead === 'number'
+    ? Math.max(startIdx, Math.round(endHoursAhead))
+    : startIdx;
+  const lo = Math.max(0, startIdx - 1);
+  const hi = Math.min(lines.length - 1, endIdx + 1);
   const window = lines.slice(lo, hi + 1);
   if (window.length === 0) return null;
 
