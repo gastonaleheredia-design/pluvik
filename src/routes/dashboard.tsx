@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { BottomNav } from '../components/BottomNav';
+import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
 
 interface TrackedEvent {
   id: string;
@@ -466,26 +467,52 @@ function DashboardPage() {
           const isClimate = stage === 'climate';
           const isOutlook = stage === 'outlook';
           const isModelTrend = stage === 'model_trend';
+          const isPastDue =
+            !!event.event_at &&
+            new Date(event.event_at).getTime() < Date.now() &&
+            !event.archived_at;
           const stageBadge =
-            stage === 'climate' ? 'TOO FAR OUT · TRACKING'
+            isPastDue ? 'WINDING DOWN'
+            : stage === 'climate' ? 'TOO FAR OUT · TRACKING'
             : stage === 'outlook' ? 'LONG-RANGE TREND'
             : stage === 'model_trend' ? 'EARLY SIGNAL'
             : stage === 'live' ? 'LIVE'
+            : stage === 'short_range' ? 'FORECAST'
             : null;
+          const isRainQ = isRainYesNoQuestion(event.question);
+          // For rain yes/no questions, answer the question literally instead
+          // of mashing the plan verdict ("NO") into the headline next to a
+          // high rain percentage.
+          const literalRainWord = isRainQ
+            ? pickHeadlineWord({
+                question: event.question,
+                percentage: event.current_percentage,
+                fallbackWord: word,
+              })
+            : null;
+          const baseWord = literalRainWord ?? word;
           const displayWord = isClimate
             ? null
             : isModelTrend
-            ? (word === 'GO' ? 'LEAN GO' : word === 'NO' ? 'LEAN NO' : 'WATCH')
-            : word;
+            ? (baseWord === 'GO' || baseWord === 'YES'
+                ? 'LEAN ' + (isRainQ ? 'YES' : 'GO')
+                : baseWord === 'NO'
+                ? 'LEAN NO'
+                : 'WATCH')
+            : baseWord;
           const pctLine = (() => {
             if (isClimate) return null;
             if (isOutlook) return latest?.decision_label ?? 'Long-range trend';
             if (isModelTrend && typeof event.current_percentage === 'number') {
               const lo = Math.max(0, event.current_percentage - 10);
               const hi = Math.min(100, event.current_percentage + 10);
-              return `${lo}–${hi}% · ${event.current_verdict}`;
+              return isRainQ
+                ? `${lo}–${hi}% chance of rain · plan: ${event.current_verdict}`
+                : `${lo}–${hi}% · ${event.current_verdict}`;
             }
-            return `${event.current_percentage}% · ${event.current_verdict}`;
+            return isRainQ
+              ? `${event.current_percentage}% chance of rain · plan: ${event.current_verdict}`
+              : `${event.current_percentage}% · ${event.current_verdict}`;
           })();
           const previousVerdict = eventSnaps
             .slice(1)

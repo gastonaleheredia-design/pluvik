@@ -94,7 +94,10 @@ Return ONLY valid JSON matching this schema:
 
 ## MINIMAL-VIEW FIELDS (verdict_word / verdict_sentence / headline_number)
 The user sees these THREE fields BIG and FIRST, before anything else.
-- verdict_word: answers the user's yes/no question. YES = it will happen / safe to go, NO = it won't / not safe, MAYBE = uncertain.
+- verdict_word: answers the user's literal yes/no question, NOT the plan-fitness verdict.
+  If the question is "Will it rain…?", YES means rain IS expected and NO means rain is NOT expected — independent of GO / NO-GO.
+  Calibration for rain questions: chance ≥ 60% → "YES", ≤ 25% → "NO", otherwise "MAYBE".
+  For other yes/no questions ("Is it safe…?", "Should I…?"), YES = good to do, NO = don't, MAYBE = uncertain.
 - verdict_sentence: one short, direct sentence. Example: "No rain expected from 3 to 8 PM Saturday." Do NOT repeat the location.
 - headline_number: ONE number that matters most for THIS question. Use null when no single number is meaningful.
   Examples: { "value": "8%", "label": "CHANCE OF RAIN" }, { "value": "in 4h", "label": "RAIN STARTS" }, { "value": "65 mph", "label": "PEAK GUSTS" }.

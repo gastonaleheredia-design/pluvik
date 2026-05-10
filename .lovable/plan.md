@@ -1,55 +1,73 @@
-## What you reported
+## What's wrong
 
-1. **Mark complete does nothing.** You tap it and the question stays where it was.
-2. **Edit question** — make sure it actually works.
-3. **Mark complete = Archive?** Yes, that's the right mental model. Completing a question should move it out of "Tracking" and into "Archive."
-4. **Past events keep refreshing.** You asked about 11am yesterday, that time has passed, but tapping Refresh inside the card still re-runs the forecast and changes the percentage. The app isn't auto-stopping tracking when the event time is gone.
+Looking at your screenshot and the underlying data, there are two separate problems:
 
-## What's actually happening (one line each)
+### 1. The "NO + 85%" contradiction
 
-- **Mark complete bug:** the handler only sets `is_active = false`. The dashboard filters by `archived_at`, not `is_active` — so the row never leaves the Tracking list. That's why nothing visibly happens.
-- **Edit question:** the handler is wired correctly (opens an inline editor, saves on confirm). I'll re-verify in the browser after the other fixes land, but I don't expect a code change here.
-- **Past events:** there's already a background "sweep" job that archives events 24h after their event time. So the 11am-yesterday question would auto-archive in a few hours — but in the meantime, the in-card Refresh button still happily re-runs (it doesn't check whether the event already passed).
+Your Monday 6:30pm card shows:
+- Big word: **NO**
+- Number: **85% · NO-GO**
+- Sentence (in DB): *"Rain is very likely around 6:30 PM Monday."*
 
-## Plan
+The card is answering two different questions at once. "NO" is being shown because the plan verdict is **NO-GO** (don't count on the plan), and the dashboard maps `NO-GO → "NO"`. But the user reads the question literally — *"Will it rain Monday at 6:30pm?"* — and "NO" with 85% looks like a bug.
 
-### 1. Make "Mark complete" actually complete the question
+The literal answer to *"Will it rain?"* with 85% chance of rain is **YES**. The plan-fitness answer is **NO-GO**. Today the card mashes them together.
 
-Change `handleComplete` so it sets BOTH `archived_at = now()` AND `is_active = false` (same fields the background sweep uses when an event naturally finishes). Then navigate back to the dashboard. The row immediately disappears from Tracking and shows up in Archive — exactly the behavior you described.
+### 2. Missing tag on some cards
 
-Also: confirm dialog text becomes "Mark this question as complete? It will move to Archive." so the action is unambiguous.
+Cards only show a tag for `climate`, `outlook`, `model_trend`, `live`. Anything in the `short_range` stage (your Monday and tomorrow questions) gets no tag. Past-due events also have no tag — once `event_at` has passed there's no visual marker that the question is in wind-down.
 
-### 2. Verify Edit question works
+## Fix
 
-The handler already opens an inline editor and saves to the database. After fixing Mark complete, I'll open the Houston question in the preview, tap Edit, change the text, save, and confirm it persists. If anything is off, fix it in the same pass.
+### A. Make the big word literally answer the question
 
-### 3. Stop refreshing past events from inside the card
+For yes/no rain questions ("Will it rain…?", "¿Va a llover…?"), the headline word should answer the question, not the plan:
 
-Once `event_at` is in the past:
-- Hide the "Refresh forecast" button on the event detail screen (it's misleading — there's nothing new to forecast for a time that already happened).
-- Show a small muted line in its place: *"This time has passed. The question will move to Archive shortly, or tap Mark complete to archive now."*
-- The Mark complete button stays visible so you can archive it immediately instead of waiting for the 24h sweep.
+```text
+Question:  Will it rain Monday at 6:30pm?
+Today:     NO          85% · NO-GO     ← contradicts itself
+After:     YES         85% chance of rain · plan: NO-GO
+```
 
-The background dashboard "Refresh all" already skips past events (`event_at > now`), so no change needed there.
+Implementation: in `dashboard.tsx`, detect rain-style questions (regex on `event.question` for "rain"/"llover"/"lluvia") and override the headline word:
+- chance ≥ 60% → **YES**
+- chance ≤ 25% → **NO**
+- otherwise → **MAYBE**
 
-### 4. (Small) Tighten the auto-archive window
+The plan verdict (GO / NO-GO / WAIT) moves into the small line under the percentage, so it's still visible but no longer fights the headline.
 
-Right now the sweep waits 24 hours after `event_at` before archiving. That's why yesterday's 11am question is still in Tracking. Drop the cutoff to **2 hours past event time** so finished questions archive themselves the same day. The sweep already writes a final `CONCLUDED` snapshot, so the timeline stays intact.
+For non-rain questions ("Should I…?", "Is it safe…?"), keep today's behavior — the plan verdict *is* the answer.
 
-## Files I'll touch
+Same change is applied on the event detail screen (`event.$id.tsx`) so the two screens agree.
 
-- `src/routes/event.$id.tsx` — fix `handleComplete`, hide Refresh when past, add the muted "time has passed" line.
-- `src/routes/api/public/sweep-events.tsx` — change the 24h cutoff to 2h.
-- `src/i18n/translations.ts` — updated confirm text + the new "time has passed" string.
+### B. Give every card a stage tag
 
-## Out of scope this turn
+Extend the `stageBadge` map so every state has a label:
 
-- Reworking the Archive screen itself (it already exists and works).
-- Letting users un-archive a question (can add later if you want it).
-- Any changes to the climate card or the forecast timeline.
+| Stage / state          | Tag                  |
+| ---------------------- | -------------------- |
+| climate                | TOO FAR OUT          |
+| outlook                | LONG-RANGE TREND     |
+| model_trend            | EARLY SIGNAL         |
+| **short_range**        | **FORECAST**         |
+| live                   | LIVE                 |
+| **past-due, not yet archived** | **WINDING DOWN** |
 
-## How we'll know it worked
+"Past-due" means `event_at < now()` and `archived_at is null`. This matches the new 2-hour auto-archive window — users will see *Winding down* briefly before the card moves to Archive.
 
-1. Open the Houston "11am tomorrow" question → tap Mark complete → confirm → land on dashboard → row is gone from Tracking, appears in Archive.
-2. Tap Edit question on any active question → change wording → save → new wording sticks.
-3. Open a question whose time has already passed → no Refresh button, just the muted "time has passed" line and the Mark complete button.
+### C. Backfill the existing bad row
+
+The Monday row in the database currently has `current_verdict_word = "NO"` but `current_verdict_sentence = "Rain is very likely…"`. After fix A the screen will be correct regardless, but I'll also patch the system prompt in `askWeather.functions.ts` so future LLM calls set `verdict_word` to literally answer the question (YES = rain expected). No DB migration — the next refresh will overwrite it.
+
+## Files to change
+
+- `src/routes/dashboard.tsx` — rain-question detection, new stage tag map, past-due tag
+- `src/routes/event.$id.tsx` — same headline-word logic so the detail screen matches
+- `src/lib/askWeather.functions.ts` — tighten the system-prompt rule for `verdict_word` on rain questions
+- `src/i18n/translations.ts` — add `stage.forecast` and `stage.winding_down` strings (EN + ES)
+
+## Out of scope
+
+- Archive screen rework
+- Climate card layout
+- Refresh logic / sweep timing (already fixed last round)
