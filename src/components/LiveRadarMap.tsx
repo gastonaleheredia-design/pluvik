@@ -80,13 +80,11 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
     const features = (data.features ?? []).filter(
       (f: any) => /Warning$/.test(f?.properties?.event ?? "") && f?.geometry,
     ).filter((f: any) => {
-      // Drop polygons whose centroid is more than 100 mi from the user.
-      // NWS sometimes returns alerts from neighboring zones that are nowhere
-      // near the actual coords (e.g. a Shreveport LA warning for a Houston
-      // point because of a shared marine/inland zone).
-      const c = polygonCentroidLngLat(f.geometry);
-      if (!c) return true;
-      return haversineMiles(lat, lon, c.lat, c.lon) <= 100;
+      // The general rule: only show an alert polygon when the user's
+      // coordinates are actually inside it. NWS sometimes returns alerts
+      // from neighboring zones via broad zone matches; those must not
+      // appear on the map.
+      return pointInAlertGeometry(lat, lon, f.geometry);
     });
     if (!features.length) return null;
 
@@ -150,6 +148,34 @@ function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) 
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** Ray-casting point-in-polygon. ring is [[lon,lat], ...]. */
+function pointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect =
+      (yi > lat) !== (yj > lat) &&
+      lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True iff (lat, lon) is inside any ring of the given Polygon/MultiPolygon. */
+function pointInAlertGeometry(lat: number, lon: number, geom: any): boolean {
+  if (!geom) return false;
+  if (geom.type === "Polygon" && Array.isArray(geom.coordinates?.[0])) {
+    return pointInRing(lon, lat, geom.coordinates[0]);
+  }
+  if (geom.type === "MultiPolygon" && Array.isArray(geom.coordinates)) {
+    for (const poly of geom.coordinates) {
+      if (Array.isArray(poly?.[0]) && pointInRing(lon, lat, poly[0])) return true;
+    }
+  }
+  return false;
 }
 
 const STYLES = {

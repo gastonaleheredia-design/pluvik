@@ -748,6 +748,34 @@ function polygonCentroid(coords: number[][]): { lat: number; lon: number } | nul
   return { lat: sy / n, lon: sx / n };
 }
 
+/** Ray-casting point-in-polygon. ring is [[lon,lat], ...]. */
+function pointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect =
+      (yi > lat) !== (yj > lat) &&
+      lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True iff (lat, lon) is inside any ring of the given Polygon/MultiPolygon. */
+export function pointInAlertGeometry(lat: number, lon: number, geom: any): boolean {
+  if (!geom) return false;
+  if (geom.type === 'Polygon' && Array.isArray(geom.coordinates?.[0])) {
+    return pointInRing(lon, lat, geom.coordinates[0]);
+  }
+  if (geom.type === 'MultiPolygon' && Array.isArray(geom.coordinates)) {
+    for (const poly of geom.coordinates) {
+      if (Array.isArray(poly?.[0]) && pointInRing(lon, lat, poly[0])) return true;
+    }
+  }
+  return false;
+}
+
 export async function getActiveWarning(lat: number, lon: number): Promise<ActiveAlert | null> {
   try {
     const res = await fetch(
@@ -777,19 +805,14 @@ export async function getActiveWarning(lat: number, lon: number): Promise<Active
         centroid = polygonCentroid(geom.coordinates[0][0]);
       }
 
-      // Skip alerts whose polygon centroid is far from the user. NWS's
-      // `point=` query returns alerts whose affectedZones include the
-      // forecast/county zone the point sits in, which can be a zone
-      // hundreds of miles wide (or a neighboring-state zone via shared
-      // marine/inland boundaries). 100 mi keeps every legitimate local
-      // warning while killing cross-zone false positives.
-      if (centroid) {
-        const cosLat = Math.cos(lat * Math.PI / 180) || 1;
-        const dy = (centroid.lat - lat) * 69;
-        const dx = (centroid.lon - lon) * 69 * cosLat;
-        const distMi = Math.hypot(dx, dy);
-        if (distMi > 100) continue;
-      }
+      // The general rule: an alert only counts when the user's exact
+      // coordinates fall inside the warning polygon. NWS's `point=` query
+      // returns alerts whose affectedZones include the forecast/county
+      // zone the point sits in — that zone can span an entire neighboring
+      // state. Skip any alert without a polygon geometry, or where the
+      // user's point isn't inside it.
+      if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) continue;
+      if (!pointInAlertGeometry(lat, lon, geom)) continue;
 
       const movementParam = p.parameters?.movement;
       const movement = Array.isArray(movementParam) ? movementParam[0] : (movementParam ?? null);
