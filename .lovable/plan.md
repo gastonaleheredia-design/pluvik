@@ -1,83 +1,55 @@
 ## What you reported
 
-1. **Tracking list "Refresh" button doesn't fully update older questions.** You tapped Refresh on the tracking list — Nov 5 still showed nothing. You opened the question, tapped the refresh inside the card, and *then* the climate info appeared.
-2. **Climate card is too dense.** You like it, but it has too much text and too many stat tiles. Make it cleaner and easier to read.
-3. **Action buttons (Refresh / Mark complete / Delete) look dated and oversized.** Redesign them to feel modern.
+1. **Mark complete does nothing.** You tap it and the question stays where it was.
+2. **Edit question** — make sure it actually works.
+3. **Mark complete = Archive?** Yes, that's the right mental model. Completing a question should move it out of "Tracking" and into "Archive."
+4. **Past events keep refreshing.** You asked about 11am yesterday, that time has passed, but tapping Refresh inside the card still re-runs the forecast and changes the percentage. The app isn't auto-stopping tracking when the event time is gone.
+
+## What's actually happening (one line each)
+
+- **Mark complete bug:** the handler only sets `is_active = false`. The dashboard filters by `archived_at`, not `is_active` — so the row never leaves the Tracking list. That's why nothing visibly happens.
+- **Edit question:** the handler is wired correctly (opens an inline editor, saves on confirm). I'll re-verify in the browser after the other fixes land, but I don't expect a code change here.
+- **Past events:** there's already a background "sweep" job that archives events 24h after their event time. So the 11am-yesterday question would auto-archive in a few hours — but in the meantime, the in-card Refresh button still happily re-runs (it doesn't check whether the event already passed).
 
 ## Plan
 
-### 1. Fix the list-screen Refresh so it actually refreshes everything
+### 1. Make "Mark complete" actually complete the question
 
-**The bug, in one sentence:** the list-screen "Refresh" and the in-card "Refresh" call two different code paths, and only the in-card one writes the climate data (interpretation, framing, facts) to the row. So when the list-screen refresh runs, the verdict updates but the climate card on Nov 5 stays empty.
+Change `handleComplete` so it sets BOTH `archived_at = now()` AND `is_active = false` (same fields the background sweep uses when an event naturally finishes). Then navigate back to the dashboard. The row immediately disappears from Tracking and shows up in Archive — exactly the behavior you described.
 
-**The fix:** make the list-screen refresh write the same climate fields the in-card refresh already writes. After this, one tap on the tracking list updates everything for every question — no need to open each card.
+Also: confirm dialog text becomes "Mark this question as complete? It will move to Archive." so the action is unambiguous.
 
-I'll also add a tiny visible confirmation on the list-screen Refresh button ("Refreshed ✓" for ~1.5s) so you can tell it actually finished.
+### 2. Verify Edit question works
 
-### 2. Simplify the climate card
+The handler already opens an inline editor and saves to the database. After fixing Mark complete, I'll open the Houston question in the preview, tap Edit, change the text, save, and confirm it persists. If anything is off, fix it in the same pass.
 
-Use the Nov 5 screenshot as the baseline. Today the card is:
-- 4-line paragraph
-- italic disclaimer
-- 4 stat tiles (Normal high, Normal low, Rain frequency, Typical wet-day rain)
-- Station block
-- A second NOAA disclaimer at the bottom
+### 3. Stop refreshing past events from inside the card
 
-That's two disclaimers, four numeric tiles, and a five-line paragraph for what is essentially "mild day, rain unlikely."
+Once `event_at` is in the past:
+- Hide the "Refresh forecast" button on the event detail screen (it's misleading — there's nothing new to forecast for a time that already happened).
+- Show a small muted line in its place: *"This time has passed. The question will move to Archive shortly, or tap Mark complete to archive now."*
+- The Mark complete button stays visible so you can archive it immediately instead of waiting for the 24h sweep.
 
-**New shape — one read, two facts, one source line:**
+The background dashboard "Refresh all" already skips past events (`event_at > now`), so no change needed there.
 
-```text
-CLIMATE FOR THIS DATE                    Nov 5
+### 4. (Small) Tighten the auto-archive window
 
-Mild and pleasant on average — highs near 75°,
-lows around 56°. Rain is uncommon, only about
-1 in 6 years see a measurable shower.
+Right now the sweep waits 24 hours after `event_at` before archiving. That's why yesterday's 11am question is still in Tracking. Drop the cutoff to **2 hours past event time** so finished questions archive themselves the same day. The sweep already writes a final `CONCLUDED` snapshot, so the timeline stays intact.
 
-   75° / 56°            ~16% chance of rain
-   typical high / low    historical, this date
+## Files I'll touch
 
-This is the historical average — not a forecast.
-Real forecast around Wed, Oct 21.
+- `src/routes/event.$id.tsx` — fix `handleComplete`, hide Refresh when past, add the muted "time has passed" line.
+- `src/routes/api/public/sweep-events.tsx` — change the 24h cutoff to 2h.
+- `src/i18n/translations.ts` — updated confirm text + the new "time has passed" string.
 
-   Source: NOAA · Houston-Port (5.5 mi) ▾
-```
+## Out of scope this turn
 
-What changes vs. today:
-- **Paragraph trimmed to 2 sentences.** Drop the filler ("Late-night hours are usually the coolest of the day"). The "wet-day rainfall amount" only appears in the sentence when it's notable (≥0.5″) — it doesn't deserve its own tile.
-- **Four tiles → two facts.** Combine high+low into "75° / 56°" and keep "~16% chance of rain". Drop the standalone "TYPICAL WET-DAY RAIN" tile.
-- **Two disclaimers → one.** Keep the italic "historical average — not a forecast" line under the read; remove the second NOAA-footer disclaimer at the bottom.
-- **Station info collapsed** to a single muted line at the bottom (tap to expand if curious). No big "STATION" block.
-- **Date chip in the header** ("Nov 5") so the user immediately sees what date this read is for.
-
-### 3. Redesign the action buttons
-
-Today: four equal-weight pill buttons stacked vertically (Edit, Refresh, Mark complete, Delete). Looks like a settings menu, not an action area, and Delete is one mis-tap away.
-
-**New layout:**
-
-```text
-   ┌───────────────────────────────────────────┐
-   │   ↻  Refresh forecast                      │   ← primary, filled accent
-   └───────────────────────────────────────────┘
-
-      ✎ Edit            ✓ Mark complete         ← secondary row, ghost
-
-                         Delete                  ← tertiary, tiny + muted
-```
-
-- **Refresh** is the primary action — full-width, filled accent color, white text, the only button that draws the eye. It's the one you actually use.
-- **Edit + Mark complete** are secondary — side-by-side, ghost (transparent + thin border), smaller.
-- **Delete** is demoted to a small muted text link below, and tapping it asks for confirmation inline ("Delete this question? — Cancel · Delete") so it can't be hit by accident.
-- All colors come from the existing tokens in `src/styles.css` (no hard-coded hex), so it stays consistent with the rest of the app.
-
-## What I'm NOT changing this turn
-
-- The tracking-list cards themselves (the "TOO FAR OUT · TRACKING" tiles). Once the list Refresh actually works, those cards will populate correctly — no visual rework needed yet.
-- The underlying data sources (no new NOAA endpoints, no record extremes).
+- Reworking the Archive screen itself (it already exists and works).
+- Letting users un-archive a question (can add later if you want it).
+- Any changes to the climate card or the forecast timeline.
 
 ## How we'll know it worked
 
-1. On the tracking list, tap Refresh once → open Nov 5 → climate card is fully populated. No need to tap the in-card refresh.
-2. The Nov 5 card shows: 2-sentence read, 2 facts, one disclaimer, one muted source line — not 4 tiles + 2 disclaimers + a station block.
-3. On the question detail screen, the bottom shows one prominent Refresh button, two smaller secondary actions, and a tiny Delete link that asks before deleting.
+1. Open the Houston "11am tomorrow" question → tap Mark complete → confirm → land on dashboard → row is gone from Tracking, appears in Archive.
+2. Tap Edit question on any active question → change wording → save → new wording sticks.
+3. Open a question whose time has already passed → no Refresh button, just the muted "time has passed" line and the Mark complete button.

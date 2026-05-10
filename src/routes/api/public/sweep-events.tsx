@@ -83,7 +83,9 @@ async function concludeOne(event: TrackedEventRow): Promise<{ id: string; ok: bo
 }
 
 async function runSweep() {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Archive events whose event_at is more than 2h in the past so finished
+  // questions move to Archive the same day.
+  const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const { data: events, error } = await supabaseAdmin
     .from('tracked_events')
     .select('id, question, current_verdict, current_percentage, event_at, archived_at')
