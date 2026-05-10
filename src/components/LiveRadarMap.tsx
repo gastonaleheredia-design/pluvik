@@ -1019,3 +1019,70 @@ const scrubStyle: React.CSSProperties = {
   pointerEvents: "auto",
   cursor: "pointer",
 };
+
+const sourcePanelStyle: React.CSSProperties = {
+  position: "absolute", top: 10, right: 50,
+  width: 220,
+  backgroundColor: "rgba(11,16,24,0.92)",
+  border: "1px solid rgba(255,255,255,0.15)",
+  borderRadius: 12,
+  padding: 8,
+  display: "flex", flexDirection: "column", gap: 4,
+  zIndex: 7,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+  backdropFilter: "blur(8px)",
+};
+const sourcePanelHeader: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.55rem", letterSpacing: "0.16em", fontWeight: 700,
+  color: "#9aa0aa", padding: "4px 6px",
+};
+const sourcePanelDivider: React.CSSProperties = {
+  ...sourcePanelHeader,
+  borderTop: "1px solid rgba(255,255,255,0.08)",
+  marginTop: 4, paddingTop: 8,
+};
+const sourceItem: React.CSSProperties = {
+  display: "flex", flexDirection: "column", gap: 2,
+  padding: "6px 8px", borderRadius: 8,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "#faf7f0",
+  textAlign: "left", cursor: "pointer",
+};
+const sourceItemActive: React.CSSProperties = {
+  background: "rgba(239,68,68,0.18)",
+  border: "1px solid rgba(239,68,68,0.5)",
+};
+const sourceItemTitle: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.62rem", letterSpacing: "0.1em", fontWeight: 700,
+};
+const sourceItemSub: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.52rem", letterSpacing: "0.06em", color: "#9aa0aa",
+};
+
+const modeSwitchRow: React.CSSProperties = {
+  display: "flex", gap: 4, marginBottom: 4,
+};
+const modeChip: React.CSSProperties = {
+  flex: 1, padding: "3px 0",
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "transparent",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.5rem", letterSpacing: "0.12em", fontWeight: 700,
+  borderRadius: 6, cursor: "pointer",
+};
+const modeChipActive: React.CSSProperties = {
+  background: "rgba(239,68,68,0.85)",
+  borderColor: "#ef4444",
+};
+
+const legendNoteStyle: React.CSSProperties = {
+  marginTop: 4,
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.6rem", color: "#cfd2d9", lineHeight: 1.3,
+  maxWidth: 140,
+};
