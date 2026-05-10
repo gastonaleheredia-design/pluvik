@@ -21,10 +21,17 @@ const VENUE_STOPWORDS = new Set([
 
 export function extractVenueCandidate(question: string): string | null {
   if (!question) return null;
+  let best: string | null = null;
+
+  // Pattern A: TV/radio call signs or brand+number, e.g. "Univision 45",
+  // "KHOU 11", "ABC 13". Match anywhere in the sentence.
+  const callsign = question.match(/\b([A-Z][A-Za-z]{2,}|[A-Z]{3,5})\s+(\d{1,3})\b/);
+  if (callsign) best = `${callsign[1]} ${callsign[2]}`;
+
+  // Pattern B: noun phrase after "at", "@", "near", "by", "in".
   // Allow lowercase too — voice transcripts often arrive lowercased.
   const re = /\b(?:at|@|near|by|in)\s+([A-Za-z][A-Za-z0-9.'’&\-]*(?:\s+[A-Za-z0-9.'’&\-]+){0,4})/g;
   let m: RegExpExecArray | null;
-  let best: string | null = null;
   while ((m = re.exec(question)) !== null) {
     let candidate = m[1].trim();
     // Strip a trailing time fragment like "at 6", "at 6:30pm".
