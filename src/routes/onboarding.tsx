@@ -46,16 +46,19 @@ function OnboardingPage() {
       .select('onboarding_completed_at')
       .eq('id', user.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
+        if (error) {
+          console.warn('[onboarding] profile read failed', error);
+          setCheckingCompletion(false);
+          return;
+        }
         if (data?.onboarding_completed_at) {
           try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
           navigate({ to: '/', replace: true });
           return;
         }
         setCheckingCompletion(false);
-      }, () => {
-        if (!cancelled) setCheckingCompletion(false);
       });
 
     return () => { cancelled = true; };
