@@ -33,7 +33,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
   // Radar fills the whole viewport at full snap (edge-to-edge); otherwise
   // leaves room for text in the half-sheet.
   const radarHeight = isFull
-    ? '100dvh'
+    ? 'calc(100dvh - 48px - env(safe-area-inset-top, 0px))'
     : isRadarOnly
       ? 'calc(70vh - 140px)'
       : 320;
