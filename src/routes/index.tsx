@@ -541,17 +541,6 @@ function HomePage() {
             >
               {selectedAddress.label || '＋ Add address'}
             </span>
-            {freshness === 'manual' && selectedAddress.label && (
-              <span
-                role="button"
-                aria-label={t('home.use_my_location', { defaultValue: 'Use my current location' })}
-                onClick={(e) => { e.stopPropagation(); resumeFollowing(); }}
-                style={{
-                  marginLeft: 2, color: ACCENT, fontSize: '0.95rem',
-                  lineHeight: 1, cursor: 'pointer', flexShrink: 0,
-                }}
-              >↺</span>
-            )}
           </button>
 
           {briefing?.updated_at_local && (
