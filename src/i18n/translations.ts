@@ -385,6 +385,8 @@ export const translations = {
         mic_blocked: 'Micrófono bloqueado. Habilítalo en tu navegador y toca el micrófono otra vez.',
         mic_no_speech: 'No te escuché — intenta de nuevo.',
         mic_error: 'Falló la entrada de voz. Intenta de nuevo.',
+        mic_recording_progress: 'GRABANDO {{m}}:{{s}} / 1:00 — TOCA EL MICRÓFONO PARA PARAR',
+        mic_capped: 'PARÉ EN 1 MINUTO — TOCA EL MICRÓFONO OTRA VEZ PARA AGREGAR MÁS',
         right_now_at: 'AHORA MISMO EN',
         tap_to_change: '(toca para cambiar)',
         use_my_location: 'USAR MI UBICACIÓN ACTUAL',
