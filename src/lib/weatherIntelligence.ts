@@ -1,3 +1,5 @@
+import { extractEventTimeFromQuestion } from './extractEventTimeFromQuestion';
+
 export type ActivityType =
   | 'concrete'
   | 'outdoor_event'
@@ -17,6 +19,8 @@ export interface ParsedQuestion {
   activityType: ActivityType;
   timeWindow: string;
   hoursAhead: number;
+  /** True when we recovered a concrete event time from the question. */
+  timeKnown: boolean;
   needsHRRR: boolean;
   needsSounding: boolean;
   needsRadar: boolean;
@@ -44,7 +48,10 @@ export function parseQuestion(question: string): ParsedQuestion {
     /outdoor|outside|open air|festival|concert|party|bbq|pool|event/.test(q) ? 'outdoor_event' :
     'general';
 
-  const hoursAhead =
+  // Try the real date parser first; fall back to the keyword sniff test
+  // (and ultimately a 24h default) if the question is too vague to date.
+  const extracted = extractEventTimeFromQuestion(question);
+  const fallbackHours =
     /right now|currently|this moment/.test(q) ? 0 :
     /tonight|this evening/.test(q) ? 6 :
     /tomorrow morning|tomorrow at [0-9]/.test(q) ? 18 :
@@ -52,6 +59,8 @@ export function parseQuestion(question: string): ParsedQuestion {
     /this weekend|saturday|sunday/.test(q) ? 48 :
     /next week/.test(q) ? 96 :
     24;
+  const hoursAhead = extracted ? Math.max(0, extracted.hoursAhead) : fallbackHours;
+  const timeKnown = !!extracted;
 
   const timeWindow =
     hoursAhead === 0 ? 'current conditions' :
@@ -80,6 +89,7 @@ export function parseQuestion(question: string): ParsedQuestion {
     activityType,
     timeWindow,
     hoursAhead,
+    timeKnown,
     needsHRRR: hoursAhead <= 48,
     needsSounding: ['concrete', 'storm_general', 'lightning_risk', 'outdoor_event', 'wedding'].includes(activityType),
     needsRadar: hoursAhead <= 12 || ['storm_general', 'lightning_risk', 'concrete'].includes(activityType),

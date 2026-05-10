@@ -24,6 +24,7 @@ interface SnapshotMini {
   event_id: string;
   created_at: string;
   decision_label: string | null;
+  stage: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   change_tag:
     | 'INITIAL' | 'STAGE_PROMOTED' | 'NEW_DATA_SOURCE' | 'SIGNIFICANT_CHANGE'
     | 'MINOR_REFRESH' | 'RESOLVED_BENIGN' | 'CONCLUDED';
@@ -82,7 +83,7 @@ function DashboardPage() {
       if (list.length > 0) {
         const { data: snaps } = await supabase
           .from('event_forecast_snapshots')
-          .select('event_id, created_at, decision_label, change_tag, is_final')
+          .select('event_id, created_at, decision_label, stage, change_tag, is_final')
           .in('event_id', list.map((e) => e.id))
           .order('created_at', { ascending: false });
         setSnapshots((snaps ?? []) as SnapshotMini[]);
@@ -314,6 +315,31 @@ function DashboardPage() {
           const word = VERDICT_WORD[event.current_verdict] ?? VERDICT_WORD.UNKNOWN;
           const eventSnaps = snapshots.filter((s) => s.event_id === event.id);
           const latest = eventSnaps[0];
+          const stage = latest?.stage ?? 'short_range';
+          const isClimate = stage === 'climate';
+          const isOutlook = stage === 'outlook';
+          const isModelTrend = stage === 'model_trend';
+          const stageBadge =
+            stage === 'climate' ? 'TOO FAR OUT · TRACKING'
+            : stage === 'outlook' ? 'LONG-RANGE TREND'
+            : stage === 'model_trend' ? 'EARLY SIGNAL'
+            : stage === 'live' ? 'LIVE'
+            : null;
+          const displayWord = isClimate
+            ? null
+            : isModelTrend
+            ? (word === 'GO' ? 'LEAN GO' : word === 'NO' ? 'LEAN NO' : 'WATCH')
+            : word;
+          const pctLine = (() => {
+            if (isClimate) return null;
+            if (isOutlook) return latest?.decision_label ?? 'Long-range trend';
+            if (isModelTrend && typeof event.current_percentage === 'number') {
+              const lo = Math.max(0, event.current_percentage - 10);
+              const hi = Math.min(100, event.current_percentage + 10);
+              return `${lo}–${hi}% · ${event.current_verdict}`;
+            }
+            return `${event.current_percentage}% · ${event.current_verdict}`;
+          })();
           const previousVerdict = eventSnaps
             .slice(1)
             .find((s) => s.decision_label && s.decision_label !== latest?.decision_label)
@@ -363,7 +389,7 @@ function DashboardPage() {
                 </button>
 
                 {/* Lifecycle pill */}
-                {(allClear || isArchived) && (
+                {(allClear || isArchived || stageBadge) && (
                   <div
                     style={{
                       display: 'inline-block',
@@ -372,13 +398,13 @@ function DashboardPage() {
                       letterSpacing: '0.1em',
                       fontWeight: 700,
                       textTransform: 'uppercase',
-                      color: allClear ? '#15803d' : MUTED,
-                      backgroundColor: allClear ? '#15803d14' : INK + '0d',
+                      color: allClear ? '#15803d' : isClimate ? MUTED : ACCENT,
+                      backgroundColor: allClear ? '#15803d14' : isClimate ? INK + '0d' : ACCENT + '14',
                       padding: '3px 10px',
                       borderRadius: '100px',
                     }}
                   >
-                    {allClear ? 'All clear' : 'Tracking ended'}
+                    {allClear ? 'All clear' : isArchived ? 'Tracking ended' : stageBadge}
                   </div>
                 )}
 
@@ -395,30 +421,47 @@ function DashboardPage() {
                 </div>
 
                 {/* Verdict word */}
-                <div
-                  style={{
-                    fontFamily: 'Fraunces, serif',
-                    fontWeight: 400,
-                    fontSize: 'clamp(2.2rem, 9vw, 3rem)',
-                    lineHeight: 0.95,
-                    letterSpacing: '-0.02em',
-                    color: INK,
-                  }}
-                >
-                  {word}
-                </div>
+                {displayWord && (
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontWeight: 400,
+                      fontSize: isModelTrend ? 'clamp(1.7rem, 7vw, 2.2rem)' : 'clamp(2.2rem, 9vw, 3rem)',
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      color: INK,
+                    }}
+                  >
+                    {displayWord}
+                  </div>
+                )}
+                {isClimate && (
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontStyle: 'italic',
+                      fontSize: '1rem',
+                      color: MUTED,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Too far out for a forecast — we will sharpen this as the date gets closer.
+                  </div>
+                )}
 
-                {/* One number */}
-                <div
-                  style={{
-                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                    fontSize: '0.7rem',
-                    letterSpacing: '0.12em',
-                    color: ACCENT,
-                  }}
-                >
-                  {event.current_percentage}% · {event.current_verdict}
-                </div>
+                {/* One number / tendency line */}
+                {pctLine && (
+                  <div
+                    style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.7rem',
+                      letterSpacing: '0.12em',
+                      color: ACCENT,
+                    }}
+                  >
+                    {pctLine}
+                  </div>
+                )}
 
                 {/* Updated · was [previous] */}
                 {latest && (

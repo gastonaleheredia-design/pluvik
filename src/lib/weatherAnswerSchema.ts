@@ -102,6 +102,34 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       d.percentage = undefined;
       d.impact_percent = undefined;
       if (!d.verdict_word) d.verdict_word = 'MAYBE';
+      // Scrub fabricated specifics out of prose fields. The model is
+      // forbidden from including percentages or absolute "it will be dry"
+      // claims at climate/outlook; if it slipped any in, drop the line.
+      const proseFields = [
+        'summary',
+        'plain_english_summary',
+        'verdict_sentence',
+        'main_concern',
+        'decision_window',
+        'action',
+        'recommended_action',
+      ] as const;
+      const banned = /(\d{1,3}\s?%|\b\d{1,2}\s?(am|pm)\b|\b(dry|clear|sunny|raining|stormy|wet|cloudy)\b|\bchance of\b)/i;
+      for (const k of proseFields) {
+        const v = d[k];
+        if (typeof v === 'string' && banned.test(v)) {
+          d[k] = undefined;
+        }
+      }
+      if (typeof d.summary !== 'string' || !d.summary) {
+        d.summary =
+          d.decision_label && typeof d.decision_label === 'string'
+            ? `${d.decision_label}. We will give you a real forecast as the date gets closer.`
+            : 'Too far out for a real forecast — we will sharpen this answer as the date gets closer.';
+      }
+      if (!d.verdict_sentence || typeof d.verdict_sentence !== 'string') {
+        d.verdict_sentence = d.summary;
+      }
     }
 
     // Normalize: ensure both `percentage` and `impact_percent` are present.
