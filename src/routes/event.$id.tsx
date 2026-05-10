@@ -7,6 +7,7 @@ import { EventTimeline, type TimelineSnapshot } from '../components/EventTimelin
 import { LiveRadarMap } from '../components/LiveRadarMap';
 import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
+import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
 
 interface TrackedEvent {
   id: string;
@@ -297,14 +298,27 @@ function EventPage() {
     );
   }
 
-  const displayVerdict =
-    event.current_verdict_word ?? event.current_verdict ?? 'UNKNOWN';
+  const isRainQ = isRainYesNoQuestion(event.question);
+  const displayVerdict = isRainQ
+    ? pickHeadlineWord({
+        question: event.question,
+        percentage: event.current_percentage,
+        fallbackWord: event.current_verdict_word ?? event.current_verdict,
+      })
+    : (event.current_verdict_word ?? event.current_verdict ?? 'UNKNOWN');
   const displaySentence =
     event.current_verdict_sentence ?? event.current_summary;
-  const colors =
-    VERDICT_COLORS[displayVerdict] ??
-    VERDICT_COLORS[event.current_verdict] ??
-    VERDICT_COLORS.UNKNOWN;
+  // For literal rain questions, "YES it will rain" should look bad (red) and
+  // "NO it won't" should look good (green) — swap the default mapping.
+  const colors = isRainQ
+    ? (displayVerdict === 'YES'
+        ? VERDICT_COLORS['NO-GO']
+        : displayVerdict === 'NO'
+          ? VERDICT_COLORS.GO
+          : VERDICT_COLORS.CAUTION)
+    : (VERDICT_COLORS[displayVerdict] ??
+       VERDICT_COLORS[event.current_verdict] ??
+       VERDICT_COLORS.UNKNOWN);
   const showPercentage =
     typeof event.current_percentage === 'number' &&
     event.current_percentage > 0;
