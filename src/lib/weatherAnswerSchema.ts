@@ -34,22 +34,22 @@ export const WeatherAnswerSchema = z.object({
 
   /** Multi-hazard breakdown. Each entry inactive ⇒ active=false. */
   hazards: z.object({
-    rain:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    snow:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    ice:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    wind:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    cold_front: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    heat:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    lightning:  z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    fog:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    visibility: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    rain:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    snow:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    ice:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    wind:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    cold_front: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    heat:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    lightning:  z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    fog:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
+    visibility: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
   }).partial().nullable().optional(),
 
   /** Hour-by-hour mini-timeline around the event time. */
   timeline: z.array(z.object({
     hour_label: z.string(),               // "8 AM", "11 AM", "2 PM"
     headline:   z.string(),               // "Dry", "Rain begins", "Storms"
-    severity:   z.enum(['ok','watch','bad']).optional(),
+    severity:   z.enum(['ok','watch','bad']).nullable().optional(),
   })).nullable().optional(),
 
   /** "Before / during / after" sentences around the event window. */
