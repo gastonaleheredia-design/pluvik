@@ -550,7 +550,23 @@ function DashboardPage() {
                       lineHeight: 1.4,
                     }}
                   >
-                    Too far out for a forecast — we will sharpen this as the date gets closer.
+                    {event.current_summary && event.current_summary.trim().length > 0
+                      ? event.current_summary
+                      : 'Too far out for a forecast — we will sharpen this as the date gets closer.'}
+                  </div>
+                )}
+                {isOutlook && event.current_summary && (
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontStyle: 'italic',
+                      fontSize: '0.95rem',
+                      color: MUTED,
+                      lineHeight: 1.4,
+                      marginTop: '4px',
+                    }}
+                  >
+                    {event.current_summary}
                   </div>
                 )}
 

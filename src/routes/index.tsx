@@ -209,6 +209,21 @@ function HomePage() {
     return () => { cancelled = true; document.removeEventListener('visibilitychange', onVis); };
   }, [selectedAddress.lat, selectedAddress.lon, i18n.language]);
 
+  // Auto-retry once after 5s when the upstream weather provider was
+  // unavailable, so the user doesn't have to tap "Try Again" manually.
+  useEffect(() => {
+    if (briefing?.error !== 'upstream_unavailable') return;
+    if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+    const timer = setTimeout(() => {
+      getHomeBriefing({
+        data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
+      })
+        .then((b) => setBriefing(b))
+        .catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [briefing?.error, selectedAddress.lat, selectedAddress.lon, i18n.language]);
+
   // Auto-refresh while a warning is active. When the expiry passes, the
   // re-fetch returns `alert: null` and the banner disappears on its own.
   useEffect(() => {

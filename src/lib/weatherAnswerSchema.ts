@@ -29,6 +29,8 @@ export const WeatherAnswerSchema = z.object({
   meteorologist_take: z.string().nullable().optional(),
   /** When we'll start watching this seriously ("June 25" or ISO date). */
   next_check_at: z.string().nullable().optional(),
+  /** Paraphrased CPC discussion sentences (long-range outlook narrative). */
+  cpc_narrative: z.string().nullable().optional(),
 
   /** Multi-hazard breakdown. Each entry inactive ⇒ active=false. */
   hazards: z.object({
@@ -150,7 +152,10 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
         'action',
         'recommended_action',
       ] as const;
-      const banned = /(\d{1,3}\s?%|\b\d{1,2}\s?(am|pm)\b|\b(dry|clear|sunny|raining|stormy|wet|cloudy)\b|\bchance of\b)/i;
+      // Strip ONLY explicit forecast probabilities and clock-time forecasts.
+      // Climatology language ("normally rainy", "wetter than usual", "around
+      // 4 inches", "highs near 65°F") is encouraged at this stage.
+      const banned = /(\d{1,3}\s?%|\b\d{1,2}\s?(am|pm)\b|\bchance of rain (is|will be)\b)/i;
       for (const k of proseFields) {
         const v = d[k];
         if (typeof v === 'string' && banned.test(v)) {

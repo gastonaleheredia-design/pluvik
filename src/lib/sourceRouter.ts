@@ -48,14 +48,14 @@ export interface StageSourcePlan {
 const PLANS: Record<ForecastStage, StageSourcePlan> = {
   climate: {
     stage: 'climate',
-    allowedFamilies: ['climate_normals'],
+    allowedFamilies: ['climate_normals', 'cpc_outlooks'],
     bannedFamilies: [
       'mesoscale_models', 'spc_outlooks', 'wpc_ero', 'radar_mrms',
       'glm_lightning', 'surface_obs', 'sounding', 'satellite',
-      'global_ensemble', 'cpc_outlooks', 'nws_alerts',
+      'global_ensemble', 'nws_alerts',
     ],
     notes: [
-      'Too far out for any forecast model. Only historical climatology is meaningful.',
+      'Too far out for any forecast model. Pair historical climatology with the long-range CPC seasonal tendency only.',
     ],
   },
   outlook: {
