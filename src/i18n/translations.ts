@@ -45,6 +45,15 @@ export const translations = {
         template_storm_prefill: 'Will storms affect ',
         mic_listening: 'Listening…',
         mic_unsupported: 'Voice input is not supported in this browser. Try Chrome or Safari.',
+        right_now_at: 'RIGHT NOW AT',
+        tap_to_change: '(tap to change)',
+        updated: 'UPDATED',
+        nearby_storm: 'Storm {{distance}} mi {{bearing}} · {{motion}}',
+        motion_approaching: 'approaching',
+        motion_drifting_toward: 'drifting toward you',
+        motion_parallel: 'moving parallel',
+        motion_moving_away: 'moving away',
+        motion_stationary: 'stationary',
       },
       // Answer
       answer: {
@@ -308,6 +317,15 @@ export const translations = {
         template_storm_prefill: '¿Las tormentas afectarán ',
         mic_listening: 'Escuchando…',
         mic_unsupported: 'La entrada de voz no es compatible con este navegador. Prueba Chrome o Safari.',
+        right_now_at: 'AHORA MISMO EN',
+        tap_to_change: '(toca para cambiar)',
+        updated: 'ACTUALIZADO',
+        nearby_storm: 'Tormenta a {{distance}} mi {{bearing}} · {{motion}}',
+        motion_approaching: 'acercándose',
+        motion_drifting_toward: 'avanzando hacia ti',
+        motion_parallel: 'movimiento paralelo',
+        motion_moving_away: 'alejándose',
+        motion_stationary: 'estacionaria',
       },
       // Answer
       answer: {
