@@ -198,7 +198,14 @@ function UseCasesScreen({ onContinue }: { onContinue: () => void }) {
             className="flex flex-col items-start gap-2 rounded-2xl p-4"
             style={{ border: '1px solid rgba(11,16,24,0.1)', backgroundColor: 'rgba(255,255,255,0.4)' }}
           >
-            <span className="text-2xl">{uc.emoji}</span>
+            <img
+              src={uc.icon}
+              alt=""
+              loading="lazy"
+              width={48}
+              height={48}
+              style={{ width: 48, height: 48, objectFit: 'contain' }}
+            />
             <span className="text-sm font-medium" style={{ color: '#0b1018' }}>
               {t(`onboarding.usecase_${uc.key}`)}
             </span>
