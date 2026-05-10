@@ -329,6 +329,9 @@ export const translations = {
         motion_parallel: 'movimiento paralelo',
         motion_moving_away: 'alejándose',
         motion_stationary: 'estacionaria',
+        motion_unknown: 'cercana',
+        warning_until: 'HASTA',
+        warning_active: 'ACTIVO',
       },
       // Answer
       answer: {
