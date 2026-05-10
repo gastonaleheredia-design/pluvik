@@ -15,6 +15,7 @@ import { useAddress } from '../lib/addressContext';
 import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
+import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -77,12 +78,50 @@ function AnswerPage() {
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
 
-  const loadingPhrases = [
-    t('answer.loading_1'),
-    t('answer.loading_2'),
-    t('answer.loading_3'),
-    t('answer.loading_4'),
-  ];
+  // Stage-aware loading copy. We classify the question on the client so the
+  // loading screen matches the kind of answer we are about to return.
+  const predictedStage: ForecastStage = (() => {
+    const t0 = extractEventTimeFromQuestion(question);
+    if (!t0) return 'short_range';
+    return classifyForecastStage({ hoursAhead: Math.max(0, t0.hoursAhead) });
+  })();
+
+  const loadingPhrases = (() => {
+    switch (predictedStage) {
+      case 'climate':
+        return [
+          'Looking up the climate for that date…',
+          'Pulling 30-year averages for this location…',
+          'Reading historical patterns…',
+        ];
+      case 'outlook':
+        return [
+          'Reading the long-range outlook…',
+          'Checking 8–14 day signals…',
+          'Comparing to seasonal averages…',
+        ];
+      case 'model_trend':
+        return [
+          'Checking the early model signals…',
+          'Comparing GFS, ECMWF, ICON…',
+          'Looking for model agreement…',
+        ];
+      case 'live':
+        return [
+          'Checking what is happening right now…',
+          'Reading radar and active warnings…',
+          'Watching the storm cells…',
+        ];
+      case 'short_range':
+      default:
+        return [
+          t('answer.loading_1'),
+          t('answer.loading_2'),
+          t('answer.loading_3'),
+          t('answer.loading_4'),
+        ];
+    }
+  })();
 
   useEffect(() => {
     if (status !== 'loading') return;
@@ -396,6 +435,18 @@ function AnswerPage() {
 
   if (!answer) return null;
 
+  // Forecast maturity stage drives the entire layout below. The server
+  // already enforces stage-appropriate verdicts; the UI matches that here.
+  const stage: ForecastStage =
+    (answer as { forecast_stage?: ForecastStage }).forecast_stage ?? 'short_range';
+  const stageBadgeLabel: Record<ForecastStage, string> = {
+    climate: 'CLIMATE',
+    outlook: 'OUTLOOK',
+    model_trend: 'EARLY SIGNAL',
+    short_range: 'FORECAST',
+    live: 'LIVE',
+  };
+
   // ── ANSWER STATE ───────────────────────────────
   // Build the 4-block briefing from the validated answer.
   const verdict: BriefingVerdict =
@@ -447,10 +498,45 @@ function AnswerPage() {
   const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
     ?? answer.summary;
   const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
-  const topicTag = answer.mode === 'severe' ? 'SEVERE'
-    : answer.mode === 'hurricane' ? 'STORM'
-    : 'RAIN';
+  const topicTag = stageBadgeLabel[stage];
   const contextLine = `${resolvedAddress.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
+  const stageOutro = (answer as { stage_outro?: string }).stage_outro ?? null;
+  const decisionLabel = (answer as { decision_label?: string }).decision_label ?? null;
+
+  // Stage-driven display rules.
+  const isClimate = stage === 'climate';
+  const isOutlook = stage === 'outlook';
+  const isModelTrend = stage === 'model_trend';
+  // Soften the headline verb at climate/outlook/model_trend.
+  const displayVerdictWord = isClimate
+    ? 'TOO FAR OUT'
+    : isOutlook
+    ? null // tendency chip replaces the word
+    : isModelTrend
+    ? (verdictWord === 'YES' ? 'LEAN YES' : verdictWord === 'NO' ? 'LEAN NO' : 'WATCH')
+    : verdictWord;
+
+  // At model_trend, present the percentage as a ±10 range to telegraph spread.
+  const headlineForStage = (() => {
+    if (isClimate || isOutlook) return null;
+    if (!isModelTrend) return headlineNumber;
+    if (typeof answer.percentage === 'number') {
+      const lo = Math.max(0, answer.percentage - 10);
+      const hi = Math.min(100, answer.percentage + 10);
+      return { value: `${lo}–${hi}%`, label: 'CHANCE OF RAIN (RANGE)' };
+    }
+    return headlineNumber;
+  })();
+
+  const climateBody =
+    answer.summary ||
+    (decisionLabel ? `${decisionLabel}.` : 'Too far out for a real forecast.');
+  const climateOutro =
+    stageOutro || 'We will start giving you a real forecast about 10 days before your date.';
+  const saveCtaLabel =
+    isClimate || isOutlook
+      ? 'TRACK THIS DATE'
+      : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
   if (!showWhy) {
     return (
