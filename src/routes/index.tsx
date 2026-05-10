@@ -383,7 +383,20 @@ function HomePage() {
         </button>
 
         {/* Always-visible radar pill (works even with no active warning) */}
-        {selectedAddress.lat != null && selectedAddress.lon != null && (
+        {selectedAddress.lat != null &&
+          selectedAddress.lon != null &&
+          (() => {
+            // Only show the radar pill when there's something worth looking at:
+            //   - an active NWS warning, or
+            //   - it's actively raining/storming/snowing, or
+            //   - a precip cell is within ~25 mi.
+            if (warning) return true;
+            const w = briefing?.word;
+            if (w === 'RAINING' || w === 'STORMS' || w === 'SNOW' || w === 'RAIN SOON') return true;
+            const cell = briefing?.nearby_cell;
+            if (cell && cell.distance_mi <= 25) return true;
+            return false;
+          })() && (
           <button
             type="button"
             onClick={() => setSheetMode('radar')}
