@@ -28,7 +28,7 @@ interface AddressPickerProps {
 
 export function AddressPicker({ onClose }: AddressPickerProps) {
   const { t } = useTranslation();
-  const { address: currentAddress, setAddress, resumeFollowing } = useAddress();
+  const { address: currentAddress, setAddress, resumeFollowing, setFollowing } = useAddress();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MapboxFeature[]>([]);
@@ -42,6 +42,14 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   const [savingPlace, setSavingPlace] = useState(false);
   const [prevAddress, setPrevAddress] = useState<SelectedAddress | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detectAbortRef = useRef<{ abort: () => void } | null>(null);
+
+  // If the picker unmounts while detection is in flight, abort it so we
+  // don't leave the "Detecting…" state stranded or update state on an
+  // unmounted component.
+  useEffect(() => {
+    return () => { detectAbortRef.current?.abort(); };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -94,6 +102,10 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   }, [query, currentAddress.lat, currentAddress.lon]);
 
   const handleCurrentLocation = () => {
+    // Abort any prior detection still in flight so re-clicking the button
+    // never stacks two parallel attempts.
+    detectAbortRef.current?.abort();
+
     if (!navigator.geolocation) {
       setDetectError('Geolocation is not supported in this browser.');
       return;
@@ -102,51 +114,66 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     setDetectError(null);
 
     let settled = false;
-    // 4s race: if high-accuracy hangs, retry with low-accuracy.
     const fallbackTimer = setTimeout(() => {
       if (settled) return;
+      // High-accuracy hung — try a quick low-accuracy pass.
       navigator.geolocation.getCurrentPosition(onSuccess, onError,
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60_000 });
     }, 4000);
+    // Hard total cap so the button never sticks on "Detecting…".
+    const hardTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallbackTimer);
+      setDetectingLocation(false);
+      setDetectError('Took too long to find you. Try again.');
+      console.warn('[AddressPicker] geolocation hard timeout');
+    }, 12000);
+
+    detectAbortRef.current = {
+      abort: () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimer);
+        clearTimeout(hardTimer);
+        setDetectingLocation(false);
+      },
+    };
+
+    const finish = () => {
+      clearTimeout(fallbackTimer);
+      clearTimeout(hardTimer);
+      setDetectingLocation(false);
+    };
 
     const onSuccess: PositionCallback = async (pos) => {
       if (settled) return;
       settled = true;
-      clearTimeout(fallbackTimer);
       const { latitude: lat, longitude: lon } = pos.coords;
+      let label = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
       try {
         const res = await fetch(
           `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1`
         );
-        const place = res.ok ? (await res.json())?.features?.[0] : null;
-        setAddress({
-          label: place?.place_name ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-          meta: 'FOLLOWING',
-          lat,
-          lon,
-        });
-        // Re-enable auto-follow since the user explicitly asked for "current".
-        resumeFollowing();
-        onClose();
-      } catch {
-        setAddress({
-          label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-          meta: 'FOLLOWING',
-          lat,
-          lon,
-        });
-        resumeFollowing();
-        onClose();
-      }
-      setDetectingLocation(false);
+        if (res.ok) {
+          const place = (await res.json())?.features?.[0];
+          if (place?.place_name) label = place.place_name;
+        }
+      } catch { /* keep coord label */ }
+      setAddress({ label, meta: 'FOLLOWING', lat, lon });
+      resumeFollowing();
+      finish();
+      onClose();
     };
 
     const onError: PositionErrorCallback = (err) => {
       if (settled) return;
       settled = true;
-      clearTimeout(fallbackTimer);
-      setDetectingLocation(false);
-      console.error('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
+      finish();
+      console.warn('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
+      // Permission denied — turn off auto-follow so the background
+      // watchPosition loop doesn't keep retrying and emitting errors.
+      if (err.code === 1) setFollowing(false);
       setDetectError(
         err.code === 1 ? 'Location is blocked. Enable it in your browser/system settings, then try again.' :
         err.code === 2 ? "Couldn't read your GPS. Try again in a moment." :
@@ -156,9 +183,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     };
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        await onSuccess(pos);
-      },
+      onSuccess,
       onError,
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 }
     );
