@@ -16,7 +16,6 @@ import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
-const ADDR_HINT_KEY = 'pluvik-addr-hint-views';
 
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -53,7 +52,6 @@ function HomePage() {
   const [questionText, setQuestionText] = useState('');
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
-  const [showAddrHint, setShowAddrHint] = useState(false);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [recordElapsed, setRecordElapsed] = useState(0);
@@ -128,18 +126,6 @@ function HomePage() {
       });
     return () => { cancelled = true; };
   }, [authLoading, user, navigate]);
-
-  // Show "(tap to change)" hint for the first 3 visits.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const n = parseInt(localStorage.getItem(ADDR_HINT_KEY) ?? '0', 10) || 0;
-      if (n < 3) {
-        setShowAddrHint(true);
-        localStorage.setItem(ADDR_HINT_KEY, String(n + 1));
-      }
-    } catch { /* ignore */ }
-  }, []);
 
   // ---- Voice input via MediaRecorder + Lovable AI Gateway (Gemini) ----
   const cleanupRecording = () => {
