@@ -34,3 +34,19 @@ export function pickHeadlineWord(args: {
   }
   return (fallbackWord ?? '—') as HeadlineWord;
 }
+
+/**
+ * Map an internal plan verdict (GO / CAUTION / NO-GO / UNKNOWN) to the
+ * friendly meteorologist-style recommendation we show users on cards and
+ * detail screens. Returns null when there is no helpful advice to show.
+ */
+export function verdictToPlanLabel(
+  verdict: string | null | undefined,
+): string | null {
+  if (!verdict) return null;
+  const v = verdict.trim().toUpperCase();
+  if (v === 'GO') return 'plan as usual';
+  if (v === 'CAUTION') return 'have a backup plan';
+  if (v === 'NO-GO' || v === 'NOGO' || v === 'NO_GO') return 'consider rescheduling';
+  return null;
+}
