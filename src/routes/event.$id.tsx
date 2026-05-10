@@ -691,47 +691,31 @@ function EventPage() {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
+            gap: '10px',
+            marginTop: '8px',
             marginBottom: '32px',
           }}
         >
-          <button
-            onClick={() => {
-              setEditText(event.question);
-              setEditing(true);
-            }}
-            disabled={editing || busy}
-            style={{
-              padding: '12px',
-              background: 'transparent',
-              color: INK,
-              border: `1px solid ${INK}1a`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: editing ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              opacity: editing ? 0.5 : 1,
-            }}
-          >
-            {t('event.action_edit')}
-          </button>
           {!event.archived_at && (
             <button
               onClick={handleRefresh}
               disabled={refreshing || busy}
               style={{
-                padding: '12px',
-                background: 'transparent',
-                color: ACCENT,
-                border: `1px solid ${ACCENT}33`,
+                padding: '14px',
+                background: ACCENT,
+                color: '#faf7f0',
+                border: 'none',
                 borderRadius: '100px',
-                fontSize: '0.85rem',
+                fontSize: '0.92rem',
+                fontWeight: 600,
+                letterSpacing: '0.01em',
                 cursor: refreshing || busy ? 'default' : 'pointer',
                 fontFamily: 'inherit',
                 opacity: refreshing || busy ? 0.6 : 1,
+                boxShadow: `0 6px 16px -8px ${ACCENT}80`,
               }}
             >
-              {refreshing ? 'Refreshing forecast…' : '↻ Refresh forecast'}
+              {refreshing ? 'Refreshing forecast…' : '↻  Refresh forecast'}
             </button>
           )}
           {refreshError && (
@@ -745,38 +729,115 @@ function EventPage() {
               {refreshError}
             </div>
           )}
-          <button
-            onClick={handleComplete}
-            disabled={busy}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => {
+                setEditText(event.question);
+                setEditing(true);
+              }}
+              disabled={editing || busy}
+              style={{
+                flex: 1,
+                padding: '11px',
+                background: 'transparent',
+                color: INK,
+                border: `1px solid ${INK}1f`,
+                borderRadius: '100px',
+                fontSize: '0.82rem',
+                cursor: editing ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: editing ? 0.5 : 1,
+              }}
+            >
+              ✎  {t('event.action_edit')}
+            </button>
+            <button
+              onClick={handleComplete}
+              disabled={busy}
+              style={{
+                flex: 1,
+                padding: '11px',
+                background: 'transparent',
+                color: INK,
+                border: `1px solid ${INK}1f`,
+                borderRadius: '100px',
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              ✓  {t('event.action_complete')}
+            </button>
+          </div>
+          <div
             style={{
-              padding: '12px',
-              background: 'transparent',
-              color: '#15803d',
-              border: `1px solid #15803d33`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '12px',
+              marginTop: '6px',
+              minHeight: '24px',
             }}
           >
-            ✓ {t('event.action_complete')}
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={busy}
-            style={{
-              padding: '12px',
-              background: 'transparent',
-              color: '#b91c1c',
-              border: `1px solid #b91c1c33`,
-              borderRadius: '100px',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            {t('event.action_delete')}
-          </button>
+            {confirmingDelete ? (
+              <>
+                <span style={{ fontSize: '0.78rem', color: MUTED }}>
+                  Delete this question?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: MUTED,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    padding: '4px 6px',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={busy}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#b91c1c',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: busy ? 'default' : 'pointer',
+                    fontFamily: 'inherit',
+                    padding: '4px 6px',
+                  }}
+                >
+                  Delete
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: MUTED,
+                  fontSize: '0.75rem',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '3px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  padding: '4px 8px',
+                }}
+              >
+                {t('event.action_delete')}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tracking journal */}
