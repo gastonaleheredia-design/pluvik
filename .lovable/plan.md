@@ -1,91 +1,78 @@
-## Radar overhaul
+## Goal
 
-Six related improvements to the radar experience on the home screen.
+Make signing in feel effortless: lead with Google/Apple, hide email/password behind a small link, fix Apple, and round out account management in Settings — all using free, built-in capabilities.
 
-### 1. Conditional RADAR pill on home
+## A note on cost
 
-Today the pill is always visible. New rule:
+You asked to keep things free. Email-based features (signup confirmation, password reset, email change verification, resend verification) are **free** — they're handled by Lovable Cloud's built-in auth emails.
 
-Show the pill when **either** condition is true:
-- An active NWS warning is attached to the briefing (`briefing.alert` is not null), **or**
-- Active precipitation is detected nearby — reuse `briefing.nearby_cell` (already returned by `getHomeBriefing`) and show when distance ≤ ~25 mi, **or** when `briefing.word` is `RAINING`, `STORMS`, or `SNOW`.
-
-Hide otherwise. When hidden, no radar entry point on the home screen. When a warning is active, the existing red warning banner already opens the radar — that stays.
-
-### 2. Radar sheet: two snap points + you-are-here
-
-Recommended behavior (this is the "I'd pick" answer to the size question):
-- Open at **~70vh** by default (current "halfway" feel, slightly taller).
-- User can **drag up to fullscreen (100vh)** or **drag down to dismiss**.
-- Two snap points: 70% and 100%. Smooth via `vaul` (already in the project as `Drawer`).
-
-Replace the current hand-rolled overlay in `AlertSheet.tsx` / radar mode with `vaul` Drawer using `snapPoints={[0.7, 1]}`. At 100% the radar fills the screen edge-to-edge, the drag handle stays visible at top, and a small × close button appears top-right.
-
-Add a **you-are-here marker**: the existing orange `mapboxgl.Marker` becomes a pulsing blue dot (standard "current location" pattern), with a thin white ring. Already wired to `lat/lon` props.
-
-### 3. NWS classic dBZ palette + legend
-
-RainViewer supports color schemes via the tile URL — the last path segment is `<color>/<smooth>_<snow>.png`. Today we use scheme `4`. Switch to scheme **`2` (NWS Reflectivity)** which is the classic green→yellow→orange→red→magenta dBZ scale.
-
-Update `tileUrlFor` in `LiveRadarMap.tsx`:
-
-```text
-${host}${path}/256/{z}/{x}/{y}/2/1_1.png
-```
-
-Add a **legend** pinned to the bottom-right of the map: a compact vertical strip of color swatches with dBZ labels (5, 20, 35, 50, 65 dBZ → "Light · Moderate · Heavy · Intense · Extreme"). Collapsible by tapping the header to keep the map clean.
-
-### 4. Frame clock / time scrubber
-
-Today there is a small "Live radar · HH:MM" pill top-left. Promote it to a proper time strip pinned bottom-center showing:
-- Current frame timestamp (HH:MM, local).
-- "now" / "+10 min · forecast" badge.
-- Thin progress bar showing position across the loop (past frames vs. nowcast).
-
-Optional: tap the bar to scrub. For v1, just display — no scrubbing — to keep scope tight.
-
-### 5. Clickable warning polygons
-
-Today polygons render as a static red fill. Make them interactive:
-
-- On polygon click (mapbox `click` on `nws-warnings-fill`), show a **mini info card** anchored to the bottom of the radar (above the toggles): event name (e.g. "Tornado Warning"), expires time, and one short line ("Tap for full details"). Does NOT cover the radar — sits as a thin card.
-- Tapping the card navigates to a new route **`/alert/$id`** showing the full NWS alert (description, instruction, areas, source, expires, plus an inline radar mini-map centered on the polygon).
-- Cursor becomes pointer on hover. Highlight the hovered polygon with a brighter outline.
-
-The polygon `properties` already include `event`. Extend `fetchActiveWarningPolygons` to also pass `id`, `headline`, `description`, `instruction`, `expires`, `areaDesc` from the NWS feature. Cache the active alerts in a small in-memory map keyed by id so `/alert/$id` can hydrate instantly without a second fetch (with a fallback fetch by id if the user lands cold).
-
-### 6. Verification of recently added radar features
-
-Quick smoke pass on the toolbar bits added previously: play/pause, zoom +/−, recenter, RADAR / WARNINGS / SAT toggles, frame loop continuing after 2-min refresh, basemap swap re-adds layers. Fix anything that regressed.
+**Phone number / SMS 2FA is NOT free** — Twilio (or any SMS provider) charges per message and requires your own account + API key. **TOTP 2FA** (Google Authenticator / Authy app codes) is free and built into Lovable Cloud. So the plan below includes **TOTP 2FA** instead of SMS. We can add SMS later if you decide to budget for it.
 
 ---
 
-## Technical notes
+## 1. Redesign the sign-in modal (`src/components/AuthModal.tsx`)
 
-- **Files to change:**
-  - `src/routes/index.tsx` — conditional pill visibility based on `briefing.alert` + `briefing.nearby_cell` + `briefing.word`.
-  - `src/components/AlertSheet.tsx` — switch radar-mode container to `vaul` Drawer with snap points; alert-mode keeps current overlay (or migrate too for consistency).
-  - `src/components/LiveRadarMap.tsx` — palette `2`, legend component, you-are-here marker styling, polygon click handler, mini info card, frame clock strip, richer polygon properties.
-  - `src/lib/homeBriefing.functions.ts` — confirm `nearby_cell` distance is exposed (it is); no schema change expected.
-  - **New route:** `src/routes/alert.$id.tsx` — full warning detail page with inline mini radar.
-  - **New module:** `src/lib/activeAlertsCache.ts` — small in-memory map for handoff from radar → detail route, with by-id NWS fetch fallback.
+New layout, top to bottom:
 
-- **Polygon hit-testing:** use `map.on('click', 'nws-warnings-fill', handler)` and `map.queryRenderedFeatures` with the layer id. Set `cursor: pointer` via `mouseenter`/`mouseleave`.
+```text
+  Save your forecast                              ✕
+  ──────────────────────────────────────────────
+  [  G   Continue with Google              ]
+  [   Continue with Apple              ]
 
-- **NWS alert by id fetch (fallback):** `https://api.weather.gov/alerts/{id}` with the same `User-Agent` header used today.
+  Use email instead  ▾   ← collapsed link
+  ──────────────────────────────────────────────
+  (only when expanded:)
+  ─ Create account / Sign in tabs ─
+  Email
+  Password
+  Forgot password?
+  [ Create account → ]
+```
 
-- **No backend / DB changes.** Pure frontend + presentation.
+- Social buttons rendered **first and large**.
+- "Use email instead" toggles a collapsed section containing today's tabs + email/password form.
+- Removes the OR divider in the default state — only appears when the email panel is expanded.
+- "Save your forecast" copy stays.
 
-### Out of scope (call out so we don't scope-creep)
+## 2. Fix Apple sign-in
 
-- Scrubbing the radar timeline (display-only clock for v1).
-- Push notifications when polygons appear (separate from existing in-app banner work).
-- Persisting polygon click → detail history.
+Likely causes (will diagnose in this order):
+1. Apple provider is enabled in Cloud but the Services ID / redirect URL is mismatched.
+2. The OAuth redirect from Apple isn't landing back in the app (PWA service worker or a missing `/~oauth` denylist entry).
+3. The `lovable.auth.signInWithOAuth("apple", …)` call is throwing a silent error.
 
-### What I'll verify after implementing
+Steps:
+- Inspect the AuthModal Apple handler + auth-related console/network logs.
+- Verify Apple is enabled and routed through Lovable's managed Apple credentials (default — no setup needed unless you want custom branding).
+- If managed Apple is enabled and still failing, surface the actual error to the user with a friendly message instead of a silent failure, and report back to you with the exact error so we can decide whether to use BYOC Apple credentials.
 
-- Pill hides on a clear day (Houston default, no warnings, no nearby cell), shows when a synthetic warning is injected.
-- Drawer drags from 70% → 100% smoothly on the 430-wide preview viewport, dismisses on drag-down.
-- Tile URL hits scheme `2`, legend reads top-to-bottom dark→light (or vice versa, matching NWS).
-- Tornado/severe-thunderstorm warning polygon (use a live test region if any are active, otherwise stub a polygon for QA) is clickable, mini card appears, `/alert/$id` opens with full text.
-- You-are-here marker pulses and stays anchored when panning.
+## 3. Settings — account management (free features)
+
+Add to `src/routes/settings.tsx`:
+
+- **Email change** — keep current flow but improve UX: show "Confirmation link sent to NEW email — click it to finish the change. Your old address still works until then." (Supabase already requires confirmation on the new email by default.)
+- **Forgot password** (signed-in) — small "Send password reset link" button that calls `resetPasswordForEmail(user.email)`. Useful when a user forgot their password but is still on a logged-in device.
+- **Resend verification email** — if the current user is signed in but `email_confirmed_at` is null, show a "Didn't get the confirmation email? Resend" button that calls `supabase.auth.resend({ type: 'signup', email })`.
+- **TOTP 2FA (free)** — new "Two-factor authentication" section:
+  - Status: On / Off
+  - "Enable 2FA" → shows QR code from `supabase.auth.mfa.enroll({ factorType: 'totp' })`, user scans with Google Authenticator / 1Password / Authy and enters a 6-digit code to verify.
+  - "Disable 2FA" → unenroll factor.
+  - Sign-in flow: if user has TOTP enabled, after password sign-in we show a 6-digit code prompt before granting access.
+- **Phone / SMS 2FA** — **not included** (paid). Mentioned in UI as "Available with SMS provider — coming later" or simply omitted.
+
+## 4. Translations
+
+Add new keys to `src/i18n/translations.ts` (EN + ES) for: "Use email instead", "Hide email", resend verification text, 2FA section labels, QR instructions, "Enter 6-digit code", "Send password reset link", improved email-change copy.
+
+## Out of scope
+
+- SMS / phone verification (paid).
+- Custom Apple Developer credentials / BYOC Apple — only if managed Apple turns out to be unfixable.
+- Recovery codes for 2FA (can add later if you want a backup method).
+
+## Verification
+
+- Modal: Google + Apple visible by default, email/password collapsed; expanding works; signup + signin still functional.
+- Apple: tapping "Continue with Apple" either succeeds or shows a clear error message (no more silent failure).
+- Settings: change-email shows new copy; resend appears only for unconfirmed users; "Send reset link" sends email; enabling TOTP shows QR, verifies code, and a fresh sign-in then prompts for the 6-digit code.
