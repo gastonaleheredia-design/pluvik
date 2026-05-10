@@ -47,6 +47,93 @@ export interface ClimateNormals {
 const CACHE = new Map<string, { value: ClimateNormals | null; expires: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // normals don't change daily; one day is plenty
 const SEARCH_RADIUS_DEG = 0.6; // ~40 miles bbox
+const SEARCH_RADIUS_DEG_FALLBACK = 1.5; // ~100 miles bbox if first pass empty
+const NULL_CACHE_TTL_MS = 5 * 60 * 1000; // don't blank out climatology for a day on a transient 5xx
+
+const NCEI_UA = 'Pluvik Weather App (support@pluvik.app)';
+
+/**
+ * NCEI's data endpoint now requires an explicit `stations=` list. Use the
+ * search endpoint to discover the nearest station IDs that carry the given
+ * dataset within the bbox, ordered by distance from (lat, lon).
+ */
+async function discoverStationIds(
+  dataset: 'normals-daily-1991-2020' | 'normals-monthly-1991-2020',
+  lat: number,
+  lon: number,
+  radiusDeg: number,
+  startDate: string,
+  endDate: string,
+): Promise<{ id: string; name: string; lat: number; lon: number; dist: number }[]> {
+  const north = lat + radiusDeg;
+  const south = lat - radiusDeg;
+  const west = lon - radiusDeg;
+  const east = lon + radiusDeg;
+  const url = new URL('https://www.ncei.noaa.gov/access/services/search/v1/data');
+  url.searchParams.set('dataset', dataset);
+  // bbox order for NCEI search: north,west,south,east
+  url.searchParams.set('bbox', `${north},${west},${south},${east}`);
+  url.searchParams.set('startDate', startDate);
+  url.searchParams.set('endDate', endDate);
+  url.searchParams.set('limit', '50');
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 12_000);
+    const res = await fetch(url.toString(), {
+      signal: ctl.signal,
+      headers: { 'User-Agent': NCEI_UA },
+    }).finally(() => clearTimeout(t));
+    if (!res.ok) {
+      console.warn('[climateNormals] search returned', res.status);
+      return [];
+    }
+    const json = (await res.json()) as {
+      results?: Array<{
+        stations?: Array<{ id?: string; name?: string }>;
+        boundingPoints?: Array<{ point?: [number, number] }>;
+      }>;
+    };
+    const out: { id: string; name: string; lat: number; lon: number; dist: number }[] = [];
+    for (const r of json.results ?? []) {
+      const pt = r.boundingPoints?.[0]?.point;
+      const slon = pt?.[0];
+      const slat = pt?.[1];
+      for (const s of r.stations ?? []) {
+        if (!s.id) continue;
+        const sLat = Number.isFinite(slat) ? Number(slat) : lat;
+        const sLon = Number.isFinite(slon) ? Number(slon) : lon;
+        out.push({
+          id: s.id,
+          name: s.name ?? s.id,
+          lat: sLat,
+          lon: sLon,
+          dist: distanceMiles(lat, lon, sLat, sLon),
+        });
+      }
+    }
+    out.sort((a, b) => a.dist - b.dist);
+    // de-dupe by id (keep nearest)
+    const seen = new Set<string>();
+    return out.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+  } catch (err) {
+    console.warn('[climateNormals] search failed:', (err as Error).message);
+    return [];
+  }
+}
+
+async function discoverStationIdsWithFallback(
+  dataset: 'normals-daily-1991-2020' | 'normals-monthly-1991-2020',
+  lat: number,
+  lon: number,
+  startDate: string,
+  endDate: string,
+) {
+  let stations = await discoverStationIds(dataset, lat, lon, SEARCH_RADIUS_DEG, startDate, endDate);
+  if (stations.length === 0) {
+    stations = await discoverStationIds(dataset, lat, lon, SEARCH_RADIUS_DEG_FALLBACK, startDate, endDate);
+  }
+  return stations;
+}
 
 function cacheKey(lat: number, lon: number): string {
   return `${lat.toFixed(2)},${lon.toFixed(2)}`;
@@ -98,22 +185,23 @@ export async function fetchClimateNormals(
   const hit = CACHE.get(key);
   if (hit && hit.expires > Date.now()) return hit.value;
 
-  const bbox = [
-    lat - SEARCH_RADIUS_DEG,
-    lon - SEARCH_RADIUS_DEG,
-    lat + SEARCH_RADIUS_DEG,
-    lon + SEARCH_RADIUS_DEG,
-  ].join(',');
+  const stationCands = await discoverStationIdsWithFallback(
+    'normals-monthly-1991-2020', lat, lon, '2010-01-01', '2010-12-31',
+  );
+  if (stationCands.length === 0) {
+    CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
+    return null;
+  }
 
   const url = new URL('https://www.ncei.noaa.gov/access/services/data/v1');
   url.searchParams.set('dataset', 'normals-monthly-1991-2020');
+  url.searchParams.set('stations', stationCands.slice(0, 8).map((s) => s.id).join(','));
   url.searchParams.set('startDate', '2010-01-01');
   url.searchParams.set('endDate', '2010-12-31');
   url.searchParams.set('format', 'json');
   url.searchParams.set('includeStationName', 'true');
   url.searchParams.set('includeStationLocation', '1');
   url.searchParams.set('units', 'standard');
-  url.searchParams.set('boundingBox', bbox);
   url.searchParams.set(
     'dataTypes',
     [
@@ -131,22 +219,22 @@ export async function fetchClimateNormals(
     const t = setTimeout(() => ctl.abort(), 12_000);
     const res = await fetch(url.toString(), {
       signal: ctl.signal,
-      headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
+      headers: { 'User-Agent': NCEI_UA },
     }).finally(() => clearTimeout(t));
     if (!res.ok) {
       console.warn('[climateNormals] NCEI returned', res.status);
-      CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+      CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
       return null;
     }
     rows = (await res.json()) as NceiDataRow[];
   } catch (err) {
     console.warn('[climateNormals] fetch failed:', (err as Error).message);
-    CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+    CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
   if (!Array.isArray(rows) || rows.length === 0) {
-    CACHE.set(key, { value: null, expires: Date.now() + CACHE_TTL_MS });
+    CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
@@ -192,6 +280,7 @@ export async function fetchClimateNormals(
   }
 
   const best = candidates[0];
+  console.info(`[climateNormals] monthly station=${best.id} (${Math.round(best.dist * 10) / 10} mi) ${best.name}`);
   const monthly: MonthlyNormal[] = Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
     meanTempF: null,
@@ -291,24 +380,26 @@ export async function fetchDailyClimateNormal(
   const hit = DAILY_CACHE.get(key);
   if (hit && hit.expires > Date.now()) return hit.value;
 
-  const bbox = [
-    lat - SEARCH_RADIUS_DEG,
-    lon - SEARCH_RADIUS_DEG,
-    lat + SEARCH_RADIUS_DEG,
-    lon + SEARCH_RADIUS_DEG,
-  ].join(',');
-
   // Use a fixed leap-friendly year (2010) — daily normals are keyed by MM-DD.
   const dateStr = `2010-${pad(month)}-${pad(day)}`;
+
+  const stationCands = await discoverStationIdsWithFallback(
+    'normals-daily-1991-2020', lat, lon, dateStr, dateStr,
+  );
+  if (stationCands.length === 0) {
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
+    return null;
+  }
+
   const url = new URL('https://www.ncei.noaa.gov/access/services/data/v1');
   url.searchParams.set('dataset', 'normals-daily-1991-2020');
+  url.searchParams.set('stations', stationCands.slice(0, 8).map((s) => s.id).join(','));
   url.searchParams.set('startDate', dateStr);
   url.searchParams.set('endDate', dateStr);
   url.searchParams.set('format', 'json');
   url.searchParams.set('includeStationName', 'true');
   url.searchParams.set('includeStationLocation', '1');
   url.searchParams.set('units', 'standard');
-  url.searchParams.set('boundingBox', bbox);
   url.searchParams.set(
     'dataTypes',
     [
@@ -323,22 +414,22 @@ export async function fetchDailyClimateNormal(
     const t = setTimeout(() => ctl.abort(), 12_000);
     const res = await fetch(url.toString(), {
       signal: ctl.signal,
-      headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
+      headers: { 'User-Agent': NCEI_UA },
     }).finally(() => clearTimeout(t));
     if (!res.ok) {
       console.warn('[dailyClimateNormal] NCEI returned', res.status);
-      DAILY_CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+      DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
       return null;
     }
     rows = (await res.json()) as Record<string, string>[];
   } catch (err) {
     console.warn('[dailyClimateNormal] fetch failed:', (err as Error).message);
-    DAILY_CACHE.set(key, { value: null, expires: Date.now() + 60_000 });
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
   if (!Array.isArray(rows) || rows.length === 0) {
-    DAILY_CACHE.set(key, { value: null, expires: Date.now() + DAILY_CACHE_TTL_MS });
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
@@ -360,9 +451,10 @@ export async function fetchDailyClimateNormal(
   candidates.sort((a, b) => a.dist - b.dist);
   const best = candidates[0];
   if (!best) {
-    DAILY_CACHE.set(key, { value: null, expires: Date.now() + DAILY_CACHE_TTL_MS });
+    DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
+  console.info(`[climateNormals] daily station=${best.id} (${Math.round(best.dist * 10) / 10} mi) ${best.name} for ${pad(month)}-${pad(day)}`);
   const r = best.row;
   const value: DailyClimate = {
     stationId: best.id,
