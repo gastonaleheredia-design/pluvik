@@ -6,7 +6,7 @@
  * latest public RainViewer frame so the map shows actual storm imagery.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MAPBOX_TOKEN } from "@/config/keys";
@@ -47,18 +47,68 @@ async function getLatestRadarTileUrl() {
   return `${data.host}${latest.path}/256/{z}/{x}/{y}/4/1_1.png`;
 }
 
+const NWS_HEADERS = {
+  "User-Agent": "Pluvik Weather App (support@pluvik.app)",
+  Accept: "application/geo+json",
+};
+
+/**
+ * Fetch active NWS warning polygons covering this point. We draw these
+ * over the radar so users see WHY their exact location is warned, even
+ * when the storm core is offset from town.
+ */
+async function fetchActiveWarningPolygons(lat: number, lon: number) {
+  try {
+    const res = await fetch(
+      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
+      { headers: NWS_HEADERS },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const features = (data.features ?? []).filter((f: any) => {
+      const ev = f?.properties?.event ?? "";
+      return /Warning$/.test(ev) && f?.geometry;
+    });
+    if (!features.length) return null;
+    return {
+      type: "FeatureCollection" as const,
+      features: features.map((f: any) => ({
+        type: "Feature" as const,
+        geometry: f.geometry,
+        properties: { event: f.properties.event },
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current) return;
+
+    // If the map already exists (lat/lon prop changed), recenter and refresh
+    // overlays in place instead of remounting Mapbox — much smoother and
+    // avoids losing the radar layer mid-stream.
+    if (mapRef.current) {
+      const map = mapRef.current;
+      map.flyTo({ center: [lon, lat], zoom: 7, essential: true });
+      if (markerRef.current) markerRef.current.setLngLat([lon, lat]);
+      void refreshWarnings(map, lat, lon);
+      return;
+    }
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
       center: [lon, lat],
-      zoom: 6.5,
+      zoom: 7,
+      minZoom: 4,
       maxZoom: 9,
       attributionControl: false,
       cooperativeGestures: true,
@@ -78,6 +128,7 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
             setTiles?: (tiles: string[]) => void;
           };
           sourceWithSetTiles.setTiles?.([`${tileUrl}?t=${Date.now()}`]);
+          setStatus("ready");
           return;
         }
 
@@ -94,16 +145,21 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
           source: "live-radar",
           paint: { "raster-opacity": 0.82, "raster-resampling": "linear" },
         });
+        setStatus("ready");
       } catch (error) {
         console.warn("Live radar layer unavailable", error);
+        setStatus("error");
       }
     };
 
     map.on("load", () => {
       void updateRadarLayer();
+      void refreshWarnings(map, lat, lon);
 
       // Marker on the event location.
-      new mapboxgl.Marker({ color: "#c2410c" }).setLngLat([lon, lat]).addTo(map);
+      markerRef.current = new mapboxgl.Marker({ color: "#c2410c" })
+        .setLngLat([lon, lat])
+        .addTo(map);
     });
 
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
@@ -111,6 +167,7 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
     // Refresh the radar layer every 2 minutes so it stays "live".
     const refresh = setInterval(() => {
       void updateRadarLayer();
+      void refreshWarnings(map, lat, lon);
     }, 60_000);
 
     return () => {
@@ -118,6 +175,7 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
       clearInterval(refresh);
       map.remove();
       mapRef.current = null;
+      markerRef.current = null;
     };
   }, [lat, lon]);
 
@@ -130,9 +188,29 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
         height,
         marginBottom: "20px",
         position: "relative",
+        backgroundColor: "#0b1018",
       }}
     >
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      {status !== "ready" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#faf7f0",
+            fontFamily: "JetBrains Mono, ui-monospace, monospace",
+            fontSize: "0.62rem",
+            letterSpacing: "0.18em",
+            backgroundColor: "rgba(11,16,24,0.55)",
+            pointerEvents: "none",
+          }}
+        >
+          {status === "loading" ? "LOADING RADAR…" : "RADAR UNAVAILABLE"}
+        </div>
+      )}
       <div
         style={{
           position: "absolute",
@@ -173,4 +251,39 @@ export function LiveRadarMap({ lat, lon, height = 280 }: LiveRadarMapProps) {
       </style>
     </div>
   );
+}
+
+/**
+ * Add or update the active-warning polygon overlay for the given point.
+ * Re-runs whenever the location changes or the periodic refresh fires.
+ */
+async function refreshWarnings(map: mapboxgl.Map, lat: number, lon: number) {
+  const fc = await fetchActiveWarningPolygons(lat, lon);
+  const ensureLoaded = () =>
+    new Promise<void>((resolve) => {
+      if (map.loaded()) resolve();
+      else map.once("load", () => resolve());
+    });
+  await ensureLoaded();
+
+  const empty = { type: "FeatureCollection" as const, features: [] };
+  const data = fc ?? empty;
+  const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
+  if (existing) {
+    existing.setData(data as GeoJSON.FeatureCollection);
+    return;
+  }
+  map.addSource("nws-warnings", { type: "geojson", data: data as GeoJSON.FeatureCollection });
+  map.addLayer({
+    id: "nws-warnings-fill",
+    type: "fill",
+    source: "nws-warnings",
+    paint: { "fill-color": "#ef4444", "fill-opacity": 0.18 },
+  });
+  map.addLayer({
+    id: "nws-warnings-line",
+    type: "line",
+    source: "nws-warnings",
+    paint: { "line-color": "#ef4444", "line-width": 2 },
+  });
 }
