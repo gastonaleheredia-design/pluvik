@@ -1,83 +1,70 @@
-## Problem
 
-On the Monday card the user sees three things at once:
+## Three fixes on the home screen
 
-- big answer: **NO**
-- secondary line: **25% chance of rain · plan: NO-GO**
-- detail page: 25%, "Rain is NOT expected"
+### 1. Make "Follow my location" a real toggle that remembers state
 
-The literal answer (NO rain) and the plan recommendation (NO-GO = cancel) directly contradict each other. Two root causes:
+**Problem.** The pill currently flips between two long labels ("FOLLOW MY LOCATION" ↔ "FOLLOWING MY LOCATION") that look almost identical, so the on/off state isn't readable at a glance. The user also reports that the choice doesn't stick between visits.
 
-1. **The model is allowed to set `verdict` independently of `verdict_word`.** The system prompt tells it `verdict_word` answers the literal question and `verdict` answers "should you do the activity," but never enforces that the two must be coherent. With no explicit activity attached to "Will it rain Monday at 6:30pm?", the model is free-styling NO-GO.
-2. **The card copy exposes the raw label.** `dashboard.tsx` prints `plan: ${event.current_verdict}` verbatim, so the user reads jargon (`NO-GO`) instead of advice ("plan as usual").
+**Fix.**
+- Replace the single pill with a two-segment toggle (visually one rounded control, two halves):
+  - **FIXED** — uses the address you picked.
+  - **FOLLOW** — tracks your device location.
+- The active half is filled (accent background, ink text); the inactive half is transparent. A small dot ("●") prefix on the active side reinforces which mode is on.
+- Tapping a half sets that mode directly (no "toggle the same button" guess).
+- Persistence: keep the existing `FOLLOW_KEY` in `localStorage`, but also add a defensive read in `AddressProvider`'s mount effect that re-reads the flag once on hydration in case the SSR snapshot wrote `false` before localStorage was available. Add a brief console warning if writing to localStorage throws (private mode / quota) so we can see why it didn't stick.
 
-The fix has two halves: (a) make the recommendation deterministic and coherent with the literal answer, (b) speak to the user like a meteorologist instead of showing the internal label.
+Files: `src/routes/index.tsx` (toggle UI + i18n keys `home.mode_fixed`, `home.mode_follow`), `src/lib/addressContext.tsx` (hydration re-read + write-failure log).
 
-## What we'll change
+### 2. Radar sheet: true edge-to-edge at the top snap
 
-### 1. Make the recommendation derive from rain probability when it would otherwise contradict the answer
+**Problem.** At full snap the radar still leaves a top inset, side padding, and rounded corners around the map — it doesn't feel like a full-screen radar.
 
-In `src/lib/askWeather.functions.ts`, after the LLM returns and after the existing storm-intercept override (line 736-749), add a coherence guard for rain yes/no questions:
+**Fix in `src/components/AlertSheet.tsx`:**
+- When `snap === 1`:
+  - Set `Drawer.Content` `borderRadius: 0` and `maxHeight: '100dvh'`.
+  - Drop the inner `padding` to `0` and let the `LiveRadarMap` fill `100dvh`.
+  - Hide the alert text block, the "CLOSE" button, and the heading kicker (radar-only mode at full snap — no chrome). The drag handle stays at the very top as the only signal.
+  - Make the drag handle slightly more prominent at full snap (width 56, height 5, opacity 0.35) so users discover the swipe-down-to-dismiss gesture.
+- When `snap === 0.7` (current half-sheet): keep today's behavior (rounded top, padding, alert text visible, CLOSE button visible, radar at ~320–500 px).
+- The map already supports a numeric `height` prop; pass `'100dvh'` at full snap.
 
-```text
-if question is a rain yes/no AND no imminent storm intercept:
-  pop = headline percentage (0–100)
-  if pop < 30  → verdict = "GO",      verdict_word = "NO"
-  if pop 30–59 → verdict = "CAUTION", verdict_word = "MAYBE"
-  if pop ≥ 60  → verdict = "NO-GO",   verdict_word = "YES"
+No prop changes elsewhere — `LiveRadarMap` already accepts a height value.
+
+### 3. "STORMS / Thunder detected at your point" with no storm overhead
+
+**Problem.** The only cell on KHGX is ~100 mi north. The home headline still says **STORMS** with reason "thunder detected at your point". Root cause is in `src/lib/homeBriefing.functions.ts`:
+
+```
+const thunderNow = curCode >= 95;
 ```
 
-Use the existing `isRainYesNoQuestion` helper (already used in `dashboard.tsx`) — move it to `src/lib/headlineAnswer.ts` or a small shared helper if it isn't already importable from server code. The storm-intercept override at line 739 stays first and wins (real radar trumps probability bands).
+`curCode` is Open‑Meteo's `current.weather_code`. That field reports a thunderstorm code whenever the model thinks *any* convection is occurring inside the grid cell — which routinely covers tens of miles around the user. There's no radar cross-check, so a distant cell flips the headline to STORMS with a misleading "at your point" reason.
 
-This fixes today's bug at the source: 25% rain can never produce NO-GO again, and a future "70% rain" can never produce GO.
+**Fix (point-only, in `homeBriefing.functions.ts`):**
+1. Treat `curCode >= 95` as a *candidate* thunder signal, not a verdict. Confirm it against radar before promoting:
+   - If `probeNearbyCell` returns a cell with `dbz >= 45` within **15 mi** OR `probeImminentStorm` says a cell is approaching, keep STORMS and use the existing radar-based reason.
+   - Otherwise downgrade to `RAINING` (if HRRR `liveRainingNow`), `RAIN SOON` (if `hoursUntilRain <= 6`), or `CLOUDY`/`DRY`.
+2. When we *do* keep STORMS via radar confirmation, change the reason copy from "Thunder detected at your point" to something honest:
+   - confirmed within 5 mi → "Storm cell overhead"
+   - confirmed 5–15 mi → `"Storm cell {distance} mi {bearing}"`
+   - imminent radar override → existing `"Radar cell closing from the {bearing} — ~{eta} min out"`
+3. Same guard for `liveRainingNow` derived from `weather_code` only (no minutely_15 hit, no radar confirmation): require either `minutely.first15 > 0.005` OR a radar cell `dbz >= 25` within 10 mi to claim RAINING; otherwise fall through to RAIN SOON / CLOUDY / DRY.
 
-### 2. Tighten the system prompt so the model itself stops doing this
+This keeps the existing radar-aware overrides intact (they still promote to STORMS when the radar agrees) — it only stops the *point-only* code from inventing a storm.
 
-In `src/lib/systemPrompt.ts`, add to the HARD RULES section:
+**Spanish strings:** mirror the new reason copy in the existing `isEs` branches.
 
-- "verdict and verdict_word must be coherent. For rain questions: verdict_word=NO must pair with GO; verdict_word=YES must pair with CAUTION or NO-GO; verdict_word=MAYBE pairs with CAUTION."
-- "When the user's question is a pure 'will it rain?' with no named activity, derive verdict from rain probability bands (<30% GO, 30–59% CAUTION, ≥60% NO-GO) unless a storm intercept overrides."
+### What this plan does NOT change
 
-The deterministic guard in step 1 is the safety net; this just reduces wasted credits on bad outputs.
+- No DB migration, no schema changes, no edge function changes.
+- `metDataFetcher` (`probeNearbyCell`, `probeImminentStorm`, `getActiveWarning`) is untouched.
+- Dashboard / event detail / askWeather pipeline is untouched.
+- `AlertSheet`'s alert-mode (when there's an active NWS warning) keeps its current half-sheet layout — only the radar-only / full-snap state gets the edge-to-edge treatment.
 
-### 3. Replace the jargon on the dashboard card
+### Files touched
 
-In `src/routes/dashboard.tsx` around lines 588–594, swap the raw `plan: ${event.current_verdict}` for a human label driven by verdict:
-
-| verdict   | card label              |
-|-----------|-------------------------|
-| GO        | `plan as usual`         |
-| CAUTION   | `have a backup plan`    |
-| NO-GO     | `consider rescheduling` |
-| UNKNOWN   | (omit the suffix)       |
-
-So the Monday card becomes: **25% chance of rain · plan as usual** — coherent with the big NO above it.
-
-### 4. Same treatment on the detail page
-
-In `src/routes/event.$id.tsx`, anywhere the raw verdict is shown to the user (header chip, summary line), use the same friendly mapping. Internal data (`current_verdict`) stays NO-GO/CAUTION/GO so the rest of the system, snapshots, and history keep working.
-
-### 5. No DB migration
-
-`current_verdict` keeps its existing enum values. Only the *display* strings and the *derivation rule* change. Existing rows render correctly on next reload because the mapping happens at render time.
-
-## Out of scope
-
-- No changes to the refresh pipeline, snapshots, archiving, or stage badges.
-- No new question types or activity-detection UI. (Possible follow-up: ask the user "what's the plan?" when they create a non-rain event so the recommendation can be activity-aware.)
-- No restyling of the card; only the text inside the secondary line changes.
-
-## Files to edit
-
-- `src/lib/askWeather.functions.ts` — coherence guard after the storm-intercept block.
-- `src/lib/systemPrompt.ts` — two new HARD RULES bullets.
-- `src/lib/headlineAnswer.ts` (or new tiny helper) — export `verdictToPlanLabel(verdict)` used by both routes; ensure `isRainYesNoQuestion` is importable from server code.
-- `src/routes/dashboard.tsx` — replace `plan: ${current_verdict}` with the friendly label.
-- `src/routes/event.$id.tsx` — same friendly label wherever the raw verdict is rendered.
-
-## Verification
-
-1. Open the Monday card. Big word **NO**, secondary line **25% chance of rain · plan as usual**.
-2. Open the Sunday "LEAN NO" card. Secondary line uses the friendly label, no `NO-GO` jargon.
-3. Tap into Monday's detail. No raw `NO-GO` text anywhere user-visible.
-4. Manually run a "Will it rain Saturday?" with a high-rain location (or stub `current_percentage = 75`) — confirm the card shows **YES · expect rain · consider rescheduling** and the two halves agree.
+- `src/routes/index.tsx` — segmented FIXED/FOLLOW toggle.
+- `src/lib/addressContext.tsx` — hydration re-read of `FOLLOW_KEY`, log on write failure.
+- `src/components/AlertSheet.tsx` — full-snap edge-to-edge layout, prominent handle.
+- `src/lib/homeBriefing.functions.ts` — radar-confirmation guard for `thunderNow` and `liveRainingNow`, honest reason copy.
+- `src/i18n/translations.ts` — new keys: `home.mode_fixed`, `home.mode_follow`, plus updated reason strings (en + es).

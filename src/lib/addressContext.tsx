@@ -73,20 +73,36 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
     setAddressState(addr);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(addr));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn('[address] failed to persist selected address', err);
     }
   };
 
   const setFollowing = (v: boolean) => {
     setFollowingState(v);
-    try { localStorage.setItem(FOLLOW_KEY, v ? 'true' : 'false'); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(FOLLOW_KEY, v ? 'true' : 'false');
+    } catch (err) {
+      console.warn('[address] failed to persist follow flag', err);
+    }
     if (!v) {
       setFollowActive(false);
       setFollowError(null);
       lastFixRef.current = null;
     }
   };
+
+  // Defensive hydration: re-read the follow flag once on mount in case the
+  // initial useState ran before localStorage was available (SSR snapshot).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(FOLLOW_KEY);
+      if (stored === 'true' && !following) setFollowingState(true);
+      else if (stored === 'false' && following) setFollowingState(false);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // watchPosition while `following` is on. We throttle: only update the
   // selected address when the device has moved >= 0.15 mi OR >= 60 s have
