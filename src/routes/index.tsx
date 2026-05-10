@@ -504,8 +504,7 @@ function HomePage() {
               minWidth: 0,
             }}
           />
-          {micSupported && (
-            <button
+          <button
               type="button"
               onClick={toggleListening}
               aria-label="Voice input"
@@ -529,8 +528,7 @@ function HomePage() {
                 <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
                 <line x1="12" y1="19" x2="12" y2="22" />
               </svg>
-            </button>
-          )}
+          </button>
           <button
             type="submit"
             disabled={!questionText.trim()}
@@ -550,6 +548,11 @@ function HomePage() {
             →
           </button>
         </div>
+        {micError && (
+          <div style={{ marginTop: 6, fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: '0.62rem', color: WARN, letterSpacing: '0.1em', textAlign: 'center' }}>
+            {micError}
+          </div>
+        )}
       </form>
 
       <BottomNav />
