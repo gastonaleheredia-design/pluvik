@@ -1,75 +1,91 @@
-## Goal
+## Radar overhaul
 
-Make tracked-event forecasts refresh automatically (with a smart cadence based on how close the event is), surface meaningful changes in the app, and make the auto-archive lifecycle visible to the user. Manual "Refresh" buttons stay as an on-demand override.
+Six related improvements to the radar experience on the home screen.
 
-## Background — what already exists
+### 1. Conditional RADAR pill on home
 
-- `tracked_events.event_at` stores the parsed event time. A `sweep-tracked-events` cron runs every 15 min and **auto-archives** any event whose `event_at` is more than 24h in the past, writing a final `CONCLUDED` snapshot. So expiration is already handled — your "tomorrow at 11am" question will move to **Archived** automatically ~24h after 11 AM.
-- `/api/public/refresh-events` re-evaluates active events, but **nothing schedules it** today. It's only called by the manual Refresh button. It also has a flat 30-minute throttle.
-- Each refresh writes a snapshot tagged `INITIAL` / `STAGE_PROMOTED` / `SIGNIFICANT_CHANGE` / `NEW_DATA_SOURCE` / `MINOR_REFRESH` / `RESOLVED_BENIGN` / `CONCLUDED`.
+Today the pill is always visible. New rule:
 
-## Plan
+Show the pill when **either** condition is true:
+- An active NWS warning is attached to the briefing (`briefing.alert` is not null), **or**
+- Active precipitation is detected nearby — reuse `briefing.nearby_cell` (already returned by `getHomeBriefing`) and show when distance ≤ ~25 mi, **or** when `briefing.word` is `RAINING`, `STORMS`, or `SNOW`.
 
-### 1. Tiered per-event throttle inside `refresh-events`
+Hide otherwise. When hidden, no radar entry point on the home screen. When a warning is active, the existing red warning banner already opens the radar — that stays.
 
-Replace the flat 30-min throttle with a function of "hours until event":
+### 2. Radar sheet: two snap points + you-are-here
 
-| Hours to event | Refresh interval |
-| --- | --- |
-| ≤ 6 h | 15 min |
-| 6 – 24 h | 1 h |
-| 24 – 72 h | 3 h |
-| > 72 h | 12 h |
+Recommended behavior (this is the "I'd pick" answer to the size question):
+- Open at **~70vh** by default (current "halfway" feel, slightly taller).
+- User can **drag up to fullscreen (100vh)** or **drag down to dismiss**.
+- Two snap points: 70% and 100%. Smooth via `vaul` (already in the project as `Drawer`).
 
-Implementation in `src/routes/api/public/refresh-events.tsx`:
-- Remove the single `THROTTLE_MINUTES` constant.
-- Drop the `or(last_checked_at.is.null,last_checked_at.lt.<cutoff>)` filter from the SQL query.
-- Fetch candidates ordered by `event_at`, then in JS compute `hoursToEvent` per row, derive the `intervalMin` from the table above, and skip rows where `now - last_checked_at < intervalMin` (unless `force=1`).
-- Raise `MAX_EVENTS_PER_RUN` to 50 (the worker can handle it; near-term events are the priority).
+Replace the current hand-rolled overlay in `AlertSheet.tsx` / radar mode with `vaul` Drawer using `snapPoints={[0.7, 1]}`. At 100% the radar fills the screen edge-to-edge, the drag handle stays visible at top, and a small × close button appears top-right.
 
-### 2. Schedule the refresh cron
+Add a **you-are-here marker**: the existing orange `mapboxgl.Marker` becomes a pulsing blue dot (standard "current location" pattern), with a thin white ring. Already wired to `lat/lon` props.
 
-Add a new pg_cron job `refresh-tracked-events` running every 15 minutes that POSTs to `/api/public/refresh-events`. The endpoint itself decides which events are due based on the tiered table — so a single 15-min cron covers all four tiers. (Created via `supabase--insert`, not a migration, since it embeds the anon key and project URL.)
+### 3. NWS classic dBZ palette + legend
 
-### 3. In-app "something changed" banner
+RainViewer supports color schemes via the tile URL — the last path segment is `<color>/<smooth>_<snow>.png`. Today we use scheme `4`. Switch to scheme **`2` (NWS Reflectivity)** which is the classic green→yellow→orange→red→magenta dBZ scale.
 
-Goal: when an auto-refresh produces a `SIGNIFICANT_CHANGE` or `STAGE_PROMOTED`, the user sees a clear visual cue without needing push/email.
+Update `tileUrlFor` in `LiveRadarMap.tsx`:
 
-- Add a column `tracked_events.last_significant_change_at timestamptz` and `tracked_events.user_seen_change_at timestamptz` (migration).
-- In `refresh-events.tsx`, when the classified `tag` is `SIGNIFICANT_CHANGE` or `STAGE_PROMOTED`, set `last_significant_change_at = now()` on the event row.
-- **Tracking tab (`/dashboard`):**
-  - If any active event has `last_significant_change_at > user_seen_change_at` (or `user_seen_change_at IS NULL`), show a small badge on the BottomNav "TRACKING" label (a red dot).
-  - On the affected event card, add a subtle pill: `UPDATED · was {previous verdict}` (we already show "was CAUTION" — formalize and color it).
-- **Event detail page (`/event/$id`):** when opened, set that event's `user_seen_change_at = now()` so the dot clears for that card. If the user opens the Tracking tab, set it for all currently-listed events on view.
-- No push, no email — purely in-app.
-
-### 4. Expiration caption on cards
-
-On each active event card in `/dashboard` show, under the "Updated …" line:
-
-```
-Auto-archives {relative time, e.g. "in 1d 3h"} after the event
+```text
+${host}${path}/256/{z}/{x}/{y}/2/1_1.png
 ```
 
-Computed client-side from `event_at + 24h`. Skip when `event_at` is null. Use the existing muted caption styling.
+Add a **legend** pinned to the bottom-right of the map: a compact vertical strip of color swatches with dBZ labels (5, 20, 35, 50, 65 dBZ → "Light · Moderate · Heavy · Intense · Extreme"). Collapsible by tapping the header to keep the map clean.
 
-### 5. Keep manual refresh
+### 4. Frame clock / time scrubber
 
-- Keep "Refresh forecast" on `/event/$id` and "Refresh all" on `/dashboard`. They already pass `force=1`, which bypasses the new throttle table.
+Today there is a small "Live radar · HH:MM" pill top-left. Promote it to a proper time strip pinned bottom-center showing:
+- Current frame timestamp (HH:MM, local).
+- "now" / "+10 min · forecast" badge.
+- Thin progress bar showing position across the loop (past frames vs. nowcast).
 
-## Files to change / create
+Optional: tap the bar to scrub. For v1, just display — no scrubbing — to keep scope tight.
 
-- `src/routes/api/public/refresh-events.tsx` — tiered throttle, write `last_significant_change_at` on significant tags.
-- `src/routes/dashboard.tsx` — show change badge on cards, expiration caption, mark `user_seen_change_at` when list is viewed.
-- `src/routes/event.$id.tsx` — mark `user_seen_change_at` on open.
-- `src/components/BottomNav.tsx` — red dot on TRACKING tab when any active event has unseen significant change.
-- New migration — add `last_significant_change_at`, `user_seen_change_at` columns.
-- New `supabase--insert` SQL — schedule `refresh-tracked-events` pg_cron every 15 min calling the public refresh endpoint.
+### 5. Clickable warning polygons
 
-## Verification
+Today polygons render as a static red fill. Make them interactive:
 
-1. After deploy, wait ~15 min and confirm `cron.job_run_details` shows successful `refresh-tracked-events` runs.
-2. Inspect `tracked_events.last_checked_at` — events ≤6h out should update every ~15 min, far-out events should stay quiet.
-3. Force a verdict flip (e.g. via the "Will it rain tomorrow at 11am?" event as time approaches) and confirm the red dot appears on the TRACKING tab and the "was X" pill appears on the card.
-4. Open the event → dot clears.
-5. On a card, confirm the "Auto-archives in …" caption shows correctly and disappears once archived.
+- On polygon click (mapbox `click` on `nws-warnings-fill`), show a **mini info card** anchored to the bottom of the radar (above the toggles): event name (e.g. "Tornado Warning"), expires time, and one short line ("Tap for full details"). Does NOT cover the radar — sits as a thin card.
+- Tapping the card navigates to a new route **`/alert/$id`** showing the full NWS alert (description, instruction, areas, source, expires, plus an inline radar mini-map centered on the polygon).
+- Cursor becomes pointer on hover. Highlight the hovered polygon with a brighter outline.
+
+The polygon `properties` already include `event`. Extend `fetchActiveWarningPolygons` to also pass `id`, `headline`, `description`, `instruction`, `expires`, `areaDesc` from the NWS feature. Cache the active alerts in a small in-memory map keyed by id so `/alert/$id` can hydrate instantly without a second fetch (with a fallback fetch by id if the user lands cold).
+
+### 6. Verification of recently added radar features
+
+Quick smoke pass on the toolbar bits added previously: play/pause, zoom +/−, recenter, RADAR / WARNINGS / SAT toggles, frame loop continuing after 2-min refresh, basemap swap re-adds layers. Fix anything that regressed.
+
+---
+
+## Technical notes
+
+- **Files to change:**
+  - `src/routes/index.tsx` — conditional pill visibility based on `briefing.alert` + `briefing.nearby_cell` + `briefing.word`.
+  - `src/components/AlertSheet.tsx` — switch radar-mode container to `vaul` Drawer with snap points; alert-mode keeps current overlay (or migrate too for consistency).
+  - `src/components/LiveRadarMap.tsx` — palette `2`, legend component, you-are-here marker styling, polygon click handler, mini info card, frame clock strip, richer polygon properties.
+  - `src/lib/homeBriefing.functions.ts` — confirm `nearby_cell` distance is exposed (it is); no schema change expected.
+  - **New route:** `src/routes/alert.$id.tsx` — full warning detail page with inline mini radar.
+  - **New module:** `src/lib/activeAlertsCache.ts` — small in-memory map for handoff from radar → detail route, with by-id NWS fetch fallback.
+
+- **Polygon hit-testing:** use `map.on('click', 'nws-warnings-fill', handler)` and `map.queryRenderedFeatures` with the layer id. Set `cursor: pointer` via `mouseenter`/`mouseleave`.
+
+- **NWS alert by id fetch (fallback):** `https://api.weather.gov/alerts/{id}` with the same `User-Agent` header used today.
+
+- **No backend / DB changes.** Pure frontend + presentation.
+
+### Out of scope (call out so we don't scope-creep)
+
+- Scrubbing the radar timeline (display-only clock for v1).
+- Push notifications when polygons appear (separate from existing in-app banner work).
+- Persisting polygon click → detail history.
+
+### What I'll verify after implementing
+
+- Pill hides on a clear day (Houston default, no warnings, no nearby cell), shows when a synthetic warning is injected.
+- Drawer drags from 70% → 100% smoothly on the 430-wide preview viewport, dismisses on drag-down.
+- Tile URL hits scheme `2`, legend reads top-to-bottom dark→light (or vice versa, matching NWS).
+- Tornado/severe-thunderstorm warning polygon (use a live test region if any are active, otherwise stub a polygon for QA) is clickable, mini card appears, `/alert/$id` opens with full text.
+- You-are-here marker pulses and stays anchored when panning.
