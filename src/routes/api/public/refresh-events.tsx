@@ -103,7 +103,10 @@ async function refreshOne(
     .from('tracked_events')
     .update({
       current_verdict: a.verdict ?? null,
-      current_percentage: typeof a.percentage === 'number' ? a.percentage : null,
+      current_percentage:
+        typeof a.percentage === 'number' && Number.isFinite(a.percentage)
+          ? a.percentage
+          : null,
       current_summary: a.summary ?? null,
       current_confidence: a.confidence ?? null,
       current_verdict_word: a.verdict_word ?? null,

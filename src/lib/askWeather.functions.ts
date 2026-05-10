@@ -20,6 +20,138 @@ import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetc
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 
+/**
+ * Robust JSON extraction from an LLM response. Handles markdown fences,
+ * trailing commas, control chars, and finds the first balanced JSON object
+ * instead of relying on a greedy regex.
+ */
+function extractJsonFromLlmResponse(raw: string): unknown | null {
+  if (!raw) return null;
+  let cleaned = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  // Find first { and the matching closing } via brace depth scan.
+  const start = cleaned.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let end = -1;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+
+  // If truncated (no matching close brace), close it ourselves so we can
+  // at least try to parse the partial object.
+  let candidate: string;
+  if (end === -1) {
+    candidate = cleaned.substring(start) + '}'.repeat(Math.max(depth, 1));
+  } else {
+    candidate = cleaned.substring(start, end + 1);
+  }
+
+  const tryParse = (s: string): unknown | null => {
+    try { return JSON.parse(s); } catch { return null; }
+  };
+
+  let parsed = tryParse(candidate);
+  if (parsed) return parsed;
+
+  // Cleanup pass: strip control chars and trailing commas.
+  const cleaned2 = candidate
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*\]/g, ']');
+  parsed = tryParse(cleaned2);
+  if (parsed) return parsed;
+
+  // Last resort: drop the last incomplete key/value pair before the final brace.
+  const trimmed = cleaned2.replace(/,\s*"[^"]*"\s*:\s*[^,}\]]*$/, '');
+  return tryParse(trimmed + (trimmed.endsWith('}') ? '' : '}'));
+}
+
+/**
+ * Deterministic rain fallback derived from the HRRR/NDFD hourly briefing
+ * lines. Used when the LLM response cannot be parsed so the user still gets
+ * a real answer instead of "Forecast unavailable".
+ *
+ * Returns null when there is no usable hourly data.
+ */
+function deriveRainFallback(
+  hourlyForecast: string,
+  hoursAhead: number,
+  stage: 'short_range' | 'model_trend',
+): null | {
+  verdict: 'GO' | 'CAUTION' | 'NO-GO';
+  verdict_word: 'YES' | 'NO' | 'MAYBE';
+  percentage: number;
+  summary: string;
+  verdict_sentence: string;
+  confidence: 'LOW' | 'MEDIUM';
+  main_concern: string;
+} {
+  if (!hourlyForecast) return null;
+  // Each line: "11:00 AM 78°F DP:65°F POP:42% Precip:0.05" Wind:6mph"
+  const lines = hourlyForecast.split('\n').filter((l) => /POP:\d/.test(l));
+  if (lines.length === 0) return null;
+
+  // Pick a window centered on the event hour (±2h).
+  const targetIdx = Math.max(0, Math.round(hoursAhead));
+  const lo = Math.max(0, targetIdx - 2);
+  const hi = Math.min(lines.length - 1, targetIdx + 2);
+  const window = lines.slice(lo, hi + 1);
+  if (window.length === 0) return null;
+
+  let maxPop = 0;
+  let totalPrecip = 0;
+  for (const line of window) {
+    const popM = line.match(/POP:(\d+)%/);
+    const pcpM = line.match(/Precip:([\d.]+)"/);
+    if (popM) maxPop = Math.max(maxPop, parseInt(popM[1], 10));
+    if (pcpM) totalPrecip += parseFloat(pcpM[1]);
+  }
+
+  const verdict: 'GO' | 'CAUTION' | 'NO-GO' =
+    maxPop >= 60 || totalPrecip >= 0.25 ? 'NO-GO'
+    : maxPop >= 30 || totalPrecip >= 0.05 ? 'CAUTION'
+    : 'GO';
+  const verdict_word: 'YES' | 'NO' | 'MAYBE' =
+    verdict === 'GO' ? 'NO' : verdict === 'NO-GO' ? 'YES' : 'MAYBE';
+
+  const dryLine =
+    stage === 'short_range'
+      ? `Forecast shows about ${maxPop}% chance of rain around your time, ${totalPrecip.toFixed(2)}" expected nearby.`
+      : `Models lean toward ~${maxPop}% rain chance around your time — early signal only, will sharpen as we get closer.`;
+  const concern =
+    verdict === 'NO-GO' ? 'Rain likely during your window'
+    : verdict === 'CAUTION' ? 'Some rain possible — keep a backup plan'
+    : 'No meaningful rain signal right now';
+
+  return {
+    verdict,
+    verdict_word,
+    percentage: maxPop,
+    summary: dryLine,
+    verdict_sentence: dryLine,
+    confidence: stage === 'short_range' ? 'MEDIUM' : 'LOW',
+    main_concern: concern,
+  };
+}
+
 interface WeatherRequest {
   question: string;
   lat: number;
@@ -505,32 +637,66 @@ export const askWeather = createServerFn({ method: 'POST' })
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 512,
+        max_tokens: 1500,
         system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+        messages: [
+          { role: 'user', content: userMessage },
+          // Prefill so the model starts the JSON object immediately and
+          // never wraps it in prose or markdown fences.
+          { role: 'assistant', content: '{' },
+        ],
       }),
     }).finally(() => clearTimeout(timeout));
 
     if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
 
     const claudeData = await claudeRes.json();
-    const responseText = claudeData.content?.[0]?.text?.trim() ?? '';
-
-    let rawAnswer: unknown;
-    try {
-      rawAnswer = JSON.parse(responseText);
-    } catch {
-      const match = responseText.match(/\{[\s\S]*\}/);
-      try {
-        rawAnswer = match ? JSON.parse(match[0]) : null;
-      } catch {
-        rawAnswer = null;
-      }
+    const stopReason = claudeData.stop_reason ?? 'unknown';
+    const rawText = claudeData.content?.[0]?.text ?? '';
+    // We prefilled '{' so the model continues from there. Re-attach it.
+    const responseText = (rawText.startsWith('{') ? rawText : '{' + rawText).trim();
+    const rawAnswer = extractJsonFromLlmResponse(responseText);
+    if (!rawAnswer) {
+      console.warn('[askWeather] failed to parse LLM JSON', {
+        stop_reason: stopReason,
+        len: responseText.length,
+        head: responseText.slice(0, 200),
+        tail: responseText.slice(-200),
+      });
     }
 
     const validated = validateWeatherAnswer(rawAnswer);
     if (!validated.ok) {
       console.warn('[askWeather] schema validation failed:', validated.issues);
+      // Try a deterministic fallback derived from HRRR hourly data so the
+      // user still gets a meaningful rain answer.
+      const fb =
+        stageInfo.stage === 'short_range' || stageInfo.stage === 'model_trend'
+          ? deriveRainFallback(
+              briefing.hourlyForecast,
+              typeof hoursAhead === 'number' ? hoursAhead : 24,
+              stageInfo.stage,
+            )
+          : null;
+      if (fb) {
+        validated.data = {
+          ...validated.data,
+          verdict: fb.verdict,
+          verdict_word: fb.verdict_word,
+          verdict_sentence: fb.verdict_sentence,
+          summary: fb.summary,
+          percentage: fb.percentage,
+          impact_percent: fb.percentage,
+          confidence: fb.confidence,
+          main_concern: fb.main_concern,
+          headline_number: { value: `${fb.percentage}%`, label: 'CHANCE OF RAIN' },
+          confidence_reason: 'Derived directly from HRRR hourly forecast.',
+        };
+      } else {
+        // Truly unavailable — null the percentage so the UI doesn't show "0%".
+        validated.data.percentage = null as unknown as number;
+        validated.data.impact_percent = null as unknown as number;
+      }
     }
     console.log('[askWeather:diag] LLM verdict', {
       verdict: validated.data.verdict,
