@@ -381,7 +381,7 @@ function DashboardPage() {
                   background: 'transparent',
                   border: 'none',
                   padding: 0,
-                  color: ACCENT,
+                  color: refreshStatus.kind === 'failed' ? '#b91c1c' : ACCENT,
                   fontFamily: 'inherit',
                   fontSize: '0.7rem',
                   letterSpacing: '0.12em',
@@ -393,7 +393,13 @@ function DashboardPage() {
               >
                 {refreshing
                   ? t('dashboard.refreshing', { defaultValue: 'Refreshing…' })
-                  : refreshedJustNow
+                  : refreshStatus.kind === 'failed'
+                    ? t('dashboard.refresh_failed', { defaultValue: "Couldn't refresh — try again" })
+                    : refreshStatus.kind === 'partial'
+                    ? t('dashboard.refresh_partial', {
+                        defaultValue: `Refreshed ${refreshStatus.ok} of ${refreshStatus.total}`,
+                      })
+                    : refreshedJustNow
                     ? t('dashboard.refreshed', { defaultValue: 'Refreshed ✓' })
                     : t('dashboard.refresh_all', { defaultValue: 'Refresh all' })}
               </button>
