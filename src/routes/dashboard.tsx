@@ -22,6 +22,11 @@ interface TrackedEvent {
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
+  current_maybe_explanation?: {
+    afd_quote: string;
+    model_reconciliation: string;
+    why_uncertain: string;
+  } | null;
 }
 
 interface SnapshotMini {
