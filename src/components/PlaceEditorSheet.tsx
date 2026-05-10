@@ -8,6 +8,7 @@ interface MapboxFeature {
   place_name: string;
   center: [number, number];
   text: string;
+  place_type?: string[];
 }
 
 interface Props {
@@ -118,7 +119,19 @@ export function PlaceEditorSheet({ initial, proximity, onClose, onSave }: Props)
                 width: '100%', padding: '12px 14px', textAlign: 'left',
                 borderTop: i > 0 ? `1px solid ${INK}10` : 'none', background: 'none', border: 'none', cursor: 'pointer',
               }}>
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.9rem', color: INK, fontWeight: 500 }}>{f.text}</div>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.9rem', color: INK, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.text}</span>
+                  {f.place_type?.[0] && (
+                    <span style={{
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: '0.48rem', letterSpacing: '0.14em',
+                      color: f.place_type[0] === 'poi' ? ACCENT : MUTED,
+                      border: `1px solid ${f.place_type[0] === 'poi' ? ACCENT + '55' : MUTED + '55'}`,
+                      borderRadius: 100, padding: '1px 6px', flexShrink: 0,
+                    }}>
+                      {f.place_type[0] === 'poi' ? 'PLACE' : f.place_type[0].toUpperCase()}
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.5rem', letterSpacing: '0.1em', color: MUTED, marginTop: 2 }}>{f.place_name}</div>
               </button>
             ))}
