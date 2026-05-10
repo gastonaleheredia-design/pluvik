@@ -526,7 +526,11 @@ function DashboardPage() {
           // Trust the row's current_forecast_stage first (always fresh after refresh),
           // fall back to latest snapshot, then to a hoursAhead-derived guess so old
           // rows with stale verdict words don't render decisive copy at climate range.
-          let stage = event.current_forecast_stage ?? latest?.stage ?? 'short_range';
+          const rawStage =
+            (event.current_forecast_stage && event.current_forecast_stage !== ('' as never))
+              ? event.current_forecast_stage
+              : latest?.stage ?? null;
+          let stage = rawStage ?? 'short_range';
           if (event.event_at) {
             const hours = (new Date(event.event_at).getTime() - Date.now()) / 3_600_000;
             if (hours > 360) stage = 'climate';
@@ -540,7 +544,7 @@ function DashboardPage() {
             !!event.event_at &&
             new Date(event.event_at).getTime() < Date.now() &&
             !event.archived_at;
-          const stageBadge =
+          const stageBadge: string =
             isPastDue ? 'WINDING DOWN'
             : stage === 'climate' ? 'TOO FAR OUT · TRACKING'
             : stage === 'outlook' ? 'LONG-RANGE TREND'
@@ -651,6 +655,9 @@ function DashboardPage() {
 
                 {/* Lifecycle pill — always present so every card has a label */}
                 <div
+                  data-stage={stage}
+                  data-badge={stageBadge}
+                  aria-label={`Tracking stage: ${stageBadge}`}
                   style={{
                     display: 'inline-block',
                     alignSelf: 'flex-start',
@@ -672,7 +679,7 @@ function DashboardPage() {
                     borderRadius: '100px',
                   }}
                 >
-                  {allClear ? 'All clear' : isArchived ? 'Tracking ended' : stageBadge}
+                  {allClear ? 'All clear' : isArchived ? 'Tracking ended' : (stageBadge || 'TRACKING')}
                 </div>
 
                 {/* Event name */}

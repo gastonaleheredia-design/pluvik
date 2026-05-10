@@ -1,49 +1,38 @@
-## What's wrong
+# Why the Monday card has no pill
 
-The dashboard already has a stage-badge system (`TOO FAR OUT · TRACKING`, `LONG-RANGE TREND`, `EARLY SIGNAL`, `LIVE`, `FORECAST`, `WINDING DOWN`). But the Monday card in your screenshot has no pill at all, even though the database shows it's at `short_range` stage. Two real problems:
+I traced the badge logic in `src/routes/dashboard.tsx` and checked the database:
 
-1. **The `short_range` label ("FORECAST") is too generic and not "tracking-flavored"** — it doesn't tell the user *where in the tracking lifecycle* this question lives. So even when it renders it doesn't feel like a sibling of `EARLY SIGNAL` / `TOO FAR OUT`.
-2. **Some cards still slip through with no pill** — when `current_forecast_stage` is `null` and we can't derive it from `event_at` (no date, or row predates the stage system), the chain returns `null` and the pill is hidden. Result: the card you circled has nothing where the badge should be.
+- Monday row: `current_forecast_stage = "short_range"`, `event_at` ~24 h away.
+- With the current code that should resolve to the **`COMING UP`** pill (orange accent on a tinted background) and render unconditionally above the question.
+- The other two visible cards (`model_trend` → EARLY SIGNAL, `climate` → TOO FAR OUT · TRACKING) follow the exact same code path and render fine.
 
-## What we'll change (UI only)
+So the logic is right, but something is still keeping that one pill off the screen. Two realistic causes:
 
-**Single file: `src/routes/dashboard.tsx`** (matching pill copy on `src/routes/event.$id.tsx` so detail and card stay in sync).
+1. **Stale bundle** — the screenshot may be from a build before the "always render the pill" change actually shipped to your preview. A hard reload (or the tab still holding an old JS chunk) would explain why only that card looks wrong while the new labels (`EARLY SIGNAL`, `TOO FAR OUT · TRACKING`) appear on the others — those rows happen to also satisfy the *old* conditional that hid the pill for `short_range`.
+2. **Defensive gap** — the pill is rendered inside the same flex column as the question, but there is no test asserting "every card has a pill". If any future row returns an unexpected `current_forecast_stage` value (e.g. an empty string instead of `null`), the ternary chain falls through to `'TRACKING'` correctly, but a regression could silently break it again.
 
-### 1. Rename the stage labels so they form a clear tracking ladder
+# Plan
 
-Keep the same five stages, just give them names that read like a timeline a user is moving down:
+Single file change: `src/routes/dashboard.tsx`.
 
-| Stage              | Old badge               | New badge              |
-|--------------------|-------------------------|------------------------|
-| `climate`          | TOO FAR OUT · TRACKING  | TOO FAR OUT · TRACKING *(unchanged)* |
-| `outlook`          | LONG-RANGE TREND        | LONG-RANGE TREND *(unchanged)* |
-| `model_trend`      | EARLY SIGNAL            | EARLY SIGNAL *(unchanged)* |
-| `short_range`      | FORECAST                | **COMING UP**          |
-| `live`             | LIVE                    | **HAPPENING NOW**      |
-| past-due, active   | WINDING DOWN            | WINDING DOWN *(unchanged)* |
-| archived           | Tracking ended          | Tracking ended *(unchanged)* |
-| archived + benign  | All clear               | All clear *(unchanged)* |
+1. **Harden the stage resolver** so the pill text can never be empty:
+   - Normalize `event.current_forecast_stage` (`?? null`, treat `''` as null).
+   - Keep the existing `hours`-based override.
+   - Final fallback stays `'TRACKING'`.
 
-This gives a readable order on the Tracking screen: TOO FAR OUT → LONG-RANGE TREND → EARLY SIGNAL → COMING UP → HAPPENING NOW → WINDING DOWN → TRACKING ENDED.
+2. **Make the pill self-evident in the DOM** for debugging:
+   - Add `data-stage={stage}` and `data-badge={stageBadge}` on the pill `<div>`. No visual change; lets us confirm via the inspector that the element is actually in the tree on the Monday card.
 
-### 2. Guarantee every card has a badge
+3. **Force a fresh client bundle** for the pill component:
+   - Tiny cosmetic touch (e.g. add an `aria-label` on the pill) so Vite invalidates the chunk and any stale cached JS is replaced on next load.
 
-Today the pill block is wrapped in `(allClear || isArchived || stageBadge)`. If `stageBadge` is `null` (no stage, no event date) the whole pill disappears. We will:
-
-- Add a final fallback: if no stage can be resolved and the row isn't archived/past-due, show **`TRACKING`** as a neutral pill (same muted style we use for `TOO FAR OUT`).
-- Drop the conditional wrapper so the pill div is always rendered for any non-archived, non-allClear card.
-
-### 3. Color tier matches "how soon"
-
-Two visual tiers (we already use both — just apply consistently):
-
-- **Muted/grey pill** (`INK + '0d'` bg, `MUTED` text): `TRACKING`, `TOO FAR OUT · TRACKING`, `LONG-RANGE TREND` — the "still far away, just watching" tier.
-- **Accent pill** (`ACCENT + '14'` bg, `ACCENT` text): `EARLY SIGNAL`, `COMING UP`, `HAPPENING NOW`, `WINDING DOWN` — the "this is real / imminent" tier.
-
-Archived stays grey, "All clear" stays green.
+4. **Verification steps after the edit**:
+   - Reload the Tracking page.
+   - Confirm all four cards show a pill (`COMING UP`, `EARLY SIGNAL`, `TOO FAR OUT · TRACKING`, plus the November `climate` row).
+   - Inspect the Monday card in dev tools and confirm `data-stage="short_range"` `data-badge="COMING UP"` is present.
 
 ## Out of scope
 
-- No DB / migration changes (stages already persist in `current_forecast_stage`).
-- No changes to the AI / answer pipeline or to how stages are classified.
-- No new cards, animations, or layout shifts — only the badge text + the always-render fallback.
+- No DB / migration / refresh-pipeline changes.
+- No changes to the event detail page or to the verdict-word logic.
+- No restyling of the pill colors or tier rules — only the always-render guarantee plus debug attributes.
