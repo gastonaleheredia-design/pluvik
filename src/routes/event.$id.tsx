@@ -175,8 +175,7 @@ function EventPage() {
           event_at: a.event_at ?? event.event_at ?? null,
           current_forecast_stage: a.forecast_stage ?? event.current_forecast_stage ?? null,
           current_climate_facts:
-            ((a as { climate_facts?: TrackedEvent['current_climate_facts'] })
-              .climate_facts as unknown as never) ?? null,
+            ((a as { climate_facts?: unknown }).climate_facts as never) ?? null,
         })
         .eq('id', event.id);
 
