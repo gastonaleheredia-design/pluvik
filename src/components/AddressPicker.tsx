@@ -6,12 +6,31 @@ import { supabase } from '../lib/supabase';
 import { MAPBOX_TOKEN } from '../config/keys';
 import { reverseGeocodeShort } from '../lib/shortPlace';
 
-interface MapboxFeature {
-  id: string;
+/**
+ * A suggestion row from the Mapbox Search Box API. This API (unlike the
+ * older /geocoding/v5/mapbox.places endpoint) is backed by a real POI
+ * index, so it returns airports, parks, restaurants, businesses, etc. by
+ * name — exactly what was missing before.
+ */
+interface Suggestion {
+  mapbox_id: string;
+  name: string;
+  /** e.g. "poi", "address", "place", "street", "neighborhood", "postcode". */
+  feature_type: string;
+  /** Single-line address shown as the secondary text. */
+  place_formatted?: string;
+  /** Optional richer address string. */
+  full_address?: string;
+}
+
+/** Resolved (post-/retrieve) form of a suggestion that we can save. */
+interface ResolvedPlace {
+  mapbox_id: string;
+  name: string;
+  feature_type: string;
   place_name: string;
-  center: [number, number];
-  text: string;
-  place_type?: string[];
+  lat: number;
+  lon: number;
 }
 
 interface SavedPlace {
@@ -32,18 +51,25 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   const { address: currentAddress, setAddress, resumeFollowing, setFollowing } = useAddress();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<MapboxFeature[]>([]);
+  const [results, setResults] = useState<Suggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
-  const [selectedFeature, setSelectedFeature] = useState<MapboxFeature | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<ResolvedPlace | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [nickname, setNickname] = useState('');
   const [savingPlace, setSavingPlace] = useState(false);
   const [prevAddress, setPrevAddress] = useState<SelectedAddress | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detectAbortRef = useRef<{ abort: () => void } | null>(null);
+  // Mapbox Search Box requires a stable session token across suggest+retrieve
+  // calls for one user search session (it's how they bill and dedupe).
+  const sessionTokenRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   // If the picker unmounts while detection is in flight, abort it so we
   // don't leave the "Detecting…" state stranded or update state on an
@@ -73,24 +99,24 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const encoded = encodeURIComponent(query);
         const params = new URLSearchParams({
+          q: query,
           access_token: MAPBOX_TOKEN,
-          country: 'US',
-          limit: '6',
-          // POI first so business / venue names rank above street addresses.
-          types: 'poi,address,place,locality,neighborhood,postcode',
-          autocomplete: 'true',
+          session_token: sessionTokenRef.current,
+          country: 'us',
+          limit: '8',
+          language: 'en',
+          types: 'poi,address,place,locality,neighborhood,postcode,street,district',
         });
         if (currentAddress.lat != null && currentAddress.lon != null) {
           params.set('proximity', `${currentAddress.lon},${currentAddress.lat}`);
         }
         const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?${params.toString()}`
+          `https://api.mapbox.com/search/searchbox/v1/suggest?${params.toString()}`,
         );
         if (res.ok) {
           const data = await res.json();
-          setResults(data.features ?? []);
+          setResults((data?.suggestions ?? []) as Suggestion[]);
         }
       } catch {
         setResults([]);
@@ -190,17 +216,57 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     );
   };
 
-  const handleSelectResult = (feature: MapboxFeature) => {
-    const [lon, lat] = feature.center;
+  const handleSelectResult = async (suggestion: Suggestion) => {
+    // Search Box returns suggestions without coordinates; we have to call
+    // /retrieve with the same session token to get the actual lat/lon.
+    let lat: number | null = null;
+    let lon: number | null = null;
+    let placeName =
+      suggestion.full_address ||
+      [suggestion.name, suggestion.place_formatted].filter(Boolean).join(' · ');
+    try {
+      const r = await fetch(
+        `https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(suggestion.mapbox_id)}` +
+          `?access_token=${MAPBOX_TOKEN}&session_token=${sessionTokenRef.current}`,
+      );
+      if (r.ok) {
+        const j = await r.json();
+        const f = j?.features?.[0];
+        const coords: [number, number] | undefined = f?.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length === 2) {
+          lon = coords[0];
+          lat = coords[1];
+        }
+        const props = f?.properties ?? {};
+        if (props.full_address) placeName = props.full_address;
+        else if (props.place_formatted && props.name)
+          placeName = `${props.name}, ${props.place_formatted}`;
+      }
+    } catch {
+      // Swallow — handled by the null check below.
+    }
+    if (lat == null || lon == null) {
+      // Couldn't resolve coordinates; surface a soft hint and bail out.
+      setDetectError("Couldn't load that place. Try another result.");
+      return;
+    }
     setPrevAddress(currentAddress ?? null);
     setAddress({
-      label: feature.place_name,
+      label: placeName,
       meta: 'US LOCATION',
       lat,
       lon,
     });
+    const resolved: ResolvedPlace = {
+      mapbox_id: suggestion.mapbox_id,
+      name: suggestion.name,
+      feature_type: suggestion.feature_type,
+      place_name: placeName,
+      lat,
+      lon,
+    };
     if (user) {
-      setSelectedFeature(feature);
+      setSelectedFeature(resolved);
       setQuery('');
       setResults([]);
       setShowSaveModal(true);
@@ -224,13 +290,12 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
   const handleSavePlace = async () => {
     if (!user || !nickname.trim() || !selectedFeature) return;
     setSavingPlace(true);
-    const [lon, lat] = selectedFeature.center;
     await supabase.from('saved_places').insert({
       user_id: user.id,
       nickname: nickname.trim(),
       address: selectedFeature.place_name,
-      lat,
-      lon,
+      lat: selectedFeature.lat,
+      lon: selectedFeature.lon,
       emoji: '📍',
     });
     setSavingPlace(false);
