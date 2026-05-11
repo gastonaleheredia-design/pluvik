@@ -20,6 +20,7 @@ import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetc
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 import { isRainYesNoQuestion } from './headlineAnswer';
+import { pickConfidenceAwareWord } from './headlineAnswer';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -646,6 +647,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
+      `TIME-LABEL RULES (mandatory):\n` +
+      `- Anchor every answer to the EXACT window the user asked about. Do not switch to a more dramatic forecast block outside that window.\n` +
+      `- Every time reference in summary, verdict_sentence, decision_window, main_concern, timing, and timeline.hour_label MUST include a day word: "tonight", "tomorrow morning", "Sun afternoon", "Mon 3 PM", etc. NEVER write a bare "2–3 PM" or "this afternoon" without anchoring it to a date.\n` +
+      `- If a more severe event sits OUTSIDE the asked window (e.g. user asked about the next hour but a severe risk arrives overnight), put it in the "active_alerts" array as one short sentence — never in the headline.\n\n` +
       `RESPOND WITH A SINGLE JSON OBJECT ONLY. No prose, no markdown fences, no commentary. Start your reply with "{" and end with "}".`;
 
     const controller = new AbortController();
@@ -783,6 +788,22 @@ export const askWeather = createServerFn({ method: 'POST' })
           (validated.data as any).verdict_word = 'YES';
         }
       }
+    }
+
+    // Confidence-matched headline word. Never let a confident YES/NO sit on
+    // top of a LOW confidence stamp. We compute the soft word once on the
+    // server so every screen sees the same value.
+    {
+      const rawWord = (validated.data as any).verdict_word as 'YES' | 'NO' | 'MAYBE' | undefined;
+      const conf = (validated.data.confidence ?? 'MEDIUM') as
+        'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
+      const pct = typeof validated.data.percentage === 'number'
+        ? validated.data.percentage
+        : null;
+      const soft = pickConfidenceAwareWord({ rawWord: rawWord ?? null, confidence: conf, percentage: pct });
+      // Keep verdict_word as YES/NO/MAYBE for backward compatibility with
+      // legacy code, but expose `display_word` as the soft headline.
+      (validated.data as any).display_word = soft;
     }
 
     return {
