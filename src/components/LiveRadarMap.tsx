@@ -554,6 +554,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     }
     setGpsBusy(true);
     setGpsError(null);
+    closeAllPanels();
     let settled = false;
     const hardTimer = setTimeout(() => {
       if (settled) return;
@@ -583,6 +584,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       // lat/lon props, which centers the map and refreshes warnings.
       setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
       resumeFollowing();
+      setPrecise(true);
     };
     const onErr = (err: GeolocationPositionError) => {
       if (settled) return;
@@ -599,6 +601,48 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     navigator.geolocation.getCurrentPosition(onOk, onErr,
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 });
   };
+
+  // Silent first-open GPS prompt: if the saved address is the default city
+  // centroid (or any non-FOLLOWING manual pick that lacks a street number),
+  // try once to upgrade to a precise GPS fix without surfacing errors.
+  const autoPromptedRef = useRef(false);
+  useEffect(() => {
+    if (autoPromptedRef.current) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    const looksCoarse =
+      // Default Houston centroid
+      (lat === 29.7604 && lon === -95.3698) ||
+      // Heuristic: city/state-only labels — no digits, ≤2 comma segments.
+      false;
+    if (!looksCoarse) {
+      setPrecise(true);
+      autoPromptedRef.current = true;
+      return;
+    }
+    autoPromptedRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const la = pos.coords.latitude;
+        const lo = pos.coords.longitude;
+        let label = `${la.toFixed(4)}, ${lo.toFixed(4)}`;
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${lo},${la}.json?access_token=${MAPBOX_TOKEN}&limit=1`,
+          );
+          if (res.ok) {
+            const f = (await res.json())?.features?.[0];
+            if (f?.place_name) label = f.place_name;
+          }
+        } catch { /* keep coord label */ }
+        setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
+        resumeFollowing();
+        setPrecise(true);
+      },
+      () => { /* silent — user can still tap 📍 */ },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Ruler tool: render a line + label between rulerPts ---
   useEffect(() => {
