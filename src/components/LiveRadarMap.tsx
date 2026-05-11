@@ -462,10 +462,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     for (const f of fc.features) {
       const g = f.geometry as GeoJSON.Geometry | undefined;
       if (!g) continue;
-      const c = polygonCentroidLngLat(g);
-      if (!c) continue;
-      const dy = (c.lat - la) * 69;
-      const dx = (c.lon - lo) * 69 * cosLat;
+      const ctr = polygonCentroidLngLat(g);
+      if (!ctr) continue;
+      const dy = (ctr.lat - la) * 69;
+      const dx = (ctr.lon - lo) * 69 * cosLat;
       if (Math.hypot(dx, dy) > FIT_RADIUS_MI) continue;
       const rings: number[][][] = g.type === "Polygon"
         ? (g.coordinates as number[][][])
