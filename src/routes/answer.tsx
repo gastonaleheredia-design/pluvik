@@ -558,7 +558,7 @@ function AnswerPage() {
 
   // 3-up vitals row. We always show CHANCE (the headline number), then up to
   // two scenario-relevant facts pulled from the validated answer.
-  const chanceValue = typeof answer.percentage === 'number' ? `${answer.percentage}%` : (headlineForStage?.value ?? '—');
+  const chanceValue = typeof answer.percentage === 'number' ? `${answer.percentage}%` : '—';
   const vitals: Array<{ label: string; value: string }> = [
     { label: 'CHANCE OF RAIN', value: chanceValue },
     ...(answer.time_context ? [{ label: 'WINDOW', value: answer.time_context }] : []),
