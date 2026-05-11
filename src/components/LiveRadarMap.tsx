@@ -235,6 +235,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const frameIdxRef = useRef<number>(0);
   const playingRef = useRef<boolean>(true);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentProfileRef = useRef<"station" | "iem-mosaic" | "rv" | null>(null);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [playing, setPlaying] = useState(true);
