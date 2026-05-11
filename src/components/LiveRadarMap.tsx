@@ -247,6 +247,7 @@ interface MiniCardData {
   id: string;
   event: string;
   expires: string | null;
+  phenomena?: string;
 }
 
 export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
