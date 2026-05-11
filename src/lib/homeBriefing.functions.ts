@@ -690,8 +690,20 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
         sentence = `Lluvia justo encima — celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}.`;
       else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
-        sentence = 'Lluvia comenzando en la próxima hora.';
+        sentence = nextHourProb >= 60
+          ? 'Lluvia comenzando en la próxima hora.'
+          : `Lluvia posible en la próxima hora (${nextHourProb}% prob).`;
     }
+
+    // Confidence stamp for the headline word — used by UI to soften copy.
+    let confidence: 'high' | 'medium' | 'low' = 'medium';
+    if (activeAlert || stormOverride) confidence = 'high';
+    else if (word === 'RAINING' || word === 'STORMS' || word === 'SNOW') confidence = 'high';
+    else if (word === 'RAIN SOON') {
+      if (nextHourProb >= 70) confidence = 'high';
+      else if (nextHourProb >= 50) confidence = 'medium';
+      else confidence = 'low';
+    } else if (word === 'DRY' || word === 'CLOUDY') confidence = 'high';
 
     // Local "updated at" string in the address's timezone.
     const updatedLocal = new Date().toLocaleTimeString(language.startsWith('es') ? 'es-US' : 'en-US', {
@@ -746,6 +758,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      next_hour_prob: Number.isFinite(nextHourProb) ? Math.round(nextHourProb) : null,
+      confidence,
       why: await buildWhyPayload({
         lat, lon, language,
         word,
