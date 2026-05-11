@@ -429,6 +429,15 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       if (isRain) { nextRainIdx = i; break; }
     }
 
+    // Probability of rain in the next ~1 hour at the user's point. Used to
+    // decide whether RAIN SOON is a confident "starting" claim or a softer
+    // "possible" claim — so the home headline can't out-confidently disagree
+    // with the answer engine.
+    const i0 = Math.max(nowIdx, 0);
+    const probNow = Number.isFinite(probs[i0]) ? probs[i0] : 0;
+    const probNext = Number.isFinite(probs[i0 + 1]) ? probs[i0 + 1] : 0;
+    const nextHourProb = Math.max(probNow ?? 0, probNext ?? 0);
+
     let hoursUntilRain: number | null = null;
     let nextRainCaption: string | null = null;
     if (nextRainIdx >= 0) {
