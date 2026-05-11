@@ -586,8 +586,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
-      if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
-      if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
+      enforceLayerOrder(map);
       fitToWarnings(map, data, la, lo);
       return;
     }
@@ -614,7 +613,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           "TR", "#B22222",
           "#ef4444"
         ] as any,
-        "fill-opacity": 0.32,
+        "fill-opacity": 0.28,
       },
     });
     map.addLayer({
@@ -640,10 +639,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           "#dc2626"
         ] as any,
         // Slightly thicker stroke when the user is INSIDE the polygon.
-        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
+        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2.5],
       },
     });
     wireWarningInteractions(map);
+    enforceLayerOrder(map);
     fitToWarnings(map, data, la, lo);
   }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
