@@ -112,7 +112,7 @@ function AnswerPage() {
       case 'model_trend':
         return [
           'Checking the early model signals…',
-          'Comparing GFS, ECMWF, ICON…',
+          'Comparing the major weather models…',
           'Looking for model agreement…',
         ];
       case 'live':
