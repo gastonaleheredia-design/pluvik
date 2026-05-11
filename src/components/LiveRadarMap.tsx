@@ -1009,21 +1009,25 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-// Color stops per mode (display only — actual pixels come from RainViewer tiles).
+// Color stops sampled from RainViewer color scheme 6 (NEXRAD Level III) so
+// the legend mirrors the pixels actually painted on the map. The lower
+// dBZ buckets are the cyan/blue rings users see on the outer edge of cells.
 const RAIN_STOPS = [
-  { tag: "5+",  color: "#7cfc8d", label: "Light" },
+  { tag: "5+",  color: "#04e9e7", label: "Trace" },
+  { tag: "15+", color: "#0a73e6", label: "Light" },
   { tag: "20+", color: "#15c40a", label: "Moderate" },
   { tag: "35+", color: "#fef000", label: "Heavy" },
-  { tag: "50+", color: "#fd7e00", label: "Intense" },
-  { tag: "60+", color: "#fc0000", label: "Severe" },
-  { tag: "70+", color: "#fc00ff", label: "Hail" },
+  { tag: "45+", color: "#fd7e00", label: "Intense" },
+  { tag: "55+", color: "#fc0000", label: "Severe" },
+  { tag: "65+", color: "#fc00ff", label: "Extreme / hail" },
 ];
 const MIX_STOPS = [
-  { tag: "5+",  color: "#7cfc8d", label: "Light mix" },
+  { tag: "5+",  color: "#04e9e7", label: "Trace mix" },
+  { tag: "15+", color: "#0a73e6", label: "Light mix" },
   { tag: "20+", color: "#15c40a", label: "Sleet" },
   { tag: "35+", color: "#fef000", label: "Freezing rain" },
-  { tag: "50+", color: "#fd7e00", label: "Heavy mix" },
-  { tag: "60+", color: "#fc0000", label: "Ice storm" },
+  { tag: "45+", color: "#fd7e00", label: "Heavy mix" },
+  { tag: "55+", color: "#fc0000", label: "Ice storm" },
 ];
 const SNOW_STOPS = [
   { tag: "5+",  color: "#cfe8ff", label: "Trace" },
