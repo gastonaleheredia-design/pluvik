@@ -739,28 +739,45 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       </div>
 
       {/* Right toolbar */}
-      <div style={toolbarStyle}>
+      <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
         <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
         <ToolBtn label="◎" title="Recenter" onClick={recenter} />
-        <ToolBtn label={gpsBusy ? "…" : "📍"} title="My location (GPS)" onClick={useMyLocation} />
+        <ToolBtn
+          label={gpsBusy ? "…" : "📍"}
+          title="My location (GPS)"
+          onClick={useMyLocation}
+          accent={precise}
+        />
         <ToolBtn
           label="📡"
           title="Radar source"
-          onClick={() => setSourceMenuOpen((o) => !o)}
+          onClick={() => {
+            const willOpen = !sourceMenuOpen;
+            closeAllPanels();
+            setSourceMenuOpen(willOpen);
+          }}
         />
         {isFullscreen && (
           <>
             <ToolBtn
               label="📏"
               title={tool === "ruler" ? "Exit ruler" : "Measure distance"}
-              onClick={() => { setTool(tool === "ruler" ? "none" : "ruler"); setRulerPts([]); }}
+              onClick={() => {
+                const next = tool === "ruler" ? "none" : "ruler";
+                closeAllPanels();
+                setTool(next);
+              }}
             />
             <ToolBtn
               label="🎯"
               title={tool === "pin" ? "Exit pin" : "Drop a pin"}
-              onClick={() => { setTool(tool === "pin" ? "none" : "pin"); setPinInfo(null); }}
+              onClick={() => {
+                const next = tool === "pin" ? "none" : "pin";
+                closeAllPanels();
+                setTool(next);
+              }}
             />
           </>
         )}
