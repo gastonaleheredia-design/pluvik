@@ -219,6 +219,10 @@ export interface ExtendedWeatherAnswer {
   verdict_word?: 'YES' | 'NO' | 'MAYBE';
   verdict_sentence?: string;
   headline_number?: { value: string; label: string } | null;
+  /** Confidence-matched soft headline (YES/LIKELY/POSSIBLE/MAYBE/MONITOR/UNLIKELY/NO). */
+  display_word?: 'YES' | 'LIKELY' | 'POSSIBLE' | 'MAYBE' | 'MONITOR' | 'UNLIKELY' | 'NO';
+  /** Human-readable label for the asked window, set by the client UI. */
+  window_label?: string;
   /** Three-part rationale shown only when verdict_word === 'MAYBE'. */
   maybe_explanation?: {
     afd_quote: string;
