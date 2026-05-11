@@ -14,28 +14,47 @@ export async function reverseGeocodeShort(
   token: string,
 ): Promise<string> {
   const fallback = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json` +
-        `?access_token=${token}&limit=1&types=neighborhood,place&language=en`,
-    );
-    if (!res.ok) return fallback;
-    const f = (await res.json())?.features?.[0];
-    if (!f) return fallback;
+  const base = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json`;
+  const fetchOne = async (types: string) => {
+    try {
+      const res = await fetch(
+        `${base}?access_token=${token}&limit=1&types=${types}&language=en`,
+      );
+      if (!res.ok) return null;
+      const f = (await res.json())?.features?.[0];
+      return f ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1) Ask specifically for a neighborhood. With a dedicated request Mapbox
+  //    won't substitute the city for the neighborhood; if it has one, we get it.
+  const hood = await fetchOne("neighborhood");
+  if (hood) {
     const ctx: Array<{ id?: string; text?: string; short_code?: string }> =
-      f.context ?? [];
+      hood.context ?? [];
     const placeText = ctx.find((c) => c.id?.startsWith("place"))?.text;
+    if (placeText) return `${hood.text}, ${placeText}`;
+    if (hood.text) return hood.text;
+  }
+
+  // 2) No neighborhood — fall back to locality first, then the city.
+  const cityish = await fetchOne("locality,place");
+  if (cityish) {
+    const ctx: Array<{ id?: string; text?: string; short_code?: string }> =
+      cityish.context ?? [];
     const regionEntry = ctx.find((c) => c.id?.startsWith("region"));
     const regionShort = regionEntry?.short_code?.replace(/^US-/i, "");
     const region = regionShort || regionEntry?.text;
-    if (f.id?.startsWith("neighborhood") && placeText) {
-      return `${f.text}, ${placeText}`;
+    if (cityish.id?.startsWith("locality")) {
+      const placeText = ctx.find((c) => c.id?.startsWith("place"))?.text;
+      if (placeText) return `${cityish.text}, ${placeText}`;
+      if (region) return `${cityish.text}, ${region}`;
     }
-    if (f.id?.startsWith("place") && region) {
-      return `${f.text}, ${region}`;
-    }
-    return f.text || fallback;
-  } catch {
-    return fallback;
+    if (region) return `${cityish.text}, ${region}`;
+    if (cityish.text) return cityish.text;
   }
+
+  return fallback;
 }

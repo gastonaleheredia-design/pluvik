@@ -1,78 +1,71 @@
-## Problem
+# Two fixes for the address picker
 
-The home (6:57 AM) and answer (6:56 AM) screens still disagree, and the answer screen has internal contradictions:
+You've actually surfaced two separate problems. They live in different files and have different root causes, so I'll fix them together but keep them clean.
 
-| Surface | Says | Number | Confidence |
-|---|---|---|---|
-| Home | "RAIN SOON · Rain possible within the hour" | **26%** | (low) |
-| Answer headline | "NO · No rain expected" | **8%** | **HIGH** |
-| Answer sentence | "...this **Sunday midday hour**" | — | — |
-| Answer window pill | "THIS MORNING **6:56 AM — 7:56 AM**" | — | — |
-| Answer rain strip | labeled "NEXT 12 HOURS FROM NOW" but axis shows **SUN 10 AM → SUN 4 PM** | — | — |
+---
 
-So we have four separate consistency bugs, not one:
+## Problem 1 — "Use my current location" shows "Houston, TX" instead of the neighborhood
 
-1. **Two different probabilities for the same hour.** Home reads `nextHourProb` from Open-Meteo hourly (26%). Answer reads from the LLM-summarized HRRR briefing (8%). They never share a number.
-2. **`RAIN SOON` still fires at 26%.** A 1-in-4 chance shouldn't be a headline word at all; it should be `CLOUDY` / `DRY` with a soft caption.
-3. **LLM sentence ignores the window.** The window pill correctly says "6:56–7:56 AM" but the prose says "Sunday midday hour" — the model wrote about midday because the briefing text shows midday hours. The window-locking rule in the system prompt isn't being enforced server-side.
-4. **Rain strip doesn't start at "now".** It shows 10 AM → 4 PM even though the header reads "NEXT 12 HOURS FROM NOW", because the strip is reading hourly buckets indexed from the event window, not from `Date.now()`.
+**Where:** `src/lib/shortPlace.ts` (used by both `AddressPicker.tsx` and the auto-follow watcher in `addressContext.tsx`).
 
-## What to change
+**Why:** We currently call Mapbox with `limit=1&types=neighborhood,place`. With both types allowed and only one result, Mapbox is free to return the `place` (city) as the "most relevant" feature, and for many Houston points it does exactly that. The neighborhood feature exists — we're just not asking for it specifically.
 
-```text
-                  ┌────────────────────────┐
-   Home  ─────►   │   sharedNowcast(lat,   │   ◄──── Answer
-                  │   lon)                 │
-                  │   • prob_next_60m      │
-                  │   • prob_source        │
-                  │   • verdict_word       │
-                  │   • soft_word          │
-                  │   • window_label       │
-                  └────────────────────────┘
-```
+**Fix:** Replace the single combined call with a tiered strategy:
 
-### 1. Single shared "next-hour nowcast"
-Add `src/lib/nowcastShared.ts` exporting `getNextHourNowcast(lat, lon)`:
-- pulls HRRR `minutely_15` precipitation (already used by home),
-- pulls Open-Meteo hourly probability for the current + next hour,
-- returns `{ probNextHour, mmNext60, hasActiveCellNearby, confidence, sourceTag }`.
-- Cache 2 min in-memory by `lat,lon`.
+1. First call: `?limit=1&types=neighborhood&language=en` — if a feature is returned, render `"Neighborhood, City"` using its `context` for the city name.
+2. Fallback: `?limit=1&types=locality,place&language=en` — render `"Locality, ST"` or `"City, ST"`.
+3. Last resort: keep the existing `lat, lon` numeric fallback.
 
-Both `homeBriefing.functions.ts` and `askWeather.functions.ts` call this **before** doing any LLM work and stamp the result onto the response. The LLM is told "do not contradict `prob_next_hour`."
+This guarantees that whenever Mapbox knows a neighborhood for the point, we render it.
 
-### 2. Stricter `RAIN SOON` gate on home
-In `homeBriefing.functions.ts`:
-- `RAIN SOON` only fires when `probNextHour >= 50` **or** `mmNext60 > 0.05` from minutely.
-- 25–49% → word stays `CLOUDY` (or `DRY`) with caption "Slight rain chance ~Xh".
-- <25% → no rain caption at all.
+---
 
-This kills the "26% → RAIN SOON" failure mode at the source.
+## Problem 2 — Searching "Houston Airport" / a park / a restaurant returns no places
 
-### 3. Server-side sentence override for `next hour` questions
-In `askWeather.functions.ts`, when `extractEventTimeFromQuestion` returns a "next hour" / "now" / "soon" window:
-- Skip the LLM-written `verdict_sentence` entirely and synthesize it from the shared nowcast:
-  - `display_word === 'NO'` → "No rain at your location in the next hour."
-  - `display_word === 'MAYBE'/'POSSIBLE'/'MONITOR'` → "Light rain chance in the next hour (X%)."
-  - `display_word === 'YES'/'LIKELY'` → "Rain expected within the hour (X%)."
-- Keep the LLM's longer narrative for the "ALSO WORTH KNOWING" section, but the headline sentence must come from deterministic data so it can never say "Sunday midday hour" for a "next hour" question.
+**Where:** `src/components/AddressPicker.tsx` (and the smaller `PlaceEditorSheet.tsx`).
 
-### 4. Fix the 12-hour rain strip axis
-In the answer screen's rain strip component:
-- For `next hour` / `now` / `soon` questions, anchor the strip at `Date.now()` and label both ends from "now" (e.g. `7 AM` → `7 PM`), regardless of the parsed event window.
-- For dated questions (Saturday 3–8 PM), keep the existing "around the event window" behavior.
+**Why:** We're using the **Mapbox Geocoding v5 API** (`/geocoding/v5/mapbox.places/...`). Even with `types=poi` included, this endpoint has a very thin POI catalogue — it's primarily an address geocoder. Airports, parks, restaurants, businesses by name often return **zero hits** here. Mapbox's own recommendation for POI / venue search is the newer **Search Box API** (`/search/searchbox/v1/suggest` + `/retrieve`), which uses the same access token but is backed by a proper POI index (it's what powers Mapbox's own search UI).
 
-## Technical notes
+**Fix:** Switch the suggestions in `AddressPicker.tsx` and `PlaceEditorSheet.tsx` to the Search Box API:
 
-- New file: `src/lib/nowcastShared.ts` (pure server util, no `.server.ts` suffix needed since it's only imported from `*.functions.ts`).
-- Edits:
-  - `src/lib/homeBriefing.functions.ts` — replace `fetchMinutelyAtPoint` + ad-hoc prob calc with `getNextHourNowcast`, raise `RAIN SOON` threshold.
-  - `src/lib/askWeather.functions.ts` — call `getNextHourNowcast` for short-window questions; override `verdict_sentence` and `percentage` from it before validation.
-  - `src/routes/answer.tsx` (rain strip section) — anchor the 12-hour strip to `Date.now()` when the parsed window is a "next hour" type.
-- No DB schema changes, no new env vars.
-- The existing `pickConfidenceAwareWord` and `buildWindowLabel` keep working — we're only replacing the *probability source* and the *headline sentence builder*, not the verdict logic.
+1. **Suggest call** as the user types:
+   ```
+   GET https://api.mapbox.com/search/searchbox/v1/suggest
+       ?q={query}
+       &access_token={token}
+       &session_token={uuid}
+       &country=us
+       &limit=8
+       &proximity={lon},{lat}    (when we have it)
+       &types=poi,address,place,locality,neighborhood,postcode,street
+   ```
+2. **Retrieve call** when the user picks a row, to get the actual lat/lon:
+   ```
+   GET https://api.mapbox.com/search/searchbox/v1/retrieve/{mapbox_id}
+       ?access_token={token}
+       &session_token={uuid}
+   ```
+3. Reuse a stable `session_token` (a single UUID stored in a ref) for one user search session, per Mapbox billing/UX rules.
+4. Render each suggestion using its `name` (POI/business name), its `feature_type` for the chip ("PLACE", "ADDRESS", "AIRPORT", etc.), and its `place_formatted` line for the secondary text. The current row UI doesn't need to change visually — only the data source.
 
-## Out of scope
+After the swap, typing "Houston airport" will return George Bush Intercontinental and Hobby; typing a restaurant name will return the actual restaurant; typing a park name will return the park.
 
-- Re-tuning the verdict thresholds for non-rain questions (severe, hurricane).
-- Caching across cold starts (in-memory only — fine for this fix).
-- Changing the home → answer navigation; both screens still call independently, they just share the same nowcast result.
+---
+
+## Files touched
+
+- `src/lib/shortPlace.ts` — tiered reverse-geocode strategy (Problem 1).
+- `src/components/AddressPicker.tsx` — switch suggestions to Search Box API + session token + retrieve step (Problem 2).
+- `src/components/PlaceEditorSheet.tsx` — same switch, so the question-chip place picker also finds POIs (Problem 2).
+
+No business logic, no design tokens, no other files touched.
+
+---
+
+## Verification (after implementation)
+
+In the published / opened-in-tab preview:
+
+1. Tap header → "Use my current location" → header should show `Neighborhood, Houston` (e.g. `Sharpstown, Houston`), not `Houston, TX`. Green "live" dot stays.
+2. Tap header → type `Houston airport` → should see at least one airport suggestion with an `AIRPORT` / `POI` chip.
+3. Type a nearby park or restaurant name → should see POI suggestions, not just the matching street name.
