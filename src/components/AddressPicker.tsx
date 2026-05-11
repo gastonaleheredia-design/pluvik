@@ -115,34 +115,25 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     setDetectError(null);
 
     let settled = false;
-    const fallbackTimer = setTimeout(() => {
-      if (settled) return;
-      // High-accuracy hung — try a quick low-accuracy pass.
-      navigator.geolocation.getCurrentPosition(onSuccess, onError,
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60_000 });
-    }, 4000);
     // Hard total cap so the button never sticks on "Detecting…".
     const hardTimer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      clearTimeout(fallbackTimer);
       setDetectingLocation(false);
       setDetectError('Took too long to find you. Try again.');
       console.warn('[AddressPicker] geolocation hard timeout');
-    }, 12000);
+    }, 14000);
 
     detectAbortRef.current = {
       abort: () => {
         if (settled) return;
         settled = true;
-        clearTimeout(fallbackTimer);
         clearTimeout(hardTimer);
         setDetectingLocation(false);
       },
     };
 
     const finish = () => {
-      clearTimeout(fallbackTimer);
       clearTimeout(hardTimer);
       setDetectingLocation(false);
     };
@@ -158,26 +149,44 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
       onClose();
     };
 
-    const onError: PositionErrorCallback = (err) => {
+    // Safari iOS sometimes refuses high-accuracy when Wi-Fi positioning
+    // can answer quickly — and silently times out. We try a fast standard
+    // fix first; if that fails or is too imprecise, we retry with high
+    // accuracy. The current address is preserved on failure so the user
+    // does NOT silently fall back to Houston.
+    const onFinalError: PositionErrorCallback = (err) => {
       if (settled) return;
       settled = true;
       finish();
       console.warn('[AddressPicker] geolocation failed', { code: err.code, message: err.message });
-      // Permission denied — turn off auto-follow so the background
-      // watchPosition loop doesn't keep retrying and emitting errors.
       if (err.code === 1) setFollowing(false);
       setDetectError(
-        err.code === 1 ? 'Location is blocked. Enable it in your browser/system settings, then try again.' :
-        err.code === 2 ? "Couldn't read your GPS. Try again in a moment." :
+        err.code === 1 ? 'Location is blocked. Enable it for this site in Safari → Settings → Websites → Location, then try again.' :
+        err.code === 2 ? "Couldn't read your GPS. Move near a window or try again in a moment." :
         err.code === 3 ? 'Took too long to find you. Try again.' :
         'Location error.'
       );
     };
 
+    const tryHighAccuracy = () => {
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        onFinalError,
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+      );
+    };
+
+    // Step 1: fast standard fix.
     navigator.geolocation.getCurrentPosition(
       onSuccess,
-      onError,
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 }
+      (err) => {
+        if (settled) return;
+        // Permission denied is final — escalating won't help.
+        if (err.code === 1) { onFinalError(err); return; }
+        // Timeout / position unavailable — escalate to high accuracy.
+        tryHighAccuracy();
+      },
+      { enableHighAccuracy: false, timeout: 5_000, maximumAge: 60_000 },
     );
   };
 

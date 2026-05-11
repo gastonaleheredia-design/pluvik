@@ -138,7 +138,11 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       if (Math.hypot(dx, dy) > RADIUS_MI) continue;
 
       const ph = String(p.phenomena ?? "").toUpperCase();
-      const eventName = String(p.phenomena_name ?? p.event ?? "").trim()
+      // IEM SBW feed labels warnings with `ps` (e.g. "Severe Thunderstorm
+      // Warning"). Older code paths used `phenomena_name`/`event` which the
+      // feed does not actually populate, so polygons were getting filtered
+      // out earlier and now show up labeled "Weather Warning". Prefer `ps`.
+      const eventName = String(p.ps ?? p.phenomena_name ?? p.event ?? "").trim()
         || (ph ? `${phenomenaName[ph] ?? ph} Warning` : "Weather Warning");
 
       const id =
@@ -256,6 +260,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const playingRef = useRef<boolean>(true);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentProfileRef = useRef<"station" | "iem-mosaic" | "rv" | null>(null);
+  // Once we've auto-zoomed out to show nearby warning polygons, don't keep
+  // snapping the map back on every 120s refresh — that would fight the user.
+  const didFitWarningsRef = useRef<boolean>(false);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [playing, setPlaying] = useState(true);
@@ -441,6 +448,43 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     map.on("mouseleave", "nws-warnings-fill", () => { map.getCanvas().style.cursor = ""; });
   }, []);
 
+  /**
+   * If there are nearby warning polygons but they sit outside the current
+   * viewport, zoom out once so the user can see what the briefing is
+   * pointing at. Runs at most once per radar mount.
+   */
+  const fitToWarnings = useCallback((
+    map: mapboxgl.Map,
+    fc: GeoJSON.FeatureCollection,
+    la: number,
+    lo: number,
+  ) => {
+    if (didFitWarningsRef.current) return;
+    if (!fc.features.length) return;
+    const bounds = new mapboxgl.LngLatBounds([lo, la], [lo, la]);
+    let extended = false;
+    for (const f of fc.features) {
+      const g = f.geometry as GeoJSON.Geometry | undefined;
+      if (!g) continue;
+      const rings: number[][][] = g.type === "Polygon"
+        ? (g.coordinates as number[][][])
+        : g.type === "MultiPolygon"
+          ? (g.coordinates as number[][][][]).flat(1)
+          : [];
+      for (const ring of rings) {
+        for (const c of ring) {
+          if (Array.isArray(c) && c.length >= 2) {
+            bounds.extend([c[0], c[1]]);
+            extended = true;
+          }
+        }
+      }
+    }
+    if (!extended) return;
+    didFitWarningsRef.current = true;
+    map.fitBounds(bounds, { padding: 60, maxZoom: 8, duration: 700 });
+  }, []);
+
   const refreshWarnings = useCallback(async (map: mapboxgl.Map, la: number, lo: number) => {
     const fc = await fetchActiveWarningPolygons(la, lo);
     if (!map.isStyleLoaded()) {
@@ -450,7 +494,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const empty = { type: "FeatureCollection" as const, features: [] };
     const data = (fc ?? empty) as GeoJSON.FeatureCollection;
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
-    if (existing) { existing.setData(data); return; }
+    if (existing) {
+      existing.setData(data);
+      fitToWarnings(map, data, la, lo);
+      return;
+    }
     map.addSource("nws-warnings", { type: "geojson", data });
     map.addLayer({
       id: "nws-warnings-fill",
@@ -471,7 +519,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       },
     });
     wireWarningInteractions(map);
-  }, [showWarnings, wireWarningInteractions]);
+    fitToWarnings(map, data, la, lo);
+  }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
@@ -546,7 +595,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       minZoom: 3,
       maxZoom: 12,
       attributionControl: false,
-      cooperativeGestures: !isFullscreen,
+      // One-finger pan everywhere — pinch still zooms. The "use two fingers"
+      // overlay only shows when cooperativeGestures is on, which felt wrong
+      // for an embedded weather map.
+      cooperativeGestures: false,
     });
     mapRef.current = map;
 
