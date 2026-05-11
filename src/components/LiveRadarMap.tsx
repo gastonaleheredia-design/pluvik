@@ -12,6 +12,7 @@ import { MAPBOX_TOKEN } from "@/config/keys";
 import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 import { useAddress } from "@/lib/addressContext";
+import { reverseGeocodeShort } from "@/lib/shortPlace";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -636,17 +637,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       setGpsBusy(false);
       const la = pos.coords.latitude;
       const lo = pos.coords.longitude;
-      // Reverse geocode best-effort for a friendly label.
-      let label = `${la.toFixed(4)}, ${lo.toFixed(4)}`;
-      try {
-        const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${lo},${la}.json?access_token=${MAPBOX_TOKEN}&limit=1`,
-        );
-        if (res.ok) {
-          const f = (await res.json())?.features?.[0];
-          if (f?.place_name) label = f.place_name;
-        }
-      } catch { /* keep coord label */ }
+      // Short, header-friendly label ("Neighborhood, City" or "City, ST").
+      const label = await reverseGeocodeShort(la, lo, MAPBOX_TOKEN);
       // Update the global address — this re-renders the radar with new
       // lat/lon props, which centers the map and refreshes warnings.
       setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
@@ -691,16 +683,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       async (pos) => {
         const la = pos.coords.latitude;
         const lo = pos.coords.longitude;
-        let label = `${la.toFixed(4)}, ${lo.toFixed(4)}`;
-        try {
-          const res = await fetch(
-            `https://api.mapbox.com/geocoding/v5/mapbox.places/${lo},${la}.json?access_token=${MAPBOX_TOKEN}&limit=1`,
-          );
-          if (res.ok) {
-            const f = (await res.json())?.features?.[0];
-            if (f?.place_name) label = f.place_name;
-          }
-        } catch { /* keep coord label */ }
+        const label = await reverseGeocodeShort(la, lo, MAPBOX_TOKEN);
         setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
         resumeFollowing();
         setPrecise(true);

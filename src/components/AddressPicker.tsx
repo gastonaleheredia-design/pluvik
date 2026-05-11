@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useAddress, SelectedAddress } from '../lib/addressContext';
 import { supabase } from '../lib/supabase';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { reverseGeocodeShort } from '../lib/shortPlace';
 
 interface MapboxFeature {
   id: string;
@@ -150,16 +151,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
       if (settled) return;
       settled = true;
       const { latitude: lat, longitude: lon } = pos.coords;
-      let label = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-      try {
-        const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-        );
-        if (res.ok) {
-          const place = (await res.json())?.features?.[0];
-          if (place?.place_name) label = place.place_name;
-        }
-      } catch { /* keep coord label */ }
+      const label = await reverseGeocodeShort(lat, lon, MAPBOX_TOKEN);
       setAddress({ label, meta: 'FOLLOWING', lat, lon });
       resumeFollowing();
       finish();
