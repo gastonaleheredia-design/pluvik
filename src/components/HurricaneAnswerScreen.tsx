@@ -19,6 +19,13 @@ const IMPACT_COLORS: Record<string, string> = {
   LIKELY: '#b91c1c',
 };
 
+const QUADRANT_KEY: Record<string, string> = {
+  FRONT_RIGHT: 'hurricane.quadrant_front_right',
+  FRONT_LEFT:  'hurricane.quadrant_front_left',
+  BACK_RIGHT:  'hurricane.quadrant_back_right',
+  BACK_LEFT:   'hurricane.quadrant_back_left',
+};
+
 export function HurricaneAnswerScreen({
   answer,
   question,
@@ -28,6 +35,7 @@ export function HurricaneAnswerScreen({
   saving,
 }: HurricaneAnswerScreenProps) {
   const { t } = useTranslation();
+  const profile = answer.hurricane_profile ?? null;
   const impacts = answer.impacts ?? {
     ts_wind_pct: 0,
     ts_wind_level: 'LOW',
@@ -48,6 +56,8 @@ export function HurricaneAnswerScreen({
       : surgeKey === 'near_zone'
       ? '#f59e0b'
       : '#15803d';
+
+  const quadrantTone = profile?.isDirtySide ? '#b91c1c' : '#15803d';
 
   return (
     <div
