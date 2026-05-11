@@ -527,11 +527,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     mapRef.current = map;
 
     map.on("load", async () => {
-      const fr = await fetchFrames();
+      // Initial load is rain mosaic (default mode/source) → IEM USCOMP-N0Q.
+      const fr = buildIemMosaicFrames();
       if (!fr) { setStatus("error"); return; }
       framesRef.current = fr;
-      // Start near the latest "now" frame.
-      frameIdxRef.current = Math.max(0, fr.nowcastStartIdx - 1);
+      frameIdxRef.current = fr.frames.length - 1;
       setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
       void refreshWarnings(map, lat, lon);
       markerRef.current = new mapboxgl.Marker({ element: buildMarkerEl(), anchor: "center" })
@@ -543,10 +543,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
 
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
 
-    // Periodically re-fetch frame list + warnings so the loop stays "live".
+    // Periodically refresh frames + warnings so the loop stays "live".
     const refresher = setInterval(async () => {
-      const fr = await fetchFrames();
-      if (fr) framesRef.current = fr;
+      const isStation = source === "station" && !!stationId;
+      if (!isStation) {
+        const fr = mode === "rain" ? buildIemMosaicFrames() : await fetchFrames();
+        if (fr) framesRef.current = fr;
+      }
       if (mapRef.current) {
         const { lat: la, lon: lo } = coordsRef.current;
         void refreshWarnings(mapRef.current, la, lo);
