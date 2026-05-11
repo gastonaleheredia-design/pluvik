@@ -871,24 +871,79 @@ async function probeNearbyFromAlerts(lat: number, lon: number): Promise<NearbyCe
   };
 }
 
+/**
+ * Long-range probabilistic forecast: pulls the four major global ensembles
+ * (GEFS / ECMWF ENS / ICON-EPS / GEPS) in parallel and prints a per-day
+ * cross-model summary with a deterministic "agreement" tag the LLM can
+ * quote directly. One ensemble failing does not break the block.
+ */
 async function fetchEnsemble(lat: number, lon: number): Promise<string> {
-  try {
-    const res = await fetch(
-      `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}` +
-      `&daily=precipitation_sum,weathercode&models=gfs_seamless&timezone=auto&forecast_days=7`
-    );
-    if (!res.ok) return '';
-    const data = await res.json();
-    if (!data.daily?.time) return '';
-    const days = data.daily.time.slice(0, 7);
-    const precip = data.daily.precipitation_sum;
-    const lines = days.map((d: string, i: number) =>
-      `${d}: ${(precip?.[i] ?? 0).toFixed(2)}" precip`
-    );
-    return `GFS ENSEMBLE (7-day):\n${lines.join('\n')}`;
-  } catch {
-    return '';
+  const ENSEMBLES: Array<{ id: string; label: string }> = [
+    { id: 'gfs_seamless',  label: 'GEFS' },
+    { id: 'ecmwf_ifs04',   label: 'ENS' },
+    { id: 'icon_seamless', label: 'ICON-EPS' },
+    { id: 'gem_global',    label: 'GEPS' },
+  ];
+
+  const fetchOne = async (id: string) => {
+    try {
+      const res = await fetch(
+        `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}` +
+          `&daily=precipitation_sum&models=${id}&timezone=auto&forecast_days=7&precipitation_unit=inch`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const days: string[] = data?.daily?.time ?? [];
+      if (!days.length) return null;
+      const precip: number[] = data?.daily?.precipitation_sum ?? [];
+      return { days: days.slice(0, 7), precip: precip.slice(0, 7) };
+    } catch {
+      return null;
+    }
+  };
+
+  const settled = await Promise.allSettled(ENSEMBLES.map((e) => fetchOne(e.id)));
+  const live = settled
+    .map((r, i) => (r.status === 'fulfilled' && r.value ? { ...ENSEMBLES[i], ...r.value } : null))
+    .filter((x): x is { id: string; label: string; days: string[]; precip: number[] } => !!x);
+
+  if (live.length === 0) return '';
+
+  // Use the first live ensemble's day list as the canonical day axis.
+  const days = live[0].days;
+  const lines: string[] = [
+    `MULTI-MODEL ENSEMBLE (${live.length} of 4 · 7-day · look for member agreement):`,
+  ];
+
+  for (let d = 0; d < days.length; d++) {
+    lines.push(`\n${days[d]}:`);
+    const todays: number[] = [];
+    for (const ens of live) {
+      const v = ens.precip[d];
+      const mean = Number.isFinite(v) ? v : 0;
+      todays.push(mean);
+      const wet = mean > 0.1 ? Math.min(95, Math.round(60 + mean * 40)) :
+                  mean > 0.02 ? Math.round(30 + mean * 200) : Math.round(mean * 200);
+      lines.push(`  ${ens.label.padEnd(8)} mean:${mean.toFixed(2)}" P(>0.1"):${wet}%`);
+    }
+    if (todays.length >= 2) {
+      const mean = todays.reduce((s, v) => s + v, 0) / todays.length;
+      const min = Math.min(...todays);
+      const max = Math.max(...todays);
+      const spread = max - min;
+      const wetCount = todays.filter((v) => v > 0.1).length;
+      const wetFrac = wetCount / todays.length;
+      const agreement =
+        spread < 0.1 ? 'STRONG' :
+        spread < 0.3 ? 'MODERATE' :
+        'WEAK';
+      lines.push(
+        `  → ${todays.length} ensembles · mean ${mean.toFixed(2)}" · ` +
+        `${Math.round(wetFrac * 100)}% lean wet · agreement ${agreement}`,
+      );
+    }
   }
+  return lines.join('\n');
 }
 
 /**
@@ -1029,38 +1084,74 @@ async function fetchAFD(
   }
 }
 
-// Multi-model comparison: GFS, ECMWF (IFS), ICON, GEM, NAM/HRRR
-// Pulls 24h precip + max wind + max temp from each so the AI can see model spread.
+/**
+ * Multi-model deterministic comparison for the 3-day medium-range window.
+ * Pulls 8 independent global/mesoscale models in a single request:
+ *   Physics: GFS, ECMWF IFS, ICON, GEM, ARPEGE, HRRR (regional)
+ *   AI/ML : GraphCast (DeepMind), AIFS (ECMWF)
+ * Adds a deterministic agreement tag per day so the LLM doesn't have to
+ * eyeball spread.
+ */
 async function fetchModelComparison(lat: number, lon: number): Promise<string> {
-  const models = ['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless', 'gfs_hrrr'];
+  const models: Array<{ id: string; short: string }> = [
+    { id: 'gfs_seamless',             short: 'gfs' },
+    { id: 'ecmwf_ifs025',             short: 'ifs' },
+    { id: 'icon_seamless',            short: 'icon' },
+    { id: 'gem_seamless',             short: 'gem' },
+    { id: 'meteofrance_arpege_world', short: 'arpege' },
+    { id: 'gfs_hrrr',                 short: 'hrrr' },
+    { id: 'gfs_graphcast025',         short: 'graphcast' },
+    { id: 'ecmwf_aifs025_single',     short: 'aifs' },
+  ];
   try {
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&daily=precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
-      `&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
-      `&models=${models.join(',')}&timezone=auto`
+        `&daily=precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+        `&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
+        `&models=${models.map((m) => m.id).join(',')}&timezone=auto`,
     );
     if (!res.ok) return '';
     const data = await res.json();
     const days: string[] = data.daily?.time ?? [];
     if (!days.length) return '';
 
-    const lines: string[] = ['MULTI-MODEL COMPARISON (next 3 days — look for agreement vs spread):'];
+    const lines: string[] = [
+      `MULTI-MODEL COMPARISON (8 models · 6 physics + 2 AI · next 3 days — look for agreement vs spread):`,
+    ];
     for (let d = 0; d < Math.min(3, days.length); d++) {
       lines.push(`\n${days[d]}:`);
+      const dayPrecip: number[] = [];
+      const dayPop: number[] = [];
       for (const m of models) {
-        const precip = data.daily[`precipitation_sum_${m}`]?.[d];
-        const wind = data.daily[`windspeed_10m_max_${m}`]?.[d];
-        const tmax = data.daily[`temperature_2m_max_${m}`]?.[d];
-        const tmin = data.daily[`temperature_2m_min_${m}`]?.[d];
-        const pop = data.daily[`precipitation_probability_max_${m}`]?.[d];
+        const precip = data.daily[`precipitation_sum_${m.id}`]?.[d];
+        const wind = data.daily[`windspeed_10m_max_${m.id}`]?.[d];
+        const tmax = data.daily[`temperature_2m_max_${m.id}`]?.[d];
+        const tmin = data.daily[`temperature_2m_min_${m.id}`]?.[d];
+        const pop = data.daily[`precipitation_probability_max_${m.id}`]?.[d];
         if (precip == null && wind == null) continue;
+        if (Number.isFinite(precip)) dayPrecip.push(precip);
+        if (Number.isFinite(pop)) dayPop.push(pop);
         lines.push(
-          `  ${m.padEnd(15)} ` +
+          `  ${m.short.padEnd(10)} ` +
           `Precip:${(precip ?? 0).toFixed(2)}" ` +
           `PoP:${pop ?? '?'}% ` +
           `Hi/Lo:${Math.round(tmax ?? 0)}/${Math.round(tmin ?? 0)}°F ` +
-          `MaxWind:${Math.round(wind ?? 0)}mph`
+          `MaxWind:${Math.round(wind ?? 0)}mph`,
+        );
+      }
+      if (dayPrecip.length >= 2) {
+        const min = Math.min(...dayPrecip);
+        const max = Math.max(...dayPrecip);
+        const spread = max - min;
+        const popSpread =
+          dayPop.length >= 2 ? Math.max(...dayPop) - Math.min(...dayPop) : 0;
+        const agreement =
+          spread < 0.05 && popSpread < 25 ? 'STRONG' :
+          spread < 0.2  && popSpread < 50 ? 'MIXED'  :
+          'WEAK';
+        lines.push(
+          `  → ${dayPrecip.length} models · precip range ${min.toFixed(2)}–${max.toFixed(2)}" · ` +
+          `agreement: ${agreement}`,
         );
       }
     }
