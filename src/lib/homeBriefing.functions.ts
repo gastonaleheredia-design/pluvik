@@ -652,7 +652,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
       else if (word === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
       else if (word === 'SNOW') sentence = 'Está nevando.';
-      else if (word === 'RAIN SOON') sentence = `Lluvia esperada en aprox. ${hoursUntilRain} h.`;
+      else if (word === 'RAIN SOON') sentence = nextHourProb >= 60
+        ? `Lluvia esperada en aprox. ${hoursUntilRain} h.`
+        : `Lluvia posible en aprox. ${hoursUntilRain} h (${nextHourProb}% prob).`;
       else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
       else if (word === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
       else if (nextRainIdx < 0) sentence = 'Despejado por los próximos 7 días.';
