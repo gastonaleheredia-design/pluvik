@@ -971,7 +971,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   );
 }
 
-function ToolBtn({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
+function ToolBtn({ label, title, onClick, accent }: { label: string; title: string; onClick: () => void; accent?: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -979,8 +979,8 @@ function ToolBtn({ label, title, onClick }: { label: string; title: string; onCl
       aria-label={title}
       style={{
         width: 32, height: 32, borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.15)",
-        backgroundColor: "rgba(11,16,24,0.78)",
+        border: accent ? "1px solid rgba(239,68,68,0.7)" : "1px solid rgba(255,255,255,0.15)",
+        backgroundColor: accent ? "rgba(239,68,68,0.85)" : "rgba(11,16,24,0.78)",
         color: "#faf7f0", cursor: "pointer",
         fontSize: 14, fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -1057,6 +1057,14 @@ const liveDot: React.CSSProperties = {
 };
 const toolbarStyle: React.CSSProperties = {
   position: "absolute", top: 10, right: 10,
+  display: "flex", flexDirection: "column", gap: 6,
+};
+// In fullscreen the AlertSheet's MIN/CLOSE pills sit at top:safe-area+4px,
+// so the toolbar starts below them to avoid overlap.
+const toolbarStyleFullscreen: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(env(safe-area-inset-top, 0px) + 48px)",
+  right: 10,
   display: "flex", flexDirection: "column", gap: 6,
 };
 const togglesStyle: React.CSSProperties = {
