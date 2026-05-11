@@ -359,13 +359,30 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     }
   }, [showRadar, colorScheme, source, stationId, mode]);
 
-  // When mode/source/station changes, force a re-tile of the current frame.
+  // When mode/source/station changes, swap the frame list to match the
+  // active backend (IEM mosaic for rain, RainViewer for snow/mix, IEM for
+  // single station) and re-tile the current frame.
   useEffect(() => {
-    const fr = framesRef.current;
-    if (!fr) return;
-    setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
-    // Pause looping in single-station mode (latest scan only).
-    if (source === "station") setPlaying(false);
+    let cancelled = false;
+    (async () => {
+      const isStation = source === "station" && !!stationId;
+      let fr: PreparedFrames | null;
+      if (isStation) {
+        // Single station: a single "now" frame, no loop.
+        const t = Math.floor(Date.now() / 1000);
+        fr = { host: "iem", frames: [{ time: t, path: `iem-station-${t}` }], nowcastStartIdx: 1 };
+      } else if (mode === "rain") {
+        fr = buildIemMosaicFrames();
+      } else {
+        fr = await fetchFrames();
+      }
+      if (cancelled || !fr) return;
+      framesRef.current = fr;
+      frameIdxRef.current = Math.max(0, fr.nowcastStartIdx - 1);
+      setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
+      if (isStation) setPlaying(false);
+    })();
+    return () => { cancelled = true; };
   }, [mode, source, stationId, setRadarTile]);
 
   const advanceFrame = useCallback(() => {
