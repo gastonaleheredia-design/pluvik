@@ -220,6 +220,19 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const [tool, setTool] = useState<"none" | "ruler" | "pin">("none");
   const [rulerPts, setRulerPts] = useState<[number, number][]>([]); // [lon,lat]
   const [pinInfo, setPinInfo] = useState<{ lon: number; lat: number; label: string | null; distMi: number | null } | null>(null);
+  // Tracks whether the user has precise (GPS) coords. Drives the 📍 button
+  // visual state and gates the silent auto-prompt on first open.
+  const [precise, setPrecise] = useState<boolean>(false);
+
+  // Close every floating panel/tool — used when opening a new one so they
+  // don't stack on top of each other.
+  const closeAllPanels = useCallback(() => {
+    setSourceMenuOpen(false);
+    setMiniCard(null);
+    setPinInfo(null);
+    setRulerPts([]);
+    setTool("none");
+  }, []);
 
   // Single source of truth: the global selected address (passed in as props).
   // The GPS button updates the global address via context, so the radar marker
@@ -241,18 +254,46 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const url = source === "station" && stationId
-      ? iemStationTileUrl(stationId)
+    const isStation = source === "station" && !!stationId;
+    const url = isStation
+      ? iemStationTileUrl(stationId!)
       : rvTileUrl(host, frame, colorScheme);
-    const src = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
-    if (src) {
-      (src as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
+    const existing = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
+    // Each backend has a different native maxzoom + caching profile.
+    // Recreate source instead of just setTiles() so a stale mosaic source
+    // doesn't cap station zoom to 7 (which left station tiles blank).
+    const desiredMaxZoom = isStation ? 12 : 7;
+    if (existing) {
+      // If maxzoom matches, hot-swap tiles (cheap). Otherwise recreate.
+      const current = (existing as unknown as { tiles?: string[] }).tiles?.[0];
+      const sameProfile =
+        (current?.includes("mesonet.agron.iastate.edu") ?? false) === isStation;
+      if (sameProfile) {
+        (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
+      } else {
+        if (map.getLayer("live-radar-layer")) map.removeLayer("live-radar-layer");
+        map.removeSource("live-radar");
+        map.addSource("live-radar", {
+          type: "raster",
+          tiles: [url],
+          tileSize: 256,
+          maxzoom: desiredMaxZoom,
+          attribution: "© RainViewer · NOAA",
+        });
+        map.addLayer({
+          id: "live-radar-layer",
+          type: "raster",
+          source: "live-radar",
+          layout: { visibility: showRadar ? "visible" : "none" },
+          paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
+        });
+      }
     } else {
       map.addSource("live-radar", {
         type: "raster",
         tiles: [url],
         tileSize: 256,
-        maxzoom: 7,
+        maxzoom: desiredMaxZoom,
         attribution: "© RainViewer · NOAA",
       });
       map.addLayer({
