@@ -668,9 +668,13 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'RAINING') sentence = 'Rain falling right now.';
       else if (word === 'SNOW') sentence = 'Snow falling.';
       else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
-        sentence = 'Rain starting within the hour.';
+        sentence = nextHourProb >= 60
+          ? 'Rain starting within the hour.'
+          : `Rain possible within the hour (${nextHourProb}% chance).`;
       else if (word === 'RAIN SOON')
-        sentence = `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`;
+        sentence = nextHourProb >= 60
+          ? `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`
+          : `Rain possible in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'} (${nextHourProb}% chance).`;
       else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
       else if (word === 'CLOUDY') sentence = 'Overcast, dry for now.';
       else if (nextRainIdx < 0) sentence = 'Clear through the next 7 days.';
