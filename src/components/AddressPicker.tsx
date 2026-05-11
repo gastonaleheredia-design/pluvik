@@ -431,7 +431,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
           >
             {results.map((feature, i) => (
               <button
-                key={feature.id}
+                key={feature.mapbox_id}
                 onClick={() => handleSelectResult(feature)}
                 style={{
                   width: '100%',
@@ -447,7 +447,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                 }}
               >
                 <span style={{ color: '#9ca3af', fontSize: '0.8rem', flexShrink: 0 }}>
-                  {feature.place_type?.[0] === 'poi' ? '🏛️' : '📍'}
+                  {feature.feature_type === 'poi' ? '🏛️' : '📍'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
@@ -464,19 +464,19 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                       gap: 8,
                     }}
                   >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{feature.text}</span>
-                    {feature.place_type?.[0] && (
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{feature.name}</span>
+                    {feature.feature_type && (
                       <span style={{
                         fontFamily: 'JetBrains Mono, monospace',
                         fontSize: '0.48rem',
                         letterSpacing: '0.14em',
-                        color: feature.place_type[0] === 'poi' ? '#c2410c' : '#9ca3af',
-                        border: `1px solid ${feature.place_type[0] === 'poi' ? '#c2410c55' : '#9ca3af44'}`,
+                        color: feature.feature_type === 'poi' ? '#c2410c' : '#9ca3af',
+                        border: `1px solid ${feature.feature_type === 'poi' ? '#c2410c55' : '#9ca3af44'}`,
                         borderRadius: 100,
                         padding: '1px 6px',
                         flexShrink: 0,
                       }}>
-                        {feature.place_type[0] === 'poi' ? 'PLACE' : feature.place_type[0].toUpperCase()}
+                        {feature.feature_type === 'poi' ? 'PLACE' : feature.feature_type.toUpperCase()}
                       </span>
                     )}
                   </div>
@@ -490,7 +490,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
                       marginTop: '2px',
                     }}
                   >
-                    {feature.place_name}
+                    {feature.place_formatted ?? feature.full_address ?? ''}
                   </div>
                 </div>
               </button>
