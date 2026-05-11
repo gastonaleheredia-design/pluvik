@@ -1343,6 +1343,7 @@ const miniCardCta: React.CSSProperties = {
 };
 
 function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number) {
+  // referenced below
   const R = 3958.8; // miles
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
