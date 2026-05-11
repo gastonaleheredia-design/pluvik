@@ -171,18 +171,9 @@ export function AddressProvider({ children }: { children: React.ReactNode }) {
         if (moved < 0.15 && now - last.t < 60_000) return;
       }
       lastFixRef.current = { lat, lon, t: now };
-      // Reverse geocode (best-effort).
-      let label = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-      try {
-        const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=neighborhood,locality,place,address`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          const f = data?.features?.[0];
-          if (f?.place_name) label = f.place_name;
-        }
-      } catch { /* ignore */ }
+      // Reverse geocode to a short, header-friendly label
+      // ("Neighborhood, City" or "City, ST") — exact lat/lon is preserved.
+      const label = await reverseGeocodeShort(lat, lon, MAPBOX_TOKEN);
       if (cancelled) return;
       // Re-check after the async reverse geocode resolves: if the user
       // turned off following or made a manual pick in the meantime, drop it.
