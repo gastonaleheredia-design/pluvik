@@ -436,12 +436,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const wireWarningInteractions = useCallback((map: mapboxgl.Map) => {
     const onClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       const f = e.features?.[0];
-      const props = (f?.properties ?? {}) as { id?: string; event?: string; expires?: string | null };
+      const props = (f?.properties ?? {}) as { id?: string; event?: string; expires?: string | null; phenomena?: string };
       if (!props.id) return;
       setMiniCard({
         id: props.id,
         event: props.event ?? "Warning",
         expires: props.expires ?? null,
+        phenomena: props.phenomena,
       });
     };
     map.on("click", "nws-warnings-fill", onClick);
