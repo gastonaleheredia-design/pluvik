@@ -62,11 +62,20 @@ export function BottomNav() {
             to={item.to}
             className="flex flex-col items-center gap-1 flex-1"
           >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isActive ? 'bg-amber-brand' : 'bg-neutral-gray-light'
-              }`}
-            />
+            <span className="relative">
+              <span
+                className={`block w-1.5 h-1.5 rounded-full ${
+                  isActive ? 'bg-amber-brand' : 'bg-neutral-gray-light'
+                }`}
+              />
+              {showDot && (
+                <span
+                  aria-label="New update on a tracked storm"
+                  title="New update on a tracked storm"
+                  className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#dc2626] ring-2 ring-paper"
+                />
+              )}
+            </span>
             <span className="relative">
               <span
                 className={`mono-label ${
@@ -75,12 +84,6 @@ export function BottomNav() {
               >
                 {item.label}
               </span>
-              {showDot && (
-                <span
-                  aria-label="unseen update"
-                  className="absolute -top-1 -right-2 w-1.5 h-1.5 rounded-full bg-amber-brand"
-                />
-              )}
             </span>
           </Link>
         );
