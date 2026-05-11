@@ -454,7 +454,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const empty = { type: "FeatureCollection" as const, features: [] };
     const data = (fc ?? empty) as GeoJSON.FeatureCollection;
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
-    if (existing) { existing.setData(data); return; }
+    if (existing) {
+      existing.setData(data);
+      fitToWarnings(map, data, la, lo);
+      return;
+    }
     map.addSource("nws-warnings", { type: "geojson", data });
     map.addLayer({
       id: "nws-warnings-fill",
@@ -475,6 +479,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       },
     });
     wireWarningInteractions(map);
+    fitToWarnings(map, data, la, lo);
   }, [showWarnings, wireWarningInteractions]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
