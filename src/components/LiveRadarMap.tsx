@@ -14,6 +14,7 @@ import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
 import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
+import { fetchNearbyStorms } from "@/lib/fetchers/fetchNhcStorm";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -785,6 +786,137 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     if (markerRef.current) markerRef.current.setLngLat([meLon, meLat]);
     void refreshWarnings(map, meLat, meLon);
   }, [meLat, meLon, refreshWarnings]);
+
+  // ── Tropical (NHC active storms) overlay ─────────────────────────────
+  // Self-fetching: when one or more active storms are within 800 mi,
+  // render the 5-day cone, forecast track, and watches/warnings on top
+  // of radar. Refreshes every 15 min (NHC intermediate advisory cadence).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let cancelled = false;
+
+    const SRC_CONE = "nhc-cone";
+    const SRC_TRACK = "nhc-track";
+    const SRC_WW   = "nhc-ww";
+    const LAYERS   = [
+      "nhc-cone-fill", "nhc-cone-line",
+      "nhc-track-line", "nhc-track-points",
+      "nhc-ww-line",
+    ] as const;
+
+    const clearLayers = () => {
+      for (const id of LAYERS) {
+        if (map.getLayer(id)) map.removeLayer(id);
+      }
+      for (const id of [SRC_CONE, SRC_TRACK, SRC_WW]) {
+        if (map.getSource(id)) map.removeSource(id);
+      }
+    };
+
+    const ensureLoaded = () =>
+      new Promise<void>((resolve) => {
+        if (map.isStyleLoaded()) resolve();
+        else map.once("load", () => resolve());
+      });
+
+    const refreshTropical = async () => {
+      try {
+        const storms = await fetchNearbyStorms(meLat, meLon, 800);
+        if (cancelled) return;
+        await ensureLoaded();
+        if (cancelled) return;
+        clearLayers();
+        if (!storms.length) return;
+        // Render the closest storm's GIS layers.
+        const storm = storms[0];
+        const { cone, track, watchesWarnings } = storm.gis;
+
+        if (cone) {
+          map.addSource(SRC_CONE, { type: "geojson", data: cone });
+          map.addLayer({
+            id: "nhc-cone-fill",
+            type: "fill",
+            source: SRC_CONE,
+            paint: {
+              "fill-color": "#f59e0b",
+              "fill-opacity": 0.18,
+            },
+          });
+          map.addLayer({
+            id: "nhc-cone-line",
+            type: "line",
+            source: SRC_CONE,
+            paint: {
+              "line-color": "#f59e0b",
+              "line-width": 1.5,
+              "line-dasharray": [2, 2],
+            },
+          });
+        }
+
+        if (track) {
+          map.addSource(SRC_TRACK, { type: "geojson", data: track });
+          map.addLayer({
+            id: "nhc-track-line",
+            type: "line",
+            source: SRC_TRACK,
+            filter: ["==", "$type", "LineString"],
+            paint: {
+              "line-color": "#fef2f2",
+              "line-width": 2.5,
+            },
+          });
+          map.addLayer({
+            id: "nhc-track-points",
+            type: "circle",
+            source: SRC_TRACK,
+            filter: ["==", "$type", "Point"],
+            paint: {
+              "circle-radius": 5,
+              "circle-color": "#b91c1c",
+              "circle-stroke-color": "#faf7f0",
+              "circle-stroke-width": 1.5,
+            },
+          });
+        }
+
+        if (watchesWarnings) {
+          map.addSource(SRC_WW, { type: "geojson", data: watchesWarnings });
+          map.addLayer({
+            id: "nhc-ww-line",
+            type: "line",
+            source: SRC_WW,
+            paint: {
+              "line-color": [
+                "match",
+                ["coalesce", ["get", "TYPE"], ["get", "type"], ""],
+                "Hurricane Warning", "#b91c1c",
+                "Hurricane Watch",   "#f59e0b",
+                "Tropical Storm Warning", "#dc2626",
+                "Tropical Storm Watch",   "#fbbf24",
+                "Storm Surge Warning",    "#7c3aed",
+                "Storm Surge Watch",      "#a78bfa",
+                "#fca5a5",
+              ],
+              "line-width": 4,
+            },
+          });
+        }
+      } catch (err) {
+        // Non-fatal — just no overlay this cycle.
+        console.warn("[LiveRadarMap] tropical overlay failed:", (err as Error)?.message);
+      }
+    };
+
+    void refreshTropical();
+    const id = setInterval(refreshTropical, 15 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      try { clearLayers(); } catch { /* map may be gone */ }
+    };
+  }, [meLat, meLon]);
 
   // Play/pause
   useEffect(() => {
