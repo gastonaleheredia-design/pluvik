@@ -622,5 +622,15 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      why: await buildWhyPayload({
+        lat, lon, language,
+        word,
+        tempF: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
+        cloudCover,
+        hoursUntilRain,
+        nextRainCaption: activeAlert ? null : nextRainCaption,
+        nearbyCell: nearbyProbe,
+        alert: activeAlert,
+      }),
     } satisfies HomeBriefing;
   });
