@@ -17,6 +17,8 @@ import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage';
+import { buildWindowLabel } from '../lib/windowLabel';
+import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -541,6 +543,45 @@ function AnswerPage() {
   const stageOutro = (answer as { stage_outro?: string }).stage_outro ?? null;
   const decisionLabel = (answer as { decision_label?: string }).decision_label ?? null;
 
+  // ── Window label (date + hour range) — anchors every answer to the time
+  // the user actually asked about, so headlines like "2–3 PM" can never be
+  // misread out of context.
+  const windowLabel = (() => {
+    let start: Date | null = null;
+    let end: Date | null = null;
+    if (eventAtIso) {
+      const t = new Date(eventAtIso);
+      if (Number.isFinite(t.getTime())) start = t;
+    }
+    if (eventEndIso) {
+      const t = new Date(eventEndIso);
+      if (Number.isFinite(t.getTime())) end = t;
+    }
+    if (!start) {
+      const ev = extractEventTimeFromQuestion(question);
+      if (ev) {
+        start = ev.eventAt;
+        end = ev.endAt ?? null;
+      }
+    }
+    return buildWindowLabel(start, end);
+  })();
+
+  // Confidence-matched headline word — overrides the raw YES/NO/MAYBE so a
+  // LOW-confidence answer never wears a confident verdict.
+  const softWord =
+    (answer as { display_word?: string }).display_word ??
+    pickConfidenceAwareWord({
+      rawWord: verdictWord,
+      confidence: answer.confidence as 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW' | undefined,
+      percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
+    });
+
+  // "Also" callout: severe items the user didn't ask about (e.g. asked about
+  // the next hour but a severe risk arrives overnight). Pulled from
+  // active_alerts so we never put it in the headline.
+  const alsoItems: string[] = (answer.active_alerts ?? []).filter(Boolean);
+
   // Stage-driven display rules.
   const isClimate = stage === 'climate';
   const isOutlook = stage === 'outlook';
@@ -582,8 +623,9 @@ function AnswerPage() {
     : isOutlook
     ? null // tendency chip replaces the word
     : isModelTrend
-    ? (verdictWord === 'YES' ? 'LEAN YES' : verdictWord === 'NO' ? 'LEAN NO' : 'WATCH')
-    : verdictWord;
+    ? (softWord === 'YES' || softWord === 'LIKELY' ? 'LEAN YES'
+        : softWord === 'NO' || softWord === 'UNLIKELY' ? 'LEAN NO' : 'WATCH')
+    : softWord;
 
   // At model_trend, present the percentage as a ±10 range to telegraph spread.
   const headlineForStage = (() => {
