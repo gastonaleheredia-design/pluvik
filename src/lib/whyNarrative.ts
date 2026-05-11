@@ -236,7 +236,7 @@ function buildSpcBullet(spc: SpcSnapshot, lang: string): WhyBullet | null {
   if (lines.length === 0) return null;
   return {
     icon: 'spc',
-    label: 'SPC',
+    label: isEs(lang) ? 'Nivel de riesgo' : 'Risk level',
     value: lines.join(' · '),
     tone: spc.watch || spc.mcd ? 'warn' : 'accent',
   };
@@ -248,7 +248,7 @@ function buildAfdBullet(snippet: string | null, lang: string): WhyBullet | null 
   if (!trimmed) return null;
   return {
     icon: 'afd',
-    label: isEs(lang) ? 'Discusión del WFO' : 'Forecast discussion',
+    label: isEs(lang) ? 'Contexto sinóptico' : 'Synoptic context',
     value: trimmed,
     tone: 'muted',
   };
