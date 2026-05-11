@@ -173,7 +173,7 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event: eventName, expires, containsUser },
+        properties: { id, event: eventName, expires, containsUser, phenomena: ph },
       });
     }
 
@@ -247,6 +247,7 @@ interface MiniCardData {
   id: string;
   event: string;
   expires: string | null;
+  phenomena?: string;
 }
 
 export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
@@ -435,12 +436,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const wireWarningInteractions = useCallback((map: mapboxgl.Map) => {
     const onClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       const f = e.features?.[0];
-      const props = (f?.properties ?? {}) as { id?: string; event?: string; expires?: string | null };
+      const props = (f?.properties ?? {}) as { id?: string; event?: string; expires?: string | null; phenomena?: string };
       if (!props.id) return;
       setMiniCard({
         id: props.id,
         event: props.event ?? "Warning",
         expires: props.expires ?? null,
+        phenomena: props.phenomena,
       });
     };
     map.on("click", "nws-warnings-fill", onClick);
@@ -505,7 +507,25 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       type: "fill",
       source: "nws-warnings",
       layout: { visibility: showWarnings ? "visible" : "none" },
-      paint: { "fill-color": "#ef4444", "fill-opacity": 0.32 },
+      paint: {
+        "fill-color": [
+          "match", ["get", "phenomena"],
+          "TO", "#FF0000",
+          "SV", "#FFA500",
+          "FF", "#8B0000",
+          "FA", "#00FF7F",
+          "FL", "#00FF7F",
+          "MA", "#FFA500",
+          "EW", "#FF8C00",
+          "SQ", "#C71585",
+          "DS", "#FFE4C4",
+          "SS", "#B524F7",
+          "HU", "#DC143C",
+          "TR", "#B22222",
+          "#ef4444"
+        ] as any,
+        "fill-opacity": 0.32,
+      },
     });
     map.addLayer({
       id: "nws-warnings-line",
@@ -513,7 +533,22 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       source: "nws-warnings",
       layout: { visibility: showWarnings ? "visible" : "none" },
       paint: {
-        "line-color": "#dc2626",
+        "line-color": [
+          "match", ["get", "phenomena"],
+          "TO", "#CC0000",
+          "SV", "#E08200",
+          "FF", "#660000",
+          "FA", "#00B85C",
+          "FL", "#00B85C",
+          "MA", "#E08200",
+          "EW", "#CC7000",
+          "SQ", "#9C1068",
+          "DS", "#C9B08F",
+          "SS", "#8E1ED1",
+          "HU", "#A6102E",
+          "TR", "#7A1818",
+          "#dc2626"
+        ] as any,
         // Slightly thicker stroke when the user is INSIDE the polygon.
         "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
       },
@@ -1056,7 +1091,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
 
       {/* Mini info card for clicked polygon */}
       {miniCard && (
-        <div style={miniCardWrap}>
+        <div style={{
+          ...miniCardWrap,
+          borderColor: phenomenaColor(miniCard.phenomena),
+        }}>
           <button
             onClick={() => setMiniCard(null)}
             style={miniCardClose}
@@ -1064,7 +1102,16 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           >
             ×
           </button>
-          <div style={miniCardEvent}>{miniCard.event.toUpperCase()}</div>
+          <div style={{
+            ...miniCardEvent,
+            display: "inline-block",
+            alignSelf: "flex-start",
+            backgroundColor: phenomenaColor(miniCard.phenomena),
+            color: phenomenaTextColor(miniCard.phenomena),
+            padding: "4px 8px",
+            borderRadius: 4,
+            paddingRight: 8,
+          }}>{miniCard.event.toUpperCase()}</div>
           {miniCard.expires && (
             <div style={miniCardExpires}>
               UNTIL {new Date(miniCard.expires).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -1302,6 +1349,35 @@ function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number) {
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// NWS VTEC standard phenomena colors (shared by the Mapbox warning layer
+// and the click-to-open mini banner so the map and card always agree).
+const PHENOMENA_COLOR: Record<string, string> = {
+  TO: "#FF0000", // Tornado Warning
+  SV: "#FFA500", // Severe Thunderstorm Warning
+  FF: "#8B0000", // Flash Flood Warning
+  FA: "#00FF7F", // Areal Flood Warning
+  FL: "#00FF7F", // Flood Warning
+  MA: "#FFA500", // Special Marine Warning
+  EW: "#FF8C00", // Extreme Wind Warning
+  SQ: "#C71585", // Snow Squall Warning
+  DS: "#FFE4C4", // Dust Storm Warning
+  SS: "#B524F7", // Storm Surge Warning
+  HU: "#DC143C", // Hurricane Warning
+  TR: "#B22222", // Tropical Storm Warning
+};
+
+function phenomenaColor(ph?: string): string {
+  if (!ph) return "#b91c1c";
+  return PHENOMENA_COLOR[ph.toUpperCase()] ?? "#b91c1c";
+}
+
+// Pick black or white for text/icons on top of the phenomena fill.
+function phenomenaTextColor(ph?: string): string {
+  const light = new Set(["SV", "FA", "FL", "MA", "DS"]);
+  if (ph && light.has(ph.toUpperCase())) return "#0b1018";
+  return "#faf7f0";
 }
 
 const gpsErrorStyle: React.CSSProperties = {
