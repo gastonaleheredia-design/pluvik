@@ -141,11 +141,9 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       const eventName = String(p.phenomena_name ?? p.event ?? "").trim()
         || (ph ? `${phenomenaName[ph] ?? ph} Warning` : "Weather Warning");
 
-      const id = String(
-        p.alert_id ?? p.id ?? p.eventid
-          ? `iem-sbw-${p.wfo ?? "X"}-${p.eventid ?? p.phenomena ?? ""}-${p.significance ?? ""}`
-          : `iem-sbw-${p.wfo ?? "X"}-${p.issue ?? ""}-${p.phenomena ?? ""}`,
-      );
+      const id =
+        String(p.alert_id ?? p.id ?? "") ||
+        `iem-sbw-${p.wfo ?? "X"}-${p.eventid ?? p.issue ?? ""}-${p.phenomena ?? ""}${p.significance ?? ""}`;
 
       const expires: string | null = p.expire ?? p.expires ?? null;
       const containsUser = pointInGeometry(lat, lon, f.geometry);
