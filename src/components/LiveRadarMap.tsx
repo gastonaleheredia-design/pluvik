@@ -13,7 +13,7 @@ import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
-import { loadActiveSbwGeo, geometryCentroid, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
+import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
