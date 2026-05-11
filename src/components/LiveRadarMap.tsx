@@ -1343,13 +1343,41 @@ const miniCardCta: React.CSSProperties = {
 };
 
 function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number) {
-  // referenced below
   const R = 3958.8; // miles
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// NWS VTEC standard phenomena colors (shared by the Mapbox warning layer
+// and the click-to-open mini banner so the map and card always agree).
+const PHENOMENA_COLOR: Record<string, string> = {
+  TO: "#FF0000", // Tornado Warning
+  SV: "#FFA500", // Severe Thunderstorm Warning
+  FF: "#8B0000", // Flash Flood Warning
+  FA: "#00FF7F", // Areal Flood Warning
+  FL: "#00FF7F", // Flood Warning
+  MA: "#FFA500", // Special Marine Warning
+  EW: "#FF8C00", // Extreme Wind Warning
+  SQ: "#C71585", // Snow Squall Warning
+  DS: "#FFE4C4", // Dust Storm Warning
+  SS: "#B524F7", // Storm Surge Warning
+  HU: "#DC143C", // Hurricane Warning
+  TR: "#B22222", // Tropical Storm Warning
+};
+
+function phenomenaColor(ph?: string): string {
+  if (!ph) return "#b91c1c";
+  return PHENOMENA_COLOR[ph.toUpperCase()] ?? "#b91c1c";
+}
+
+// Pick black or white for text/icons on top of the phenomena fill.
+function phenomenaTextColor(ph?: string): string {
+  const light = new Set(["SV", "FA", "FL", "MA", "DS"]);
+  if (ph && light.has(ph.toUpperCase())) return "#0b1018";
+  return "#faf7f0";
 }
 
 const gpsErrorStyle: React.CSSProperties = {
