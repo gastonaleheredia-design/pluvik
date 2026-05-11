@@ -777,7 +777,7 @@ function AnswerPage() {
                     marginBottom: '8px',
                   }}
                 >
-                  NEXT 12 HOURS
+                  NEXT 12 HOURS FROM NOW
                 </div>
                 <RainRateBar hours={rainHours} />
               </div>
@@ -859,8 +859,8 @@ function AnswerPage() {
                         padding: '4px 10px',
                         borderRadius: '999px',
                         backgroundColor:
-                          verdictWord === 'YES' ? '#15803d'
-                          : verdictWord === 'NO' ? ACCENT
+                          softWord === 'YES' || softWord === 'LIKELY' ? '#15803d'
+                          : softWord === 'NO' || softWord === 'UNLIKELY' ? ACCENT
                           : '#f59e0b',
                         color: '#faf7f0',
                         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
