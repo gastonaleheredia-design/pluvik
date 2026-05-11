@@ -1,84 +1,45 @@
-## The problem
+## What's happening
 
-Right now the first answer screen is just three lines stacked at the top — **NO** / one italic sentence / **9%** — and then a wall of blank cream paper down to the bottom buttons. It reads as "the app gave up" instead of "a meteorologist just briefed me." The verdict is correct, but the screen doesn't *earn* the user's trust or curiosity, so there's no emotional reason to tap **Save & track** or sign up.
+The Why sheet and the radar map use **two different warning sources with two different scoping rules**, so they disagree:
 
-The goal isn't to cram the page with widgets. It's to add **two or three deliberate elements** that make every answer feel complete, visual, and human — without breaking the calm editorial style we already have.
+| Surface | Source | Scope |
+|---|---|---|
+| Why sheet ("Severe Thunderstorm Warning · 55 mi N") | `fetchNearbyHazards` → IEM SBW feed | Any active polygon-based warning whose centroid is within **75 mi** of you |
+| Radar map (WARNINGS toggle) | `fetchActiveWarningPolygons` → NWS `/alerts/active?point=lat,lon` | Only alerts NWS returns for **your exact point**, then further filtered to polygons that **contain you** |
 
-## What we add (every answer, every scenario)
+In your screenshots you're in Sharpstown (Houston) and the active warnings are near Huntsville/Conroe (~55–75 mi N). They're outside Houston's NWS zone, and your point is not inside their polygons, so the radar layer correctly returns 0 features and draws nothing — even though the Why sheet (and your other radar app) clearly show them.
 
-A clean, scannable briefing that always has these blocks below the verdict word, in this order:
+So both questions resolve together:
+1. **Are the two warnings in the Why sheet the real ones?** Yes — `fetchNearbyHazards` reads the live IEM SBW feed (the same canonical NWS storm-based warning polygons your other radar app uses) and computes distance/bearing from polygon centroid. The "55 mi N" and "75 mi N" entries are the two warnings near Huntsville and farther east.
+2. **Why don't they show on our radar?** Because we only query alerts at your exact point and only draw polygons that contain you. Distant polygons get filtered out before they ever reach the map.
 
-```text
-─────────────────────────────────
-TROPICAL PARK, FLORIDA           FORECAST
-─────────────────────────────────
+## Fix
 
-NO                               ← keep the big serif word
+Unify the radar map on the same data source the Why sheet uses, so what the briefing tells you matches what you see on the map.
 
-Forecast shows about 9% chance   ← keep the italic sentence
-of rain around your time.
+1. **Replace `fetchActiveWarningPolygons` data source** in `src/components/LiveRadarMap.tsx`:
+   - Stop calling NWS `/alerts/active?point=...`.
+   - Pull polygons from the IEM SBW feed (`https://mesonet.agron.iastate.edu/geojson/sbw.geojson`), the same feed `fetchNearbyHazards` already uses. Reuse its in-memory cache by exporting a `loadActiveSbw()` (or a new `fetchNearbyWarningPolygons(lat, lon, radiusMi)`) helper from `src/lib/fetchers/fetchNearbyHazards.ts`.
+   - Filter to features whose centroid is within **~100 mi** of the user (slightly wider than the Why sheet's 75 mi so polygons that reach toward you are visible at the edge of the map; tunable).
+   - Keep only **Warning**-class events (Severe Thunderstorm, Tornado, Flash Flood, Extreme Wind, etc.) — skip Watches/Advisories on the radar to match today's behavior.
 
-┌─────────────────────────────┐
-│ ▓▒░░░░░░░░░░░░░░░░░░░░░░░░  │  ← NEW: 12-hour rain timeline strip
-│ now      noon       6pm     │     (tiny bars, one per hour)
-└─────────────────────────────┘
+2. **Keep the alert-detail cache working** so tapping a polygon still opens `/alert/$id` instantly:
+   - The IEM feed includes the NWS alert id in `properties.eventid` / `properties.url` / `properties.product_id` (varies). When we have a usable id, populate `cacheAlert(...)` from the SBW properties (event name, expires, areaDesc, severity if present). When we don't, fall back to `fetchAlertById` on click — which already exists.
+   - On click, if the cached entry is a stub, the alert detail page will still hydrate via the existing `fetchAlertById` path.
 
-WHEN          TEMP         WIND      ← NEW: 3-up "vitals" row
-2-5 PM        82°F         8 mph SE     (always present, scenario-aware)
+3. **Visual treatment** (no new colors, same calm style):
+   - All nearby warnings drawn with the existing red fill/line at the current opacity.
+   - Polygons that **contain the user** (`containsUser` from `pointInAlertGeometry`) get a slightly stronger stroke width — a quiet "this one is on top of you" cue without changing the palette.
 
-Sky mostly clear, a few clouds       ← NEW: one "what you'll feel" line
-drifting through. Light breeze         (plain English, no jargon)
-off the bay.
+4. **Consistency check between Why sheet and map** — none required at runtime since both now read the same feed. As a small future-proofing step, log a `console.debug` when the map's polygon count and the briefing's nearby-hazards count diverge for the same point, so we notice if the radius/filters drift apart again.
 
-┌─────────────────────────────┐
-│ ☼  GO — plan as usual       │  ← NEW: small verdict pill
-│    Check back in 3 hours    │     (already exists in BriefingScreen,
-└─────────────────────────────┘     promote it onto the first screen)
+## Out of scope
 
-   Why?  →                  SAVE & TRACK
-─────────────────────────────────
-```
+- No changes to the Why sheet copy, the home briefing, or the AI prompt.
+- No changes to alert detail page, basemap, radar tiles, or the WARNINGS toggle UX.
+- No new colors, gradients, icons, or layout changes.
 
-Same skeleton for every scenario — only the **vitals** and the **what you'll feel** sentence change:
+## Files touched
 
-| Scenario   | Vitals row                          | Visual strip                  |
-| ---------- | ----------------------------------- | ----------------------------- |
-| Rain (yes/no) | WHEN · TEMP · WIND               | 12-hour rain bars             |
-| Hurricane  | DISTANCE · CATEGORY · ARRIVES IN    | mini cone / track             |
-| Severe     | THREAT · PEAK WINDOW · RISK LEVEL   | timeline of warnings          |
-| Far-out / climate | TYPICAL HIGH · TYPICAL RAIN · CONFIDENCE | 30-yr normal sparkline |
-| General    | NOW · NEXT 6H · NEXT 24H            | hourly temp curve             |
-
-This way no answer is ever just "NO + 9%" again — the user always sees **a verdict, a visual, three numbers, a sentence, and a recommendation**.
-
-## Why these specific elements
-
-- **Visual strip (rain bars / cone / sparkline)** — one image is what makes a weather app *feel* like a weather app. It also visually justifies the verdict ("oh, there's the dry window").
-- **3-up vitals row** — three labeled facts is the magic number: enough to feel substantial, few enough to scan in 1 second. We already have this data in `answer.current_conditions`, `answer.time_context`, `answer.main_concern`, etc.
-- **"What you'll feel" sentence** — turns numbers into a sensory experience. This is the single biggest "wow this is a real meteorologist" lever.
-- **Verdict pill + check-back** — closes the loop. Tells the user *what to do* and *when to look again*, which is the whole point of the app.
-
-## What we keep
-
-- Cream paper background, Fraunces serif, mono labels — no visual redesign.
-- The big verdict word (NO / YES / MAYBE) stays as the hero.
-- The italic sentence stays right under it.
-- **Why?** and **Save & track** stay where they are at the bottom.
-- Sign-up is still only required for Save & track — nothing in this richer answer is gated.
-
-## Technical notes (for the implementer)
-
-- All the new fields already exist on `ExtendedWeatherAnswer` (`hourly_rain`, `current_conditions`, `time_context`, `main_concern`, `action`, `check_back_minutes`). No backend or schema change needed.
-- The 12-hour rain bar component already exists at `src/components/briefing/RainRateBar.tsx` — promote it from the "Why?" screen onto the first screen.
-- The verdict pill + action + check-back already exist in `BriefingScreen.tsx` Block 4 — extract that block into a small `<VerdictPill />` component and reuse it on the first screen.
-- All edits land in `src/routes/answer.tsx` (the inline first-screen render between lines ~585 and ~870). No changes to `askWeather.functions.ts`, schema, or routes.
-- Stage-aware: at `climate` / `outlook` stages the vitals row swaps to climate normals and the rain strip swaps to a 30-year sparkline — the rest of the layout stays identical.
-
-## What I will NOT do
-
-- No new colors, no gradient hero, no illustrations.
-- No second screen, no modal, no scroll-snap sections.
-- No changes to the loading screen, the home page, or sign-up flow.
-- No changes to the AI prompt or the answer schema.
-
-If you approve this, the result is the same calm screen you have now — but every answer feels like a one-page meteorologist briefing instead of a single sentence floating in space.
+- `src/lib/fetchers/fetchNearbyHazards.ts` — export a polygon-returning helper that shares the SBW cache.
+- `src/components/LiveRadarMap.tsx` — replace `fetchActiveWarningPolygons` body with the shared helper; populate `cacheAlert` from SBW properties; bump stroke for `containsUser` polygons.

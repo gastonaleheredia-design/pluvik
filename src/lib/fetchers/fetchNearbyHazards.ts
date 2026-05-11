@@ -98,6 +98,13 @@ async function loadActiveSbw(): Promise<any | null> {
   }
 }
 
+/** Public accessor — same cached IEM SBW payload used by fetchNearbyHazards. */
+export async function loadActiveSbwGeo(): Promise<any | null> {
+  return loadActiveSbw();
+}
+
+export { polygonCentroid as polygonCentroidLngLat, geometryCentroid, pointInGeometry };
+
 /**
  * Active SBWs within `radiusMi` of (lat, lon), sorted by distance.
  * Polygon-aware: the `containsUser` flag is true when the user is INSIDE

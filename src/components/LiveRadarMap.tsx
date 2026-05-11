@@ -13,6 +13,7 @@ import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
+import { loadActiveSbwGeo, geometryCentroid, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -107,56 +108,74 @@ function buildIemMosaicFrames(): PreparedFrames {
 
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
   try {
-    const res = await fetch(
-      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
-      { headers: NWS_HEADERS },
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const features = (data.features ?? []).filter(
-      (f: any) => /Warning$/.test(f?.properties?.event ?? "") && f?.geometry,
-    ).filter((f: any) => {
-      // The general rule: only show an alert polygon when the user's
-      // coordinates are actually inside it. NWS sometimes returns alerts
-      // from neighboring zones via broad zone matches; those must not
-      // appear on the map.
-      return pointInAlertGeometry(lat, lon, f.geometry);
-    });
-    console.debug('[radar] alerts point', { lat, lon, count: features.length });
-    if (!features.length) return null;
+    // Unified with the Why-sheet briefing: pull warning polygons from the
+    // IEM active-SBW feed (a clean mirror of NWS storm-based warnings) and
+    // keep anything within ~100 mi of the user. Previously we asked NWS for
+    // alerts at the user's exact point and only drew polygons that contained
+    // them — which hid nearby warnings that the briefing was already telling
+    // the user about.
+    const geo = await loadActiveSbwGeo();
+    if (!geo?.features?.length) return null;
 
-    // Cache full alert details so /alert/$id can hydrate instantly.
-    for (const f of features) {
-      const p = f.properties ?? {};
+    const RADIUS_MI = 100;
+    const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+    const phenomenaName: Record<string, string> = {
+      TO: "Tornado", SV: "Severe Thunderstorm", FF: "Flash Flood",
+      MA: "Marine", EW: "Extreme Wind", SQ: "Snow Squall", DS: "Dust Storm",
+    };
+
+    const out: GeoJSON.Feature[] = [];
+    for (const f of geo.features) {
+      const p = f?.properties ?? {};
+      const sig = String(p.significance ?? "").toUpperCase();
+      // Warnings only on the map (W); skip Watches/Advisories.
+      if (sig && sig !== "W") continue;
+
+      const centroid = geometryCentroid(f.geometry);
+      if (!centroid) continue;
+      const dy = (centroid.lat - lat) * 69;
+      const dx = (centroid.lon - lon) * 69 * cosLat;
+      if (Math.hypot(dx, dy) > RADIUS_MI) continue;
+
+      const ph = String(p.phenomena ?? "").toUpperCase();
+      const eventName = String(p.phenomena_name ?? p.event ?? "").trim()
+        || (ph ? `${phenomenaName[ph] ?? ph} Warning` : "Weather Warning");
+
+      const id =
+        String(p.alert_id ?? p.id ?? "") ||
+        `iem-sbw-${p.wfo ?? "X"}-${p.eventid ?? p.issue ?? ""}-${p.phenomena ?? ""}${p.significance ?? ""}`;
+
+      const expires: string | null = p.expire ?? p.expires ?? null;
+      const containsUser = pointInGeometry(lat, lon, f.geometry);
+
+      // Pre-populate the alert cache so tapping a polygon opens the detail
+      // page instantly. The detail page falls back to NWS by id when missing.
       const cached: CachedAlert = {
-        id: p.id ?? f.id ?? "",
-        event: p.event ?? "Weather Warning",
-        headline: p.headline ?? "",
-        description: p.description ?? "",
-        instruction: p.instruction ?? "",
-        severity: (p.severity ?? "unknown").toLowerCase(),
-        certainty: (p.certainty ?? "unknown").toLowerCase(),
-        urgency: (p.urgency ?? "unknown").toLowerCase(),
-        areaDesc: p.areaDesc ?? "",
-        expires: p.expires ?? null,
-        effective: p.effective ?? null,
-        senderName: p.senderName ?? "NWS",
+        id,
+        event: eventName,
+        headline: String(p.headline ?? ""),
+        description: String(p.description ?? ""),
+        instruction: String(p.instruction ?? ""),
+        severity: String(p.severity ?? "unknown").toLowerCase(),
+        certainty: String(p.certainty ?? "unknown").toLowerCase(),
+        urgency: String(p.urgency ?? "unknown").toLowerCase(),
+        areaDesc: String(p.areaDesc ?? p.area ?? ""),
+        expires,
+        effective: p.issue ?? p.effective ?? null,
+        senderName: String(p.wfo ? `NWS ${p.wfo}` : "NWS"),
       };
-      if (cached.id) cacheAlert(cached);
+      cacheAlert(cached);
+
+      out.push({
+        type: "Feature",
+        geometry: f.geometry,
+        properties: { id, event: eventName, expires, containsUser },
+      });
     }
 
-    return {
-      type: "FeatureCollection" as const,
-      features: features.map((f: any) => ({
-        type: "Feature" as const,
-        geometry: f.geometry,
-        properties: {
-          id: f.properties?.id ?? f.id ?? "",
-          event: f.properties?.event ?? "Warning",
-          expires: f.properties?.expires ?? null,
-        },
-      })),
-    };
+    console.debug("[radar] sbw polygons", { lat, lon, count: out.length });
+    if (!out.length) return null;
+    return { type: "FeatureCollection" as const, features: out };
   } catch {
     return null;
   }
@@ -445,7 +464,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       type: "line",
       source: "nws-warnings",
       layout: { visibility: showWarnings ? "visible" : "none" },
-      paint: { "line-color": "#dc2626", "line-width": 3 },
+      paint: {
+        "line-color": "#dc2626",
+        // Slightly thicker stroke when the user is INSIDE the polygon.
+        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
+      },
     });
     wireWarningInteractions(map);
   }, [showWarnings, wireWarningInteractions]);
