@@ -8,6 +8,7 @@ import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
 import { BriefingScreen, type BriefingFact, type BriefingVerdict } from '../components/BriefingScreen';
+import { RainRateBar, type RainHour } from '../components/briefing/RainRateBar';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
@@ -544,6 +545,37 @@ function AnswerPage() {
   const isClimate = stage === 'climate';
   const isOutlook = stage === 'outlook';
   const isModelTrend = stage === 'model_trend';
+
+  // ── Briefing block data (rain strip + vitals + feel + verdict pill) ──
+  // Map the per-hour timeline returned by the model to bar intensities.
+  const timelineRaw = (answer as { timeline?: Array<{ hour_label: string; severity?: 'ok' | 'watch' | 'bad' | null }> | null }).timeline ?? null;
+  const rainHours: RainHour[] | undefined = timelineRaw && timelineRaw.length > 0
+    ? timelineRaw.slice(0, 12).map((h) => ({
+        label: h.hour_label,
+        intensity: h.severity === 'bad' ? 0.85 : h.severity === 'watch' ? 0.45 : 0.06,
+      }))
+    : undefined;
+
+  // 3-up vitals row. We always show CHANCE (the headline number), then up to
+  // two scenario-relevant facts pulled from the validated answer.
+  const chanceValue = typeof answer.percentage === 'number' ? `${answer.percentage}%` : '—';
+  const vitals: Array<{ label: string; value: string }> = [
+    { label: 'CHANCE OF RAIN', value: chanceValue },
+    ...(answer.time_context ? [{ label: 'WINDOW', value: answer.time_context }] : []),
+    ...(answer.main_concern ? [{ label: 'MAIN CONCERN', value: answer.main_concern }] : []),
+  ].slice(0, 3);
+
+  // "What you'll feel" — sensory sentence. Use current_conditions, falling
+  // back to mechanism. Skip if it would just repeat the verdict sentence.
+  const feelSentence = (() => {
+    const cc = (answer.current_conditions ?? (answer as { mechanism?: string }).mechanism ?? '').trim();
+    if (!cc) return null;
+    if (verdictSentence && cc.toLowerCase() === verdictSentence.toLowerCase()) return null;
+    return cc;
+  })();
+
+  const checkBackMin = (answer as { check_back_minutes?: number | null }).check_back_minutes ?? null;
+  const showBriefingBlock = !isClimate && !isOutlook;
   // Soften the headline verb at climate/outlook/model_trend.
   const displayVerdictWord = isClimate
     ? 'TOO FAR OUT'
@@ -684,6 +716,157 @@ function AnswerPage() {
             {isClimate ? climateBody : verdictSentence}
           </div>
 
+          {/* ── Briefing block: rain strip + vitals + feel + verdict pill ── */}
+          {showBriefingBlock && (
+            <div style={{ marginBottom: '32px', maxWidth: '520px' }}>
+              {/* 12-hour rain strip */}
+              <div style={{ marginBottom: '24px' }}>
+                <div
+                  style={{
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.55rem',
+                    letterSpacing: '0.18em',
+                    color: MUTED,
+                    marginBottom: '8px',
+                  }}
+                >
+                  NEXT 12 HOURS
+                </div>
+                <RainRateBar hours={rainHours} />
+              </div>
+
+              {/* 3-up vitals row */}
+              {vitals.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${vitals.length}, 1fr)`,
+                    gap: '14px',
+                    paddingTop: '16px',
+                    paddingBottom: '16px',
+                    borderTop: `1px solid ${INK}14`,
+                    borderBottom: `1px solid ${INK}14`,
+                    marginBottom: feelSentence ? '20px' : '24px',
+                  }}
+                >
+                  {vitals.map((v) => (
+                    <div key={v.label} style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.52rem',
+                          letterSpacing: '0.16em',
+                          color: MUTED,
+                          marginBottom: '6px',
+                        }}
+                      >
+                        {v.label}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: 'Fraunces, serif',
+                          fontSize: '1.05rem',
+                          lineHeight: 1.2,
+                          color: INK,
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {v.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* "What you'll feel" sentence */}
+              {feelSentence && (
+                <div
+                  style={{
+                    fontFamily: 'Fraunces, serif',
+                    fontSize: '0.98rem',
+                    lineHeight: 1.5,
+                    color: INK,
+                    opacity: 0.85,
+                    marginBottom: '24px',
+                    maxWidth: '480px',
+                  }}
+                >
+                  {feelSentence}
+                </div>
+              )}
+
+              {/* Verdict pill — recommendation + check-back */}
+              {(answer.action || checkBackMin != null) && (
+                <div
+                  style={{
+                    backgroundColor: INK,
+                    color: PAGE_BG,
+                    borderRadius: '16px',
+                    padding: '16px 18px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: answer.action ? '10px' : 0 }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        backgroundColor:
+                          verdictWord === 'YES' ? '#15803d'
+                          : verdictWord === 'NO' ? ACCENT
+                          : '#f59e0b',
+                        color: '#faf7f0',
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.55rem',
+                        letterSpacing: '0.18em',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {displayVerdictWord ?? verdictWord}
+                    </span>
+                    {answer.confidence && (
+                      <span
+                        style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.5rem',
+                          letterSpacing: '0.18em',
+                          color: 'rgba(250,247,240,0.55)',
+                        }}
+                      >
+                        CONF · <span style={{ color: '#f59e0b', fontWeight: 700 }}>{answer.confidence}</span>
+                      </span>
+                    )}
+                  </div>
+                  {answer.action && (
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '0.95rem',
+                        lineHeight: 1.45,
+                        color: 'rgba(250,247,240,0.95)',
+                        marginBottom: checkBackMin != null ? '10px' : 0,
+                      }}
+                    >
+                      {answer.action}
+                    </div>
+                  )}
+                  {checkBackMin != null && (
+                    <div
+                      style={{
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.5rem',
+                        letterSpacing: '0.18em',
+                        color: 'rgba(250,247,240,0.55)',
+                      }}
+                    >
+                      CHECK BACK IN {checkBackMin} MIN
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* climate / outlook outro line */}
           {(isClimate || isOutlook) && (
             <div
@@ -801,8 +984,9 @@ function AnswerPage() {
             </div>
           )}
 
-          {/* headline number — never shown at climate/outlook */}
-          {headlineForStage && (
+          {/* headline number — only shown at model_trend (range pill);
+              short_range/live now surfaces the % via the vitals row above. */}
+          {headlineForStage && isModelTrend && (
             <div style={{ marginBottom: '32px' }}>
               <div
                 style={{

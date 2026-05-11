@@ -1,35 +1,84 @@
-## Match the radar palette to the RadarScope reference
+## The problem
 
-Switch the national mosaic from RainViewer to **IEM RIDGE USCOMP-N0Q** (NOAA composite served by Iowa State). It paints the exact NWS Level III palette shown in the reference photo — black background, cyan/blue at light returns, green→yellow→orange→red→magenta→white at the strongest returns.
+Right now the first answer screen is just three lines stacked at the top — **NO** / one italic sentence / **9%** — and then a wall of blank cream paper down to the bottom buttons. It reads as "the app gave up" instead of "a meteorologist just briefed me." The verdict is correct, but the screen doesn't *earn* the user's trust or curiosity, so there's no emotional reason to tap **Save & track** or sign up.
 
-### What changes for the user
+The goal isn't to cram the page with widgets. It's to add **two or three deliberate elements** that make every answer feel complete, visual, and human — without breaking the calm editorial style we already have.
 
-- Storm cells will look like the RadarScope reference instead of the current dull RainViewer rendering.
-- The radar still updates automatically every ~5 minutes (the cadence of the NOAA composite).
-- The legend swatches in the bottom-right will be redrawn to mirror the new palette exactly.
-- The loop/scrub bar will play through the **last ~60 minutes** of NOAA frames (about 12 frames) instead of RainViewer's smooth 10-frame loop. Animation will look slightly less buttery but the data is identical.
-- The short "forecast" frames (RainViewer's nowcast) go away — the clock will only show real, observed times. We'll remove the "· forecast" suffix.
+## What we add (every answer, every scenario)
 
-### What stays the same
+A clean, scannable briefing that always has these blocks below the verdict word, in this order:
 
-- Single-station mode (KHGX, THOU, etc.) is unchanged — already using IEM with the correct palette.
-- NWS warning polygons, the blue you-are-here dot, all toolbar buttons, the source picker, ruler, pin, and the alerts mini-card all keep working.
-- Snow and Mix mode keep RainViewer (IEM doesn't offer those layers); the legend already switches per mode.
+```text
+─────────────────────────────────
+TROPICAL PARK, FLORIDA           FORECAST
+─────────────────────────────────
 
-### Technical notes
+NO                               ← keep the big serif word
 
-- Replace `fetchFrames()` for `source === 'mosaic'` with a call to IEM's time index for `USCOMP-N0Q` (`https://mesonet.agron.iastate.edu/api/1/nexrad-genesis-times.json` or the `ridge::USCOMP-N0Q` time list). Build a `frames[]` of the last ~12 timestamps, oldest → newest.
-- Tile URL pattern per frame:
-  `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-{ISO}/{z}/{x}/{y}.png`
-- Drop the `colorScheme` arg from the mosaic path — IEM tiles are pre-colored with the NWS palette, so no scheme parameter is needed.
-- Keep `tileSize: 256`, raise mosaic `maxzoom` to 9 (IEM serves up to z9 cleanly).
-- Update `RAIN_STOPS` legend to the canonical NWS Level III stops:
-  `5 cyan · 10 blue · 15 dark blue · 20 green · 25 mid-green · 30 dark green · 35 yellow · 40 amber · 45 orange · 50 red · 55 dark red · 60 deep red · 65 magenta · 70 purple`. We'll condense to ~7 visible buckets so the legend stays compact.
-- `frameTime.isForecast` is always `false` in mosaic mode now; remove the "· forecast" UI.
-- The 120 s `refresher` already re-fetches the frame list; no change to that loop.
-- Snow/Mix modes continue calling `rvTileUrl(...)` against RainViewer.
+Forecast shows about 9% chance   ← keep the italic sentence
+of rain around your time.
 
-### Out of scope
+┌─────────────────────────────┐
+│ ▓▒░░░░░░░░░░░░░░░░░░░░░░░░  │  ← NEW: 12-hour rain timeline strip
+│ now      noon       6pm     │     (tiny bars, one per hour)
+└─────────────────────────────┘
 
-- No backend changes, no new env vars, no new dependencies.
-- No changes to alerts, briefing, WhySheet, or anything outside `LiveRadarMap.tsx`.
+WHEN          TEMP         WIND      ← NEW: 3-up "vitals" row
+2-5 PM        82°F         8 mph SE     (always present, scenario-aware)
+
+Sky mostly clear, a few clouds       ← NEW: one "what you'll feel" line
+drifting through. Light breeze         (plain English, no jargon)
+off the bay.
+
+┌─────────────────────────────┐
+│ ☼  GO — plan as usual       │  ← NEW: small verdict pill
+│    Check back in 3 hours    │     (already exists in BriefingScreen,
+└─────────────────────────────┘     promote it onto the first screen)
+
+   Why?  →                  SAVE & TRACK
+─────────────────────────────────
+```
+
+Same skeleton for every scenario — only the **vitals** and the **what you'll feel** sentence change:
+
+| Scenario   | Vitals row                          | Visual strip                  |
+| ---------- | ----------------------------------- | ----------------------------- |
+| Rain (yes/no) | WHEN · TEMP · WIND               | 12-hour rain bars             |
+| Hurricane  | DISTANCE · CATEGORY · ARRIVES IN    | mini cone / track             |
+| Severe     | THREAT · PEAK WINDOW · RISK LEVEL   | timeline of warnings          |
+| Far-out / climate | TYPICAL HIGH · TYPICAL RAIN · CONFIDENCE | 30-yr normal sparkline |
+| General    | NOW · NEXT 6H · NEXT 24H            | hourly temp curve             |
+
+This way no answer is ever just "NO + 9%" again — the user always sees **a verdict, a visual, three numbers, a sentence, and a recommendation**.
+
+## Why these specific elements
+
+- **Visual strip (rain bars / cone / sparkline)** — one image is what makes a weather app *feel* like a weather app. It also visually justifies the verdict ("oh, there's the dry window").
+- **3-up vitals row** — three labeled facts is the magic number: enough to feel substantial, few enough to scan in 1 second. We already have this data in `answer.current_conditions`, `answer.time_context`, `answer.main_concern`, etc.
+- **"What you'll feel" sentence** — turns numbers into a sensory experience. This is the single biggest "wow this is a real meteorologist" lever.
+- **Verdict pill + check-back** — closes the loop. Tells the user *what to do* and *when to look again*, which is the whole point of the app.
+
+## What we keep
+
+- Cream paper background, Fraunces serif, mono labels — no visual redesign.
+- The big verdict word (NO / YES / MAYBE) stays as the hero.
+- The italic sentence stays right under it.
+- **Why?** and **Save & track** stay where they are at the bottom.
+- Sign-up is still only required for Save & track — nothing in this richer answer is gated.
+
+## Technical notes (for the implementer)
+
+- All the new fields already exist on `ExtendedWeatherAnswer` (`hourly_rain`, `current_conditions`, `time_context`, `main_concern`, `action`, `check_back_minutes`). No backend or schema change needed.
+- The 12-hour rain bar component already exists at `src/components/briefing/RainRateBar.tsx` — promote it from the "Why?" screen onto the first screen.
+- The verdict pill + action + check-back already exist in `BriefingScreen.tsx` Block 4 — extract that block into a small `<VerdictPill />` component and reuse it on the first screen.
+- All edits land in `src/routes/answer.tsx` (the inline first-screen render between lines ~585 and ~870). No changes to `askWeather.functions.ts`, schema, or routes.
+- Stage-aware: at `climate` / `outlook` stages the vitals row swaps to climate normals and the rain strip swaps to a 30-year sparkline — the rest of the layout stays identical.
+
+## What I will NOT do
+
+- No new colors, no gradient hero, no illustrations.
+- No second screen, no modal, no scroll-snap sections.
+- No changes to the loading screen, the home page, or sign-up flow.
+- No changes to the AI prompt or the answer schema.
+
+If you approve this, the result is the same calm screen you have now — but every answer feels like a one-page meteorologist briefing instead of a single sentence floating in space.
