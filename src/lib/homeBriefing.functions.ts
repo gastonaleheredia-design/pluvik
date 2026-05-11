@@ -158,6 +158,10 @@ export interface HomeBriefing {
   why?: WhyNarrative;
   /** Set when the upstream weather provider could not be reached. */
   error?: 'upstream_unavailable';
+  /** Forecast probability of rain in the next ~1 hour at the user's point (0–100), or null. */
+  next_hour_prob?: number | null;
+  /** How confident the headline word is. Drives "starting" vs "possible" copy. */
+  confidence?: 'high' | 'medium' | 'low';
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
