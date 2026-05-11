@@ -411,7 +411,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     let liveImminentRain = false;
     if (minutely) {
       if (minutely.first15 > 0.005) liveRainingNow = true;
-      if (minutely.sumNext60 > 0.02) liveImminentRain = true;
+      // Tightened: trace amounts (a few hundredths of an inch) shouldn't
+      // trigger a confident "Rain starting within the hour" headline.
+      if (minutely.sumNext60 > 0.05) liveImminentRain = true;
     }
 
     // Find first hour with meaningful rain in the next 7 days.
