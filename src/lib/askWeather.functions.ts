@@ -22,6 +22,12 @@ import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDige
 import { isRainYesNoQuestion } from './headlineAnswer';
 import { pickConfidenceAwareWord } from './headlineAnswer';
 import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
+import { fetchNearbyStorms, type NhcStorm } from './fetchers/fetchNhcStorm';
+import {
+  computeHurricaneImpact,
+  impactProfileToBriefingText,
+  type HurricaneImpactProfile,
+} from './hurricaneImpact';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -258,6 +264,21 @@ export interface ExtendedWeatherAnswer {
     surge: string;
   };
   last_change?: string;
+  /** Deterministic per-location impact profile (hurricane mode only). */
+  hurricane_profile?: HurricaneImpactProfile | null;
+  /** Minimal storm metadata + GIS layers for map overlay. */
+  hurricane_storm?: {
+    id: string;
+    name: string;
+    classification: string;
+    intensityMph: number;
+    position: { lat: number; lon: number };
+    movementDir: number | null;
+    movementKt: number | null;
+    cone: GeoJSON.FeatureCollection | null;
+    track: GeoJSON.FeatureCollection | null;
+    watchesWarnings: GeoJSON.FeatureCollection | null;
+  } | null;
 }
 
 function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
