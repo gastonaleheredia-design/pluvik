@@ -1076,17 +1076,17 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-// Color stops sampled from RainViewer color scheme 6 (NEXRAD Level III) so
-// the legend mirrors the pixels actually painted on the map. The lower
-// dBZ buckets are the cyan/blue rings users see on the outer edge of cells.
+// Canonical NWS NEXRAD Level III reflectivity palette — exactly what IEM's
+// USCOMP-N0Q tiles paint, so the legend mirrors the pixels on the map.
 const RAIN_STOPS = [
   { tag: "5+",  color: "#04e9e7", label: "Trace" },
-  { tag: "15+", color: "#0a73e6", label: "Light" },
-  { tag: "20+", color: "#15c40a", label: "Moderate" },
-  { tag: "35+", color: "#fef000", label: "Heavy" },
-  { tag: "45+", color: "#fd7e00", label: "Intense" },
-  { tag: "55+", color: "#fc0000", label: "Severe" },
-  { tag: "65+", color: "#fc00ff", label: "Extreme / hail" },
+  { tag: "20+", color: "#02fd02", label: "Light" },
+  { tag: "30+", color: "#008e00", label: "Moderate" },
+  { tag: "35+", color: "#fdf802", label: "Heavy" },
+  { tag: "45+", color: "#fd9500", label: "Intense" },
+  { tag: "50+", color: "#fd0000", label: "Severe" },
+  { tag: "60+", color: "#bc0000", label: "Damaging" },
+  { tag: "65+", color: "#f800fd", label: "Hail" },
 ];
 const MIX_STOPS = [
   { tag: "5+",  color: "#04e9e7", label: "Trace mix" },
