@@ -1091,7 +1091,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
 
       {/* Mini info card for clicked polygon */}
       {miniCard && (
-        <div style={miniCardWrap}>
+        <div style={{
+          ...miniCardWrap,
+          borderColor: phenomenaColor(miniCard.phenomena),
+        }}>
           <button
             onClick={() => setMiniCard(null)}
             style={miniCardClose}
@@ -1099,7 +1102,16 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           >
             ×
           </button>
-          <div style={miniCardEvent}>{miniCard.event.toUpperCase()}</div>
+          <div style={{
+            ...miniCardEvent,
+            display: "inline-block",
+            alignSelf: "flex-start",
+            backgroundColor: phenomenaColor(miniCard.phenomena),
+            color: phenomenaTextColor(miniCard.phenomena),
+            padding: "4px 8px",
+            borderRadius: 4,
+            paddingRight: 8,
+          }}>{miniCard.event.toUpperCase()}</div>
           {miniCard.expires && (
             <div style={miniCardExpires}>
               UNTIL {new Date(miniCard.expires).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
