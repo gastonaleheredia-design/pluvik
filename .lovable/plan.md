@@ -1,76 +1,98 @@
-# Two small UI fixes: bottom-nav badge + loading phrases
+# Add every free model that meaningfully improves the forecast
 
-## 1) The TRACKING notification dot
+Goal: expand the medium-range and long-range model coverage so the AI sees more independent opinions and we can give honest "models agree / models disagree" confidence — without making the briefing 10× longer or 5× slower.
 
-It's not a glitch — that little dot only appears when the **TRACKING** tab has unseen significant changes on something you're tracking (a watched storm or event got an updated forecast you haven't opened yet). Computed in `src/components/BottomNav.tsx` from `tracked_events` rows where `last_significant_change_at > user_seen_change_at`, refreshed every 60 s.
+## Current state (recap)
 
-**Polish so it reads as a real notification badge:**
+- **Medium range (3–7 d):** 5 deterministic models — GFS, ECMWF IFS, ICON, GEM, HRRR — via `fetchModelComparison` in `src/lib/metDataFetcher.ts`.
+- **Long range (7–14 d):** 1 ensemble — GEFS (`gfs_seamless`) — via `fetchEnsemble`.
+- **Nowcast / 0–48 h:** HRRR. (Already best in class for the US, leave it alone.)
 
-- Change color to **red** (e.g. `#dc2626`) — the universal notification color.
-- Make it bigger (≈ 8 px instead of 6 px) and give it a thin paper-colored ring so it doesn't blend into the active-tab dot.
-- Move it to the upper-right of the **icon dot** (the small dot above the label), not the upper-right of the word "TRACKING" — that's where users expect a badge.
-- Keep the `aria-label`, change copy to "New update on a tracked storm".
+## Models being added
 
----
+All available free on Open-Meteo (same provider we already use, no new keys, no new infra).
 
-## 2) Loading phrases shown while the answer is being computed
+### Medium range — expand `fetchModelComparison` from 5 → 8 models
 
-Here's the full inventory of what the app says while it works. Each set is picked based on how far in the future the question is asking about.
+Add the two leading **AI / ML models** and one strong regional EU model. AI models now consistently match or beat IFS at days 3–7 in independent verification, so adding them is the single biggest accuracy win available.
 
-**Default — short-range (the most common path)** — from `src/i18n/translations.ts`:
-
-| Step | English | Spanish |
+| New model | Provider | Why |
 |---|---|---|
-| 1 | Reading the forecast... | Leyendo el pronóstico... |
-| 2 | Checking the models... | Revisando los modelos... |
-| 3 | **Looking at the discussion...** | **Analizando la discusión...** |
-| 4 | Writing your answer... | Escribiendo tu respuesta... |
+| **GraphCast** (`gfs_graphcast025`) | Google DeepMind | Independent ML model. Uncorrelated errors with IFS/GFS — exactly what a multi-model ensemble needs. |
+| **AIFS** (`ecmwf_aifs025_single`) | ECMWF | ECMWF's own AI model. Already operational; matches IFS at fraction of cost. |
+| **Météo-France ARPEGE** (`meteofrance_arpege_world`) | Météo-France | Independent global deterministic — a 6th physics-based opinion to break ties. |
 
-**Climate questions** (`src/routes/answer.tsx`):
-- Looking up the climate for that date…
-- Pulling 30-year averages for this location…
-- Reading historical patterns…
+Final list (8 deterministic): GFS, ECMWF IFS, ICON, GEM, HRRR, **GraphCast**, **AIFS**, **ARPEGE**.
 
-**Outlook (8–14 day) questions:**
-- Reading the long-range outlook…
-- Checking 8–14 day signals…
-- Comparing to seasonal averages…
+We'll also tighten the briefing format so 8 rows stays readable: collapse into a one-line-per-model row per day with bracketed agreement summary at the bottom of each day:
 
-**Model-trend (3–7 day) questions:**
-- Checking the early model signals…
-- Comparing GFS, ECMWF, ICON…
-- Looking for model agreement…
+```text
+2026-05-12:
+  gfs_seamless    Precip:0.12" Pop:35% Tmax:79°F Wind:14mph
+  ecmwf_ifs025    Precip:0.05" Pop:20% Tmax:78°F Wind:12mph
+  icon_seamless   Precip:0.20" Pop:50% Tmax:79°F Wind:13mph
+  gem_seamless    Precip:0.00" Pop:10% Tmax:80°F Wind:11mph
+  gfs_hrrr        Precip:0.18" Pop:40% Tmax:78°F Wind:13mph
+  graphcast       Precip:0.08" Pop:30% Tmax:79°F Wind:12mph
+  aifs            Precip:0.10" Pop:35% Tmax:79°F Wind:12mph
+  arpege          Precip:0.04" Pop:25% Tmax:78°F Wind:11mph
+  → 8 models · precip range 0.00–0.20" · agreement: MIXED
+```
 
-**Live (right-now) questions:**
-- Checking what is happening right now…
-- Reading radar and active warnings…
-- Watching the storm cells…
+The `agreement` tag (`STRONG`, `MIXED`, `WEAK`) is computed deterministically from the precip range and pop spread, then printed for the LLM to use directly when it writes the confidence sentence — instead of asking the LLM to eyeball it.
 
-### What needs replacing
+### Long range — expand `fetchEnsemble` from 1 → 4 ensembles
 
-You're right — step 3 of the **short-range** set ("Looking at the discussion…" / "Analizando la discusión…") is the one that mentions the forecast discussion, which we're no longer pulling. Proposed replacements:
+Currently we only see GEFS (51 GFS members). Adding the 3 other major ensembles gives ~150 additional members of independent opinion at no extra cost.
 
-| Option | English | Spanish |
+| New ensemble | Provider | Members |
 |---|---|---|
-| **A (recommended)** | Cross-checking radar and warnings… | Revisando radar y avisos activos… |
-| B | Comparing what models agree on… | Comparando dónde coinciden los modelos… |
-| C | Reading the latest observations… | Leyendo las observaciones más recientes… |
+| **ECMWF ENS** (`ecmwf_ifs04`) | ECMWF | 51, 0.4° |
+| **ICON-EPS** (`icon_seamless` on ensemble endpoint) | DWD | 40, ~0.25° EU / 0.13° global |
+| **GEPS** (`gem_global`) | Environment Canada | 21, 0.35° |
 
-Optional polish to the **model-trend** set: "Comparing **GFS, ECMWF, ICON**…" reads as jargon to a non-meteorologist. We can soften it to "Comparing the major weather models…" while keeping the same meaning.
+Final list (4 ensembles): GEFS + ENS + ICON-EPS + GEPS.
 
-Everything else looks accurate to what the pipeline actually does.
+We'll change the printed long-range block from "GFS ENSEMBLE" to "MULTI-MODEL ENSEMBLE (7-day)" with one row per model per day showing **mean precip + probability of >0.10"**. Then a deterministic summary line per day:
 
----
+```text
+2026-05-15:
+  GEFS    mean:0.18" P(>0.1"):60%
+  ENS     mean:0.22" P(>0.1"):65%
+  ICON    mean:0.10" P(>0.1"):40%
+  GEPS    mean:0.15" P(>0.1"):55%
+  → 4 ensembles · mean 0.16" · 55% chance of measurable rain · agreement STRONG
+```
+
+This is what gives the "outlook" answer real teeth — instead of "GEFS says…" it can say "all 4 major ensembles lean wet" or "ensembles split — low confidence."
 
 ## Files touched
 
-- `src/components/BottomNav.tsx` — make the badge red, bigger, ringed, repositioned over the icon dot, and update `aria-label`.
-- `src/i18n/translations.ts` — replace `loading_3` in `en` and `es`.
-- `src/routes/answer.tsx` — optional: soften "GFS, ECMWF, ICON…" wording.
+- `src/lib/metDataFetcher.ts`
+  - `fetchModelComparison` — bump model list to 8, add deterministic `agreement` summary line.
+  - `fetchEnsemble` — switch to 4-ensemble fetch (one parallel request per ensemble; merge into one printed block), add deterministic `agreement` summary line.
+- `src/lib/atmosphericInterpreter.ts` — small tweak: when computing `modelComparison` confidence, use the new `agreement` tag if present.
+- `src/lib/sourcePriority.ts` — comment update only; the `global_ensemble` and `mesoscale_models` family names already cover everything new.
+- `src/routes/answer.tsx` — the loading-phrase tweak we already shipped ("Comparing the major weather models…") still applies; no change.
 
-No business logic touched, no other files affected.
+No DB migrations, no new secrets, no new dependencies. Open-Meteo handles all of it.
 
-## Decisions I need from you
+## Performance / cost
 
-1. Which replacement for "Looking at the discussion…" — **A**, **B**, **C**, or your own wording?
-2. Want the model-trend "GFS, ECMWF, ICON…" softened to "the major weather models…"?
+- Open-Meteo allows multiple `&models=…` values in a single request, so the medium-range bump from 5 → 8 is the **same number of HTTP calls** as today (1 request, slightly larger response).
+- Long-range goes from 1 → 4 HTTP requests (one per ensemble endpoint), fired in parallel inside `Promise.allSettled`. Worst-case added latency ≈ the slowest single fetch, typically <500 ms. Each ensemble already returns in ~150–300 ms.
+- All 4 ensemble fetches are wrapped so a single failure (e.g. ICON-EPS down) drops that row but doesn't kill the briefing.
+
+## Verification after implementation
+
+1. Ask a 5-day question (e.g. "Will it rain Saturday?"). The briefing handed to the AI should contain 8 model rows per day and an `agreement:` tag. The answer screen's confidence line should reflect it.
+2. Ask a 10-day question. The "outlook" block should list 4 ensembles, not just GEFS.
+3. Hit `server-function-logs` for `askWeather` and confirm no fetch errors from the new endpoints.
+
+## What I am explicitly NOT adding (and why)
+
+- **JMA, UKMO, BOM, CMA, KNMI** — available on Open-Meteo but they're regional or essentially redundant with IFS/ICON for US queries. Adding them adds noise without independent signal for our user base.
+- **HRRR / ARPEGE-AROME / HARMONIE for nowcast** — HRRR is already the right choice for 0–48 h US. Adding mesoscale EU models would slow the nowcast for zero benefit in Houston.
+- **NBM (NCEP National Blend of Models)** — it's a blend of the same models we're already pulling individually, so it would double-count. We get more signal by reading the components directly.
+
+If you later expand to non-US users, JMA, UKMO, BOM and KNMI become worth adding regionally — easy follow-up.
