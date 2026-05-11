@@ -320,6 +320,12 @@ const STYLES = {
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
 };
 
+/** Keep warning polygons painted above the radar raster after any swap. */
+function enforceLayerOrder(map: mapboxgl.Map) {
+  if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
+  if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
+}
+
 interface MiniCardData {
   id: string;
   event: string;
