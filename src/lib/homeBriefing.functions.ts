@@ -51,6 +51,8 @@ export interface HomeBriefing {
     /** Short human-readable explanation, localized. */
     detail: string;
   };
+  /** Rich, scenario-aware Why narrative (radar + alerts + SPC + AFD). */
+  why?: WhyNarrative;
   /** Set when the upstream weather provider could not be reached. */
   error?: 'upstream_unavailable';
 }
