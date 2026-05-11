@@ -532,6 +532,33 @@ export const askWeather = createServerFn({ method: 'POST' })
     // 7. Mode detection (severe/hurricane override) — needed for stage classification.
     const mode = await detectMode(lat, lon, briefing.alerts);
 
+    // 7a. If hurricane mode, fetch the live NHC GIS for any storm within
+    // 800 mi and compute a deterministic per-location impact profile.
+    // The numbers (quadrant, wind probabilities, timing) flow into BOTH
+    // the LLM context AND the final response, so the UI never disagrees
+    // with what the model said.
+    let hurricaneProfile: HurricaneImpactProfile | null = null;
+    let hurricaneStorm: NhcStorm | null = null;
+    let hurricaneContextBlock = '';
+    if (mode === 'hurricane') {
+      try {
+        const storms = await fetchNearbyStorms(lat, lon, 800);
+        if (storms.length > 0) {
+          // Pick the closest storm (by current center distance).
+          storms.sort((a, b) => {
+            const da = Math.hypot(a.position.lat - lat, a.position.lon - lon);
+            const db = Math.hypot(b.position.lat - lat, b.position.lon - lon);
+            return da - db;
+          });
+          hurricaneStorm = storms[0];
+          hurricaneProfile = computeHurricaneImpact(hurricaneStorm, lat, lon);
+          hurricaneContextBlock = impactProfileToBriefingText(hurricaneProfile);
+        }
+      } catch (err) {
+        console.warn('[askWeather] hurricane profile failed:', (err as Error)?.message);
+      }
+    }
+
     // 7b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
     const hasActiveWarnings = mode === 'severe' || mode === 'hurricane' ||
       /warning|tornado|flash flood/i.test(briefing.alerts ?? '');
@@ -691,6 +718,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
+      (hurricaneContextBlock ? `${hurricaneContextBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
       `- Anchor every answer to the EXACT window the user asked about. Do not switch to a more dramatic forecast block outside that window.\n` +
