@@ -426,6 +426,25 @@ Respond ONLY with valid JSON:
 
 const HURRICANE_PROMPT = `You are a working broadcast meteorologist. ACTIVE TROPICAL SYSTEM near this location. Assess the specific impact at their address.
 
+You are given a deterministic IMPACT PROFILE for this user's exact lat/lon
+computed directly from the latest NHC advisory. Treat its numbers as ground
+truth — do NOT contradict or re-estimate the wind probabilities, the
+quadrant, the closest-approach distance/ETA, or the timing windows. Quote
+them in plain English.
+
+ANSWER RULES:
+1. Lead with closest approach + ETA + forecast classification at that ETA
+   (not generic "storm is approaching" language).
+2. State the user's quadrant in plain English. If they're on the dirty
+   (front-right) side, name it. If they're on the favored side, say so.
+3. Give the three wind probabilities as the three numbers in the profile.
+4. Treat WIND, SURGE, RAIN/INLAND FLOODING, and TORNADO as separate risks.
+   Never blend them into one sentence.
+5. End with a prep timeline anchored to the timing windows
+   (first TS wind → peak → all-clear).
+6. Cite the advisory number so the user knows which advisory you're on.
+7. If forecast confidence is LOW, say so plainly.
+
 Respond ONLY with valid JSON:
 {
   "verdict": "CAUTION",
