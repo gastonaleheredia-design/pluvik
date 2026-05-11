@@ -138,7 +138,11 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       if (Math.hypot(dx, dy) > RADIUS_MI) continue;
 
       const ph = String(p.phenomena ?? "").toUpperCase();
-      const eventName = String(p.phenomena_name ?? p.event ?? "").trim()
+      // IEM SBW feed labels warnings with `ps` (e.g. "Severe Thunderstorm
+      // Warning"). Older code paths used `phenomena_name`/`event` which the
+      // feed does not actually populate, so polygons were getting filtered
+      // out earlier and now show up labeled "Weather Warning". Prefer `ps`.
+      const eventName = String(p.ps ?? p.phenomena_name ?? p.event ?? "").trim()
         || (ph ? `${phenomenaName[ph] ?? ph} Warning` : "Weather Warning");
 
       const id =
@@ -546,7 +550,10 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       minZoom: 3,
       maxZoom: 12,
       attributionControl: false,
-      cooperativeGestures: !isFullscreen,
+      // One-finger pan everywhere — pinch still zooms. The "use two fingers"
+      // overlay only shows when cooperativeGestures is on, which felt wrong
+      // for an embedded weather map.
+      cooperativeGestures: false,
     });
     mapRef.current = map;
 
