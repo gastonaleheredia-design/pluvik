@@ -3,6 +3,7 @@ import { probeImminentStorm, probeNearbyCell, getActiveWarning, type NearbyCellP
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
+import { getNextHourNowcast } from './nowcastShared';
 
 /* ---------------------------------------------------------------- */
 /* AFD short-term snippet (best-effort, cached)                      */
@@ -312,11 +313,23 @@ function pickWord(opts: {
   snowNow: boolean;
   cloudCover: number;
   hoursUntilRain: number | null;
+  /** Probability (0–100) of rain in the next ~60 min from the shared nowcast. */
+  nextHourProb: number;
+  /** HRRR minutely accumulation over next 60 min (inches). */
+  mmNext60: number;
 }): HomeBriefing['word'] {
   if (opts.thunderNow) return 'STORMS';
   if (opts.snowNow) return 'SNOW';
   if (opts.rainingNow) return 'RAINING';
-  if (opts.hoursUntilRain != null && opts.hoursUntilRain <= 6) return 'RAIN SOON';
+  // RAIN SOON is now a CONFIDENT claim: only fires when the next hour is
+  // ≥50% likely OR the deterministic minutely model is dropping >0.05",
+  // OR there is meaningful rain forecast within ~3 hours. A 26% blip no
+  // longer triggers a "RAIN SOON" headline.
+  const imminentConfident =
+    opts.nextHourProb >= 50 || opts.mmNext60 > 0.05;
+  const nearTermConfident =
+    opts.hoursUntilRain != null && opts.hoursUntilRain <= 3;
+  if (imminentConfident || nearTermConfident) return 'RAIN SOON';
   if (opts.cloudCover >= 70) return 'CLOUDY';
   return 'DRY';
 }
@@ -404,15 +417,17 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     const snowNow = (curCode >= 71 && curCode <= 77) || (curCode >= 85 && curCode <= 86);
     const thunderNow = curCode >= 95;
 
-    // Live point sample (HRRR minutely_15) — this catches "rain right now"
-    // when the smoothed hourly bucket says zero. Best-effort.
-    const minutely = await fetchMinutelyAtPoint(lat, lon);
+    // SHARED nowcast (single source of truth used by the answer engine too).
+    // This is what stops the home headline and the answer screen from ever
+    // showing different probabilities for the same hour.
+    const nowcast = await getNextHourNowcast(lat, lon);
+    const minutely = nowcast
+      ? { first15: nowcast.rainingNowMinutely ? 0.01 : 0, sumNext60: nowcast.mmNext60 }
+      : await fetchMinutelyAtPoint(lat, lon);
     let liveRainingNow = rainingNow;
     let liveImminentRain = false;
     if (minutely) {
       if (minutely.first15 > 0.005) liveRainingNow = true;
-      // Tightened: trace amounts (a few hundredths of an inch) shouldn't
-      // trigger a confident "Rain starting within the hour" headline.
       if (minutely.sumNext60 > 0.05) liveImminentRain = true;
     }
 
@@ -433,10 +448,18 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // decide whether RAIN SOON is a confident "starting" claim or a softer
     // "possible" claim — so the home headline can't out-confidently disagree
     // with the answer engine.
-    const i0 = Math.max(nowIdx, 0);
-    const probNow = Number.isFinite(probs[i0]) ? probs[i0] : 0;
-    const probNext = Number.isFinite(probs[i0 + 1]) ? probs[i0 + 1] : 0;
-    const nextHourProb = Math.max(probNow ?? 0, probNext ?? 0);
+    // Use the shared-nowcast probability when available so the home and
+    // answer engine can never disagree on the next-hour number. Falls back
+    // to the local Open-Meteo hourly array when the shared call failed.
+    let nextHourProb: number;
+    if (nowcast && typeof nowcast.probNextHour === 'number') {
+      nextHourProb = nowcast.probNextHour;
+    } else {
+      const i0 = Math.max(nowIdx, 0);
+      const probNow = Number.isFinite(probs[i0]) ? probs[i0] : 0;
+      const probNext = Number.isFinite(probs[i0 + 1]) ? probs[i0 + 1] : 0;
+      nextHourProb = Math.max(probNow ?? 0, probNext ?? 0);
+    }
 
     let hoursUntilRain: number | null = null;
     let nextRainCaption: string | null = null;
@@ -462,6 +485,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       snowNow,
       cloudCover,
       hoursUntilRain,
+      nextHourProb,
+      mmNext60: minutely?.sumNext60 ?? 0,
     });
 
     const isEs = language.startsWith('es');

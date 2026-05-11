@@ -21,6 +21,7 @@ import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
 import { isRainYesNoQuestion } from './headlineAnswer';
 import { pickConfidenceAwareWord } from './headlineAnswer';
+import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -808,6 +809,91 @@ export const askWeather = createServerFn({ method: 'POST' })
       // Keep verdict_word as YES/NO/MAYBE for backward compatibility with
       // legacy code, but expose `display_word` as the soft headline.
       (validated.data as any).display_word = soft;
+    }
+
+    // ── Shared next-hour nowcast override ───────────────────────────────
+    // For "next hour" / "now" / "soon" questions, the headline number, the
+    // verdict_sentence, and the 12-hour rain strip are all derived from the
+    // SAME shared nowcast that drives the home screen. This makes it
+    // impossible for the home and answer screens to disagree about the next
+    // hour, and stops the LLM from writing about "Sunday midday" when the
+    // user asked about the next 60 minutes.
+    const isShortHorizon =
+      isNextHourQuestion(question) ||
+      (typeof hoursAhead === 'number' && hoursAhead <= 1.5 &&
+        (typeof endHoursAhead !== 'number' || endHoursAhead - hoursAhead <= 1.5));
+    if (isShortHorizon && !imminent) {
+      try {
+        const nowcast = await getNextHourNowcast(lat, lon);
+        if (nowcast && typeof nowcast.probNextHour === 'number') {
+          const pct = nowcast.probNextHour;
+          // Override headline number + verdict triplet from deterministic data.
+          validated.data.percentage = pct;
+          (validated.data as any).impact_percent = pct;
+          let rawWord: 'YES' | 'NO' | 'MAYBE';
+          if (pct >= 60) { validated.data.verdict = 'NO-GO'; rawWord = 'YES'; }
+          else if (pct >= 30) { validated.data.verdict = 'CAUTION'; rawWord = 'MAYBE'; }
+          else { validated.data.verdict = 'GO'; rawWord = 'NO'; }
+          (validated.data as any).verdict_word = rawWord;
+          validated.data.confidence = nowcast.confidence === 'high' ? 'HIGH'
+            : nowcast.confidence === 'medium' ? 'MEDIUM' : 'LOW';
+          (validated.data as any).headline_number = { value: `${pct}%`, label: 'CHANCE OF RAIN' };
+
+          // Re-pick the soft display word against the deterministic numbers.
+          (validated.data as any).display_word = pickConfidenceAwareWord({
+            rawWord,
+            confidence: validated.data.confidence as 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW',
+            percentage: pct,
+          });
+
+          // Deterministic, window-locked headline sentence. The LLM never
+          // gets a chance to say "this Sunday midday hour" for a next-hour
+          // question.
+          const isEs = language?.startsWith('es');
+          let sentence: string;
+          if (rawWord === 'YES') {
+            sentence = isEs
+              ? `Lluvia esperada en la próxima hora (${pct}% prob).`
+              : `Rain expected within the next hour (${pct}%).`;
+          } else if (rawWord === 'MAYBE') {
+            sentence = isEs
+              ? `Lluvia posible en la próxima hora (${pct}% prob).`
+              : `Light rain chance in the next hour (${pct}%).`;
+          } else {
+            sentence = isEs
+              ? 'No se esperan lluvias en tu ubicación en la próxima hora.'
+              : 'No rain expected at your location in the next hour.';
+          }
+          validated.data.verdict_sentence = sentence;
+          validated.data.summary = sentence;
+
+          // Replace timeline with the deterministic next 12 hours from NOW
+          // so the rain strip's axis matches its "NEXT 12 HOURS FROM NOW"
+          // header instead of jumping ahead to the parsed event window.
+          if (nowcast.hourlyNext12.length > 0) {
+            (validated.data as any).timeline = nowcast.hourlyNext12.map((h) => ({
+              hour_label: h.label,
+              headline:
+                h.prob >= 60 ? `Rain likely (${h.prob}%)`
+                : h.prob >= 30 ? `Rain possible (${h.prob}%)`
+                : `Dry (${h.prob}%)`,
+              severity:
+                h.prob >= 60 || h.precipIn > 0.05 ? 'bad' as const
+                : h.prob >= 30 ? 'watch' as const
+                : 'ok' as const,
+            }));
+          }
+
+          console.log('[askWeather:diag] next-hour nowcast override', {
+            pct,
+            confidence: validated.data.confidence,
+            display_word: (validated.data as any).display_word,
+            source: nowcast.sourceTag,
+          });
+        }
+      } catch (err) {
+        console.warn('[askWeather] shared nowcast failed:', (err as Error)?.message);
+      }
     }
 
     return {
