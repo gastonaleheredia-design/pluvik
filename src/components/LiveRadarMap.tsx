@@ -445,6 +445,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
         }, beforeId);
         currentProfileRef.current = profileKey;
+        enforceLayerOrder(map);
       }
     } else {
       map.addSource("live-radar", {
@@ -463,6 +464,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
       }, beforeId);
       currentProfileRef.current = profileKey;
+      enforceLayerOrder(map);
     }
     const fr = framesRef.current;
     const isForecast = !isIemMosaic && !isStation && (fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false);
