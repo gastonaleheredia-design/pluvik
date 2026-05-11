@@ -158,6 +158,10 @@ export interface HomeBriefing {
   why?: WhyNarrative;
   /** Set when the upstream weather provider could not be reached. */
   error?: 'upstream_unavailable';
+  /** Forecast probability of rain in the next ~1 hour at the user's point (0–100), or null. */
+  next_hour_prob?: number | null;
+  /** How confident the headline word is. Drives "starting" vs "possible" copy. */
+  confidence?: 'high' | 'medium' | 'low';
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -407,7 +411,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     let liveImminentRain = false;
     if (minutely) {
       if (minutely.first15 > 0.005) liveRainingNow = true;
-      if (minutely.sumNext60 > 0.02) liveImminentRain = true;
+      // Tightened: trace amounts (a few hundredths of an inch) shouldn't
+      // trigger a confident "Rain starting within the hour" headline.
+      if (minutely.sumNext60 > 0.05) liveImminentRain = true;
     }
 
     // Find first hour with meaningful rain in the next 7 days.
@@ -422,6 +428,15 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       const isRain = precs[i] > 0.1 || probs[i] >= 50 || (codes[i] >= 51 && codes[i] <= 99);
       if (isRain) { nextRainIdx = i; break; }
     }
+
+    // Probability of rain in the next ~1 hour at the user's point. Used to
+    // decide whether RAIN SOON is a confident "starting" claim or a softer
+    // "possible" claim — so the home headline can't out-confidently disagree
+    // with the answer engine.
+    const i0 = Math.max(nowIdx, 0);
+    const probNow = Number.isFinite(probs[i0]) ? probs[i0] : 0;
+    const probNext = Number.isFinite(probs[i0 + 1]) ? probs[i0 + 1] : 0;
+    const nextHourProb = Math.max(probNow ?? 0, probNext ?? 0);
 
     let hoursUntilRain: number | null = null;
     let nextRainCaption: string | null = null;
@@ -637,7 +652,9 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
       else if (word === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
       else if (word === 'SNOW') sentence = 'Está nevando.';
-      else if (word === 'RAIN SOON') sentence = `Lluvia esperada en aprox. ${hoursUntilRain} h.`;
+      else if (word === 'RAIN SOON') sentence = nextHourProb >= 60
+        ? `Lluvia esperada en aprox. ${hoursUntilRain} h.`
+        : `Lluvia posible en aprox. ${hoursUntilRain} h (${nextHourProb}% prob).`;
       else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
       else if (word === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
       else if (nextRainIdx < 0) sentence = 'Despejado por los próximos 7 días.';
@@ -653,9 +670,13 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'RAINING') sentence = 'Rain falling right now.';
       else if (word === 'SNOW') sentence = 'Snow falling.';
       else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
-        sentence = 'Rain starting within the hour.';
+        sentence = nextHourProb >= 60
+          ? 'Rain starting within the hour.'
+          : `Rain possible within the hour (${nextHourProb}% chance).`;
       else if (word === 'RAIN SOON')
-        sentence = `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`;
+        sentence = nextHourProb >= 60
+          ? `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`
+          : `Rain possible in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'} (${nextHourProb}% chance).`;
       else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
       else if (word === 'CLOUDY') sentence = 'Overcast, dry for now.';
       else if (nextRainIdx < 0) sentence = 'Clear through the next 7 days.';
@@ -669,8 +690,20 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
         sentence = `Lluvia justo encima — celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}.`;
       else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
-        sentence = 'Lluvia comenzando en la próxima hora.';
+        sentence = nextHourProb >= 60
+          ? 'Lluvia comenzando en la próxima hora.'
+          : `Lluvia posible en la próxima hora (${nextHourProb}% prob).`;
     }
+
+    // Confidence stamp for the headline word — used by UI to soften copy.
+    let confidence: 'high' | 'medium' | 'low' = 'medium';
+    if (activeAlert || stormOverride) confidence = 'high';
+    else if (word === 'RAINING' || word === 'STORMS' || word === 'SNOW') confidence = 'high';
+    else if (word === 'RAIN SOON') {
+      if (nextHourProb >= 70) confidence = 'high';
+      else if (nextHourProb >= 50) confidence = 'medium';
+      else confidence = 'low';
+    } else if (word === 'DRY' || word === 'CLOUDY') confidence = 'high';
 
     // Local "updated at" string in the address's timezone.
     const updatedLocal = new Date().toLocaleTimeString(language.startsWith('es') ? 'es-US' : 'en-US', {
@@ -725,6 +758,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      next_hour_prob: Number.isFinite(nextHourProb) ? Math.round(nextHourProb) : null,
+      confidence,
       why: await buildWhyPayload({
         lat, lon, language,
         word,
