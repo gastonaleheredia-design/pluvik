@@ -36,6 +36,57 @@ export function pickHeadlineWord(args: {
 }
 
 /**
+ * Confidence-aware headline word. Never returns a hard YES / NO when
+ * confidence is LOW or VERY_LOW — instead softens to LIKELY / UNLIKELY /
+ * POSSIBLE / MAYBE / MONITOR so the headline matches the certainty stamp.
+ *
+ * Inputs:
+ *   - rawWord: what the LLM (or rule engine) wanted to say (YES / NO / MAYBE)
+ *   - confidence: HIGH / MEDIUM / LOW / VERY_LOW
+ *   - percentage: chance-of-impact (0–100), used to disambiguate when the
+ *     raw word is missing or contradictory
+ *
+ * Returns one of: YES, LIKELY, POSSIBLE, MAYBE, MONITOR, UNLIKELY, NO.
+ */
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
+export type SoftHeadline =
+  | 'YES' | 'LIKELY' | 'POSSIBLE' | 'MAYBE' | 'MONITOR' | 'UNLIKELY' | 'NO';
+
+export function pickConfidenceAwareWord(args: {
+  rawWord?: 'YES' | 'NO' | 'MAYBE' | null;
+  confidence?: ConfidenceLevel | null;
+  percentage?: number | null;
+}): SoftHeadline {
+  const conf = args.confidence ?? 'MEDIUM';
+  const pct = typeof args.percentage === 'number' && Number.isFinite(args.percentage)
+    ? Math.max(0, Math.min(100, args.percentage))
+    : null;
+  // Derive a leaning if the raw word is missing.
+  let lean: 'pos' | 'neg' | 'mid' =
+    args.rawWord === 'YES' ? 'pos'
+    : args.rawWord === 'NO' ? 'neg'
+    : args.rawWord === 'MAYBE' ? 'mid'
+    : pct == null ? 'mid'
+    : pct >= 60 ? 'pos'
+    : pct <= 25 ? 'neg' : 'mid';
+
+  if (conf === 'HIGH') {
+    if (lean === 'pos') return 'YES';
+    if (lean === 'neg') return 'NO';
+    return 'MAYBE';
+  }
+  if (conf === 'MEDIUM') {
+    if (lean === 'pos') return 'LIKELY';
+    if (lean === 'neg') return 'UNLIKELY';
+    return 'MAYBE';
+  }
+  // LOW / VERY_LOW
+  if (lean === 'pos') return 'POSSIBLE';
+  if (lean === 'neg') return 'UNLIKELY';
+  return 'MONITOR';
+}
+
+/**
  * Map an internal plan verdict (GO / CAUTION / NO-GO / UNKNOWN) to the
  * friendly meteorologist-style recommendation we show users on cards and
  * detail screens. Returns null when there is no helpful advice to show.

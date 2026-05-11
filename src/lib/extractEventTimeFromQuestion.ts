@@ -152,7 +152,15 @@ export function extractEventTimeFromQuestion(
 
   // ── Relative: tonight / tomorrow / today / now ────────────────────
   if (/\b(right now|currently|this moment)\b/.test(q)) {
-    return { eventAt: new Date(now), hoursAhead: 0, sourcePhrase: 'now' };
+    const start = new Date(now);
+    const end = new Date(now.getTime() + 60 * 60 * 1000);
+    return { eventAt: start, endAt: end, hoursAhead: 0, sourcePhrase: 'now' };
+  }
+  // "next hour", "in the next hour", "within the hour", "soon"
+  if (/\b(next\s+hour|in\s+the\s+next\s+hour|within\s+(an?|the)\s+hour|in\s+an?\s+hour|soon)\b/.test(q)) {
+    const start = new Date(now);
+    const end = new Date(now.getTime() + 60 * 60 * 1000);
+    return { eventAt: start, endAt: end, hoursAhead: 0, sourcePhrase: 'next hour' };
   }
   if (/\btonight\b|\bthis evening\b/.test(q)) {
     const d = new Date(now);
