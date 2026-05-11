@@ -499,6 +499,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
+      if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
+      if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
       fitToWarnings(map, data, la, lo);
       return;
     }
