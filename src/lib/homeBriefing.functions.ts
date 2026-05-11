@@ -1,5 +1,8 @@
 import { createServerFn } from '@tanstack/react-start';
 import { probeImminentStorm, probeNearbyCell, getActiveWarning, type NearbyCellProbe, type ActiveAlert } from './metDataFetcher';
+import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
+import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
+import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
 
 interface HomeBriefingRequest {
   lat: number;
@@ -48,6 +51,8 @@ export interface HomeBriefing {
     /** Short human-readable explanation, localized. */
     detail: string;
   };
+  /** Rich, scenario-aware Why narrative (radar + alerts + SPC + AFD). */
+  why?: WhyNarrative;
   /** Set when the upstream weather provider could not be reached. */
   error?: 'upstream_unavailable';
 }
@@ -617,5 +622,15 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      why: await buildWhyPayload({
+        lat, lon, language,
+        word,
+        tempF: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
+        cloudCover,
+        hoursUntilRain,
+        nextRainCaption: activeAlert ? null : nextRainCaption,
+        nearbyCell: nearbyProbe,
+        alert: activeAlert,
+      }),
     } satisfies HomeBriefing;
   });
