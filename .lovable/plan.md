@@ -1,98 +1,150 @@
-# Add every free model that meaningfully improves the forecast
 
-Goal: expand the medium-range and long-range model coverage so the AI sees more independent opinions and we can give honest "models agree / models disagree" confidence — without making the briefing 10× longer or 5× slower.
+# Plan: Model expansion + full hurricane-season system
 
-## Current state (recap)
+Two parts. Part 1 fills the four model gaps from the last summary. Part 2 builds the hurricane system from scratch — fetcher, location-specific impact engine, map overlay, and answer presentation.
 
-- **Medium range (3–7 d):** 5 deterministic models — GFS, ECMWF IFS, ICON, GEM, HRRR — via `fetchModelComparison` in `src/lib/metDataFetcher.ts`.
-- **Long range (7–14 d):** 1 ensemble — GEFS (`gfs_seamless`) — via `fetchEnsemble`.
-- **Nowcast / 0–48 h:** HRRR. (Already best in class for the US, leave it alone.)
+---
 
-## Models being added
+## PART 1 — Model expansion (the four items)
 
-All available free on Open-Meteo (same provider we already use, no new keys, no new infra).
+All four go into `src/lib/metDataFetcher.ts`. No DB, no secrets, no UI changes.
 
-### Medium range — expand `fetchModelComparison` from 5 → 8 models
+### 1. NBM (National Blend of Models)
+- Add `ncep_nbm_conus` to `fetchModelComparison`. NBM is the NWS's official blended product — typically the most skillful single source for US surface temps/wind/PoP.
+- Label: `NBM`. Adds the 9th medium-range deterministic model.
 
-Add the two leading **AI / ML models** and one strong regional EU model. AI models now consistently match or beat IFS at days 3–7 in independent verification, so adding them is the single biggest accuracy win available.
+### 2. RAP (Rapid Refresh)
+- Add `gfs_rap` to `fetchModelComparison` for hours 0–51. Cheap HRRR backup that extends nowcast horizon.
+- Label: `RAP`.
 
-| New model | Provider | Why |
-|---|---|---|
-| **GraphCast** (`gfs_graphcast025`) | Google DeepMind | Independent ML model. Uncorrelated errors with IFS/GFS — exactly what a multi-model ensemble needs. |
-| **AIFS** (`ecmwf_aifs025_single`) | ECMWF | ECMWF's own AI model. Already operational; matches IFS at fraction of cost. |
-| **Météo-France ARPEGE** (`meteofrance_arpege_world`) | Météo-France | Independent global deterministic — a 6th physics-based opinion to break ties. |
+### 3. JMA GSM
+- Add `jma_gsm` to `fetchModelComparison`. Independent global, adds genuine model diversity (not derived from GFS/IFS).
+- Label: `JMA`.
 
-Final list (8 deterministic): GFS, ECMWF IFS, ICON, GEM, HRRR, **GraphCast**, **AIFS**, **ARPEGE**.
+### 4. Verify everything wires through
+- Confirm `agreement` tag (STRONG / MIXED / WEAK) still computes correctly with 11 models in the spread.
+- Confirm `atmosphericInterpreter.ts` and `sourcePriority.ts` print the new models in the briefing block. They flow through verbatim today, so this should be a no-op — but verify.
 
-We'll also tighten the briefing format so 8 rows stays readable: collapse into a one-line-per-model row per day with bracketed agreement summary at the bottom of each day:
+After Part 1: medium-range comparison goes from **8 → 11 deterministic models** (GFS, ECMWF IFS, ICON, GEM, ARPEGE, HRRR, GraphCast, AIFS, **NBM**, **RAP**, **JMA**).
 
-```text
-2026-05-12:
-  gfs_seamless    Precip:0.12" Pop:35% Tmax:79°F Wind:14mph
-  ecmwf_ifs025    Precip:0.05" Pop:20% Tmax:78°F Wind:12mph
-  icon_seamless   Precip:0.20" Pop:50% Tmax:79°F Wind:13mph
-  gem_seamless    Precip:0.00" Pop:10% Tmax:80°F Wind:11mph
-  gfs_hrrr        Precip:0.18" Pop:40% Tmax:78°F Wind:13mph
-  graphcast       Precip:0.08" Pop:30% Tmax:79°F Wind:12mph
-  aifs            Precip:0.10" Pop:35% Tmax:79°F Wind:12mph
-  arpege          Precip:0.04" Pop:25% Tmax:78°F Wind:11mph
-  → 8 models · precip range 0.00–0.20" · agreement: MIXED
+---
+
+## PART 2 — Hurricane-season system
+
+Today the app does the bare minimum: it pings `nhc.noaa.gov/CurrentStorms.json`, checks if any storm is within 800 mi, and flips into "hurricane mode" with a hardcoded `HurricaneAnswerScreen`. There is **no track data, no cone, no wind probabilities, no quadrant analysis, no map overlay**. Part 2 builds all of it.
+
+### 2A. New fetcher: `src/lib/fetchers/fetchNhcStorm.ts`
+
+Pull from these free NHC endpoints (no API key, JSON):
+- `CurrentStorms.json` — list of active storms (already used)
+- Per-storm GIS feeds (linked off the storm object): forecast track points, forecast cone polygon, wind-speed probability swaths (34 / 50 / 64 kt over 5 days), storm surge inundation (where issued), and watch/warning polygons.
+
+Returns a `NhcStorm` object per nearby storm:
+```
+{
+  id, name, classification, intensityMph, motion: { bearing, mph },
+  position: { lat, lon, validAt },
+  forecastTrack: [{ lat, lon, validAt, intensityMph, classification }],
+  cone: GeoJSON,
+  windProb34kt / 50kt / 64kt: GeoJSON,        // 5-day cumulative probability
+  surgeInundation?: GeoJSON,                  // when issued
+  watchesWarnings: GeoJSON,
+  advisoryNumber, advisoryIssued, nextAdvisoryAt
+}
 ```
 
-The `agreement` tag (`STRONG`, `MIXED`, `WEAK`) is computed deterministically from the precip range and pop spread, then printed for the LLM to use directly when it writes the confidence sentence — instead of asking the LLM to eyeball it.
+Cache for 30 min (advisories update every 6 h, intermediate every 3 h).
 
-### Long range — expand `fetchEnsemble` from 1 → 4 ensembles
+### 2B. Location-specific impact engine: `src/lib/hurricaneImpact.ts`
 
-Currently we only see GEFS (51 GFS members). Adding the 3 other major ensembles gives ~150 additional members of independent opinion at no extra cost.
+This is the part that answers *"how does the hurricane affect ME at my address."* It computes a per-location impact profile from the NHC data + the user's lat/lon.
 
-| New ensemble | Provider | Members |
-|---|---|---|
-| **ECMWF ENS** (`ecmwf_ifs04`) | ECMWF | 51, 0.4° |
-| **ICON-EPS** (`icon_seamless` on ensemble endpoint) | DWD | 40, ~0.25° EU / 0.13° global |
-| **GEPS** (`gem_global`) | Environment Canada | 21, 0.35° |
+For each nearby storm, derive:
 
-Final list (4 ensembles): GEFS + ENS + ICON-EPS + GEPS.
+1. **Closest approach** — point on the forecast track nearest to the user. Returns: distance (mi), ETA (hours), forecast intensity at that time, classification (TD / TS / Cat1–5).
 
-We'll change the printed long-range block from "GFS ENSEMBLE" to "MULTI-MODEL ENSEMBLE (7-day)" with one row per model per day showing **mean precip + probability of >0.10"**. Then a deterministic summary line per day:
+2. **Quadrant / sector** — which side of the storm the user falls on at closest approach: front-right (worst — surge + max wind + tornadoes), front-left, back-right, back-left. Hurricane impacts are **highly asymmetric**; this is the single most important variable for a personalized answer.
 
-```text
-2026-05-15:
-  GEFS    mean:0.18" P(>0.1"):60%
-  ENS     mean:0.22" P(>0.1"):65%
-  ICON    mean:0.10" P(>0.1"):40%
-  GEPS    mean:0.15" P(>0.1"):55%
-  → 4 ensembles · mean 0.16" · 55% chance of measurable rain · agreement STRONG
-```
+3. **Wind probability lookup** — point-in-polygon against the 34/50/64 kt wind swaths. Returns three numbers: `% chance of TS-force wind`, `% chance of 50kt`, `% chance of hurricane-force wind`.
 
-This is what gives the "outlook" answer real teeth — instead of "GEFS says…" it can say "all 4 major ensembles lean wet" or "ensembles split — low confidence."
+4. **Cone membership** — is the user inside the 5-day cone? (Reminder: the cone is the track uncertainty, NOT the impact area. We'll word this carefully.)
+
+5. **Surge risk** — point-in-polygon against the surge inundation graphic (when issued). Returns expected inundation in feet, or "not in surge zone" / "not yet issued."
+
+6. **Rain total** — pull QPF from WPC 5-day total + GFS/ECMWF tropical rainfall for the storm window. Hurricane rain ≠ wind impact; inland flooding kills more people than wind.
+
+7. **Tornado risk** — front-right quadrant + landfall window → cross-reference SPC Day 1–3 tornado outlook. Tornadoes from tropical systems are concentrated in the right-front quadrant.
+
+8. **Timing windows** — first TS-force wind arrival, peak impact hour, all-clear hour. These drive the prep timeline.
+
+9. **Confidence** — derive from cone width at user's longitude, model spread (we already have ensemble spread), and time to landfall. Wider cone + 5 days out = LOW; narrow cone + 24 h out = HIGH.
+
+Output: a `HurricaneImpactProfile` object keyed by storm ID, ready to feed both the LLM prompt and the UI.
+
+### 2C. Wire impact profile into the answer pipeline
+
+- `askWeather.functions.ts`: when `detectMode` returns `'hurricane'`, call `fetchNhcStorm` + `computeHurricaneImpact` and inject the profile into the LLM context block.
+- New system-prompt section: "HURRICANE MODE — answer rules" telling the model to:
+  - Always lead with **closest approach + ETA + classification at that ETA**, not generic storm info
+  - State the user's **quadrant** in plain English ("you're on the dirty side / the favored side")
+  - Give the three wind probabilities as percentages
+  - Separate **wind**, **surge**, **rain/inland flooding**, and **tornado** risks — never blend them
+  - End with a **prep timeline** anchored to the timing windows
+  - Cite the **advisory number** and next update time so the user knows freshness
+- The output is structured (we already have `weatherAnswerSchema.ts`) — extend the schema with a `hurricane` block matching `HurricaneImpactProfile`. The existing `HurricaneAnswerScreen` already renders most of these fields with placeholder zeros; we'll wire it to the real data.
+
+### 2D. Map overlay: hurricane layer in `LiveRadarMap.tsx`
+
+When in hurricane mode, render on top of the radar:
+- **Forecast track line** with intensity-colored points (TD gray → Cat 5 magenta) and timestamp labels at each forecast hour
+- **Forecast cone** as a translucent polygon (with a clear caption: *"Cone shows track uncertainty, not impact area"*)
+- **Wind swaths** as three concentric translucent bands (34 / 50 / 64 kt) — toggleable
+- **Surge inundation** polygon when issued — toggleable
+- **Watches/warnings** colored polygons (Hurricane Warning red, Tropical Storm Watch yellow, etc.)
+- **User pin** with a callout showing: "You: front-right quadrant, 87 mi from track, 18 h to closest approach, 64 kt prob 45%"
+- A small legend chip top-left and a layer toggle bottom-right (cone / wind / surge / alerts).
+
+Performance: GeoJSON layers are tiny (<200 KB total per storm). Render with the existing maplibre/leaflet setup already in `LiveRadarMap`.
+
+### 2E. Answer-screen polish
+
+`HurricaneAnswerScreen.tsx` already exists with the right structure (impact bars for TS wind / hurr wind / rain / surge). We will:
+- Replace the placeholder `0%` values with the real `HurricaneImpactProfile`
+- Add a **quadrant badge** at the top ("FRONT-RIGHT — DIRTY SIDE" with red accent, or "BACK-LEFT — FAVORED SIDE" with green)
+- Add a **timing strip** (first TS wind → peak → all-clear) under the headline
+- Add a "View on map" button that opens the hurricane map overlay
+
+---
 
 ## Files touched
 
-- `src/lib/metDataFetcher.ts`
-  - `fetchModelComparison` — bump model list to 8, add deterministic `agreement` summary line.
-  - `fetchEnsemble` — switch to 4-ensemble fetch (one parallel request per ensemble; merge into one printed block), add deterministic `agreement` summary line.
-- `src/lib/atmosphericInterpreter.ts` — small tweak: when computing `modelComparison` confidence, use the new `agreement` tag if present.
-- `src/lib/sourcePriority.ts` — comment update only; the `global_ensemble` and `mesoscale_models` family names already cover everything new.
-- `src/routes/answer.tsx` — the loading-phrase tweak we already shipped ("Comparing the major weather models…") still applies; no change.
+**Part 1:**
+- `src/lib/metDataFetcher.ts` (add 3 models to `fetchModelComparison`)
 
-No DB migrations, no new secrets, no new dependencies. Open-Meteo handles all of it.
+**Part 2:**
+- `src/lib/fetchers/fetchNhcStorm.ts` (new)
+- `src/lib/hurricaneImpact.ts` (new — impact engine)
+- `src/lib/askWeather.functions.ts` (inject hurricane profile into LLM context + new prompt section)
+- `src/lib/weatherAnswerSchema.ts` (extend with `hurricane` block)
+- `src/components/LiveRadarMap.tsx` (hurricane layers + legend + toggles)
+- `src/components/HurricaneAnswerScreen.tsx` (wire to real data + quadrant badge + timing strip)
+- `src/i18n/translations.ts` (new strings: quadrant labels, cone caption, layer names)
 
-## Performance / cost
+**No DB migrations. No new secrets. No new dependencies** (NHC endpoints are public CORS-enabled JSON/GeoJSON; point-in-polygon is a small helper.)
 
-- Open-Meteo allows multiple `&models=…` values in a single request, so the medium-range bump from 5 → 8 is the **same number of HTTP calls** as today (1 request, slightly larger response).
-- Long-range goes from 1 → 4 HTTP requests (one per ensemble endpoint), fired in parallel inside `Promise.allSettled`. Worst-case added latency ≈ the slowest single fetch, typically <500 ms. Each ensemble already returns in ~150–300 ms.
-- All 4 ensemble fetches are wrapped so a single failure (e.g. ICON-EPS down) drops that row but doesn't kill the briefing.
+---
 
-## Verification after implementation
+## Out of scope (explicitly)
 
-1. Ask a 5-day question (e.g. "Will it rain Saturday?"). The briefing handed to the AI should contain 8 model rows per day and an `agreement:` tag. The answer screen's confidence line should reflect it.
-2. Ask a 10-day question. The "outlook" block should list 4 ensembles, not just GEFS.
-3. Hit `server-function-logs` for `askWeather` and confirm no fetch errors from the new endpoints.
+- HWRF / HMON / HAFS raw GRIB parsing — too heavy for an edge function. NHC's official forecast is a *blend* of these models anyway, so we get their wisdom for free via the NHC feed.
+- Pre-season / off-season hurricane mode. The system only activates when NHC has an active storm within 800 mi (current threshold).
+- Historical hurricane database / climatology — separate feature.
 
-## What I am explicitly NOT adding (and why)
+---
 
-- **JMA, UKMO, BOM, CMA, KNMI** — available on Open-Meteo but they're regional or essentially redundant with IFS/ICON for US queries. Adding them adds noise without independent signal for our user base.
-- **HRRR / ARPEGE-AROME / HARMONIE for nowcast** — HRRR is already the right choice for 0–48 h US. Adding mesoscale EU models would slow the nowcast for zero benefit in Houston.
-- **NBM (NCEP National Blend of Models)** — it's a blend of the same models we're already pulling individually, so it would double-count. We get more signal by reading the components directly.
+## What the user will experience
 
-If you later expand to non-US users, JMA, UKMO, BOM and KNMI become worth adding regionally — easy follow-up.
+Before: *"Hurricane Helene is approaching"* + generic alert text.
+
+After: *"Hurricane Helene, Cat 3 at landfall, closest approach to your location in 18 hours at 87 mi west. You're on the front-right (dirty) side — 45% chance of hurricane-force wind, 78% chance of tropical-storm wind. Surge zone: 4–6 ft expected if you're below 10 ft elevation. Rain total: 8–12". First TS winds arrive ~6 PM tomorrow, peak around 3 AM Thursday, all-clear by Friday noon. Confidence: HIGH (24 h out, narrow cone). Advisory #23, next update 5 PM EDT."* — with the cone, track, wind swaths, and surge zone visible on the map and the user's pin labeled with their quadrant.
+
