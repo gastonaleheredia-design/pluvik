@@ -453,11 +453,20 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   ) => {
     if (didFitWarningsRef.current) return;
     if (!fc.features.length) return;
+    // Only fit to polygons reasonably near the user — otherwise we'd zoom
+    // out continent-wide just because there's a warning in another state.
+    const FIT_RADIUS_MI = 150;
+    const cosLat = Math.cos((la * Math.PI) / 180) || 1;
     const bounds = new mapboxgl.LngLatBounds([lo, la], [lo, la]);
     let extended = false;
     for (const f of fc.features) {
       const g = f.geometry as GeoJSON.Geometry | undefined;
       if (!g) continue;
+      const c = polygonCentroidLngLat(g);
+      if (!c) continue;
+      const dy = (c.lat - la) * 69;
+      const dx = (c.lon - lo) * 69 * cosLat;
+      if (Math.hypot(dx, dy) > FIT_RADIUS_MI) continue;
       const rings: number[][][] = g.type === "Polygon"
         ? (g.coordinates as number[][][])
         : g.type === "MultiPolygon"
