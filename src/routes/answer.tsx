@@ -700,6 +700,11 @@ function AnswerPage() {
             }}
           >
             {contextLine}
+            {windowLabel && (
+              <span style={{ marginLeft: 10, color: ACCENT }}>
+                · {windowLabel.short}
+              </span>
+            )}
           </div>
 
           {/* big verdict word — sized by stage */}
@@ -904,6 +909,46 @@ function AnswerPage() {
                       CHECK BACK IN {checkBackMin} MIN
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* "Also" callout — severe items outside the asked window */}
+              {alsoItems.length > 0 && (
+                <div
+                  style={{
+                    marginTop: '16px',
+                    border: `1px solid ${ACCENT}33`,
+                    borderLeft: `3px solid ${ACCENT}`,
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    backgroundColor: `${ACCENT}08`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.55rem',
+                      letterSpacing: '0.18em',
+                      color: ACCENT,
+                      marginBottom: '8px',
+                    }}
+                  >
+                    {t('answer.also_label', { defaultValue: 'ALSO WORTH KNOWING' })}
+                  </div>
+                  {alsoItems.map((item, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: '0.92rem',
+                        lineHeight: 1.4,
+                        color: INK,
+                        marginBottom: i < alsoItems.length - 1 ? '6px' : 0,
+                      }}
+                    >
+                      {item}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
