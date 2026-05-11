@@ -19,6 +19,13 @@ const IMPACT_COLORS: Record<string, string> = {
   LIKELY: '#b91c1c',
 };
 
+const QUADRANT_KEY: Record<string, string> = {
+  FRONT_RIGHT: 'hurricane.quadrant_front_right',
+  FRONT_LEFT:  'hurricane.quadrant_front_left',
+  BACK_RIGHT:  'hurricane.quadrant_back_right',
+  BACK_LEFT:   'hurricane.quadrant_back_left',
+};
+
 export function HurricaneAnswerScreen({
   answer,
   question,
@@ -28,6 +35,7 @@ export function HurricaneAnswerScreen({
   saving,
 }: HurricaneAnswerScreenProps) {
   const { t } = useTranslation();
+  const profile = answer.hurricane_profile ?? null;
   const impacts = answer.impacts ?? {
     ts_wind_pct: 0,
     ts_wind_level: 'LOW',
@@ -48,6 +56,8 @@ export function HurricaneAnswerScreen({
       : surgeKey === 'near_zone'
       ? '#f59e0b'
       : '#15803d';
+
+  const quadrantTone = profile?.isDirtySide ? '#b91c1c' : '#15803d';
 
   return (
     <div
@@ -155,6 +165,72 @@ export function HurricaneAnswerScreen({
             <div className="mono-label" style={{ fontSize: '0.5rem', color: 'rgba(250,247,240,0.5)' }}>
               {t('hurricane.next_update')}: 6H
             </div>
+          </div>
+        )}
+
+        {profile && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              backgroundColor: profile.isDirtySide ? 'rgba(185,28,28,0.12)' : 'rgba(21,128,61,0.12)',
+              border: `1px solid ${quadrantTone}55`,
+              marginBottom: '12px',
+            }}
+          >
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: quadrantTone,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div className="mono-label" style={{ fontSize: '0.5rem', color: 'rgba(250,247,240,0.55)' }}>
+                {t('hurricane.quadrant_label')}
+              </div>
+              <div className="mono-label" style={{ fontSize: '0.62rem', color: quadrantTone, marginTop: '2px', fontWeight: 700 }}>
+                {t(QUADRANT_KEY[profile.quadrant] ?? 'hurricane.quadrant_label')}
+              </div>
+            </div>
+            <div className="mono-label" style={{ fontSize: '0.5rem', color: 'rgba(250,247,240,0.55)', textAlign: 'right' }}>
+              {profile.closestApproach.distanceMi} mi
+              <br />
+              {t(profile.insideCone ? 'hurricane.cone_inside' : 'hurricane.cone_outside')}
+            </div>
+          </div>
+        )}
+
+        {profile && (profile.timing.firstTsWindHours != null || profile.timing.peakImpactHours != null) && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: '4px',
+              padding: '8px',
+              borderRadius: '10px',
+              backgroundColor: 'rgba(250,247,240,0.04)',
+              marginBottom: '14px',
+            }}
+          >
+            {[
+              { label: t('hurricane.timing_first'), value: profile.timing.firstTsWindHours },
+              { label: t('hurricane.timing_peak'),  value: profile.timing.peakImpactHours },
+              { label: t('hurricane.timing_clear'), value: profile.timing.allClearHours },
+            ].map((cell, i) => (
+              <div key={i} style={{ textAlign: 'center' }}>
+                <div className="mono-label" style={{ fontSize: '0.46rem', color: 'rgba(250,247,240,0.5)', marginBottom: '4px' }}>
+                  {cell.label}
+                </div>
+                <div style={{ fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: '#faf7f0' }}>
+                  {cell.value != null ? `+${cell.value}h` : '—'}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

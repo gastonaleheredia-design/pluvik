@@ -22,6 +22,12 @@ import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDige
 import { isRainYesNoQuestion } from './headlineAnswer';
 import { pickConfidenceAwareWord } from './headlineAnswer';
 import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
+import { fetchNearbyStorms, type NhcStorm } from './fetchers/fetchNhcStorm';
+import {
+  computeHurricaneImpact,
+  impactProfileToBriefingText,
+  type HurricaneImpactProfile,
+} from './hurricaneImpact';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -258,6 +264,21 @@ export interface ExtendedWeatherAnswer {
     surge: string;
   };
   last_change?: string;
+  /** Deterministic per-location impact profile (hurricane mode only). */
+  hurricane_profile?: HurricaneImpactProfile | null;
+  /** Minimal storm metadata + GIS layers for map overlay. */
+  hurricane_storm?: {
+    id: string;
+    name: string;
+    classification: string;
+    intensityMph: number;
+    position: { lat: number; lon: number };
+    movementDir: number | null;
+    movementKt: number | null;
+    cone: GeoJSON.FeatureCollection | null;
+    track: GeoJSON.FeatureCollection | null;
+    watchesWarnings: GeoJSON.FeatureCollection | null;
+  } | null;
 }
 
 function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -405,6 +426,25 @@ Respond ONLY with valid JSON:
 
 const HURRICANE_PROMPT = `You are a working broadcast meteorologist. ACTIVE TROPICAL SYSTEM near this location. Assess the specific impact at their address.
 
+You are given a deterministic IMPACT PROFILE for this user's exact lat/lon
+computed directly from the latest NHC advisory. Treat its numbers as ground
+truth — do NOT contradict or re-estimate the wind probabilities, the
+quadrant, the closest-approach distance/ETA, or the timing windows. Quote
+them in plain English.
+
+ANSWER RULES:
+1. Lead with closest approach + ETA + forecast classification at that ETA
+   (not generic "storm is approaching" language).
+2. State the user's quadrant in plain English. If they're on the dirty
+   (front-right) side, name it. If they're on the favored side, say so.
+3. Give the three wind probabilities as the three numbers in the profile.
+4. Treat WIND, SURGE, RAIN/INLAND FLOODING, and TORNADO as separate risks.
+   Never blend them into one sentence.
+5. End with a prep timeline anchored to the timing windows
+   (first TS wind → peak → all-clear).
+6. Cite the advisory number so the user knows which advisory you're on.
+7. If forecast confidence is LOW, say so plainly.
+
 Respond ONLY with valid JSON:
 {
   "verdict": "CAUTION",
@@ -491,6 +531,33 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     // 7. Mode detection (severe/hurricane override) — needed for stage classification.
     const mode = await detectMode(lat, lon, briefing.alerts);
+
+    // 7a. If hurricane mode, fetch the live NHC GIS for any storm within
+    // 800 mi and compute a deterministic per-location impact profile.
+    // The numbers (quadrant, wind probabilities, timing) flow into BOTH
+    // the LLM context AND the final response, so the UI never disagrees
+    // with what the model said.
+    let hurricaneProfile: HurricaneImpactProfile | null = null;
+    let hurricaneStorm: NhcStorm | null = null;
+    let hurricaneContextBlock = '';
+    if (mode === 'hurricane') {
+      try {
+        const storms = await fetchNearbyStorms(lat, lon, 800);
+        if (storms.length > 0) {
+          // Pick the closest storm (by current center distance).
+          storms.sort((a, b) => {
+            const da = Math.hypot(a.position.lat - lat, a.position.lon - lon);
+            const db = Math.hypot(b.position.lat - lat, b.position.lon - lon);
+            return da - db;
+          });
+          hurricaneStorm = storms[0];
+          hurricaneProfile = computeHurricaneImpact(hurricaneStorm, lat, lon);
+          hurricaneContextBlock = impactProfileToBriefingText(hurricaneProfile);
+        }
+      } catch (err) {
+        console.warn('[askWeather] hurricane profile failed:', (err as Error)?.message);
+      }
+    }
 
     // 7b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
     const hasActiveWarnings = mode === 'severe' || mode === 'hurricane' ||
@@ -651,6 +718,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
       `User question: ${question}\n\n` +
+      (hurricaneContextBlock ? `${hurricaneContextBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
       `- Anchor every answer to the EXACT window the user asked about. Do not switch to a more dramatic forecast block outside that window.\n` +
@@ -910,5 +978,46 @@ export const askWeather = createServerFn({ method: 'POST' })
       data_sources: stageGatedSources,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
+      // Hurricane: expose the deterministic profile + minimal storm GIS so
+      // the UI can render a quadrant badge, timing strip, and map overlay.
+      // Also hard-override the legacy impacts/storm fields so the screen
+      // never displays placeholder zeros when we have real numbers.
+      hurricane_profile: hurricaneProfile,
+      hurricane_storm: hurricaneStorm
+        ? {
+            id: hurricaneStorm.id,
+            name: hurricaneStorm.name,
+            classification: hurricaneStorm.classification,
+            intensityMph: hurricaneStorm.intensityMph,
+            position: hurricaneStorm.position,
+            movementDir: hurricaneStorm.movementDir,
+            movementKt: hurricaneStorm.movementKt,
+            cone: hurricaneStorm.gis.cone,
+            track: hurricaneStorm.gis.track,
+            watchesWarnings: hurricaneStorm.gis.watchesWarnings,
+          }
+        : null,
+      ...(hurricaneProfile
+        ? {
+            storm_name: hurricaneProfile.stormName,
+            storm_category: hurricaneProfile.classification,
+            advisory_number: hurricaneProfile.advisoryNumber ?? undefined,
+            hours_to_impact: hurricaneProfile.closestApproach.etaHours,
+            confidence: hurricaneProfile.confidence,
+            impacts: {
+              ts_wind_pct: hurricaneProfile.tsWindPct,
+              ts_wind_level: hurricaneProfile.tsWindLevel,
+              hurricane_wind_pct: hurricaneProfile.hurricaneWindPct,
+              hurricane_wind_level: hurricaneProfile.hurricaneWindLevel,
+              rain_inches:
+                ((validated.data as Record<string, unknown>).impacts as { rain_inches?: string } | undefined)?.rain_inches ?? '—',
+              surge:
+                hurricaneProfile.surge === 'INSIDE' ? 'Inside Zone'
+                : hurricaneProfile.surge === 'NEAR' ? 'Near Zone'
+                : hurricaneProfile.surge === 'OUTSIDE' ? 'Outside Zone'
+                : 'Not Issued',
+            },
+          }
+        : {}),
     } as unknown as ExtendedWeatherAnswer;
   });

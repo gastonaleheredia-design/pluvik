@@ -117,6 +117,8 @@ export const WeatherAnswerSchema = z.object({
   hours_to_impact: z.number().nullable().optional(),
   impacts: z.any().optional(),
   last_change: z.string().optional(),
+  hurricane_profile: z.any().nullable().optional(),
+  hurricane_storm: z.any().nullable().optional(),
 }).passthrough().refine(
   (v) => {
     // Climate/Outlook stages: numeric impact is allowed to be missing.
