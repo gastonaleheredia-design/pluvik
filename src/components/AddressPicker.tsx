@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useAddress, SelectedAddress } from '../lib/addressContext';
 import { supabase } from '../lib/supabase';
 import { MAPBOX_TOKEN } from '../config/keys';
+import { reverseGeocodeShort } from '../lib/shortPlace';
 
 interface MapboxFeature {
   id: string;
