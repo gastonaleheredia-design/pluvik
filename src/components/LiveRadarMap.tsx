@@ -1072,12 +1072,12 @@ const toolbarStyleFullscreen: React.CSSProperties = {
   display: "flex", flexDirection: "column", gap: 6,
 };
 const togglesStyle: React.CSSProperties = {
-  position: "absolute", bottom: 56, left: 10,
+  position: "absolute", bottom: 78, left: 10,
   display: "flex", gap: 6, flexWrap: "wrap",
 };
 
 const legendWrapStyle: React.CSSProperties = {
-  position: "absolute", bottom: 56, right: 10,
+  position: "absolute", bottom: 78, right: 10,
   backgroundColor: "rgba(11,16,24,0.82)",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.12)",
@@ -1109,7 +1109,7 @@ const legendLabel: React.CSSProperties = {
 };
 
 const clockWrapStyle: React.CSSProperties = {
-  position: "absolute", bottom: 10, left: 10, right: 10,
+  position: "absolute", bottom: 32, left: 10, right: 10,
   display: "flex", flexDirection: "column", gap: 4,
   pointerEvents: "none",
 };
