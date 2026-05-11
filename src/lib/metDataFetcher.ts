@@ -1102,6 +1102,9 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
     { id: 'gfs_hrrr',                 short: 'hrrr' },
     { id: 'gfs_graphcast025',         short: 'graphcast' },
     { id: 'ecmwf_aifs025_single',     short: 'aifs' },
+    { id: 'ncep_nbm_conus',           short: 'nbm' },
+    { id: 'gfs_rap',                  short: 'rap' },
+    { id: 'jma_gsm',                  short: 'jma' },
   ];
   try {
     const res = await fetch(
@@ -1116,7 +1119,7 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
     if (!days.length) return '';
 
     const lines: string[] = [
-      `MULTI-MODEL COMPARISON (8 models · 6 physics + 2 AI · next 3 days — look for agreement vs spread):`,
+      `MULTI-MODEL COMPARISON (11 models · 9 physics + 2 AI · next 3 days — look for agreement vs spread):`,
     ];
     for (let d = 0; d < Math.min(3, days.length); d++) {
       lines.push(`\n${days[d]}:`);
