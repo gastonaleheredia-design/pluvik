@@ -113,21 +113,21 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
     // distance filter belongs on the home banner (which only fires when a
     // warning actually contains the user), not here.
     const geo = await loadActiveSbwGeo();
-    if (!geo?.features?.length) return null;
-
     const phenomenaName: Record<string, string> = {
       TO: "Tornado", SV: "Severe Thunderstorm", FF: "Flash Flood",
       MA: "Marine", EW: "Extreme Wind", SQ: "Snow Squall", DS: "Dust Storm",
     };
+    const ALLOWED = new Set(["TO","SV","FF","FA","FL","MA","EW","SQ","DS","SS","HU","TR"]);
 
     const out: GeoJSON.Feature[] = [];
-    for (const f of geo.features) {
+    for (const f of (geo?.features ?? [])) {
       const p = f?.properties ?? {};
       const sig = String(p.significance ?? "").toUpperCase();
       // Warnings only on the map (W); skip Watches/Advisories.
       if (sig && sig !== "W") continue;
 
       const ph = String(p.phenomena ?? "").toUpperCase();
+      if (ph && !ALLOWED.has(ph)) continue;
       // IEM SBW feed labels warnings with `ps` (e.g. "Severe Thunderstorm
       // Warning"). Older code paths used `phenomena_name`/`event` which the
       // feed does not actually populate, so polygons were getting filtered
@@ -167,7 +167,94 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       });
     }
 
-    console.debug("[radar] sbw polygons", { lat, lon, count: out.length });
+    if (out.length) {
+      console.debug("[radar] sbw polygons", { lat, lon, count: out.length });
+      return { type: "FeatureCollection" as const, features: out };
+    }
+    // Fallback: official NWS active alerts (point-radius query). The IEM
+    // mirror occasionally lags or returns an unexpected payload; querying the
+    // NWS API directly keeps the radar warnings layer reliable.
+    const fallback = await fetchNwsActiveWarningPolygons(lat, lon);
+    console.debug("[radar] nws fallback polygons", { lat, lon, count: fallback?.features.length ?? 0 });
+    return fallback;
+  } catch {
+    return await fetchNwsActiveWarningPolygons(lat, lon).catch(() => null);
+  }
+}
+
+/** Map common NWS event names to VTEC phenomena codes used by the layer. */
+function eventToPhenomena(event: string): string | null {
+  const e = event.toLowerCase();
+  if (e.includes("tornado") && e.includes("warning")) return "TO";
+  if (e.includes("severe thunderstorm") && e.includes("warning")) return "SV";
+  if (e.includes("flash flood") && e.includes("warning")) return "FF";
+  if (e.includes("flood") && e.includes("warning")) return "FL";
+  if (e.includes("areal flood") && e.includes("warning")) return "FA";
+  if (e.includes("special marine") && e.includes("warning")) return "MA";
+  if (e.includes("extreme wind") && e.includes("warning")) return "EW";
+  if (e.includes("snow squall") && e.includes("warning")) return "SQ";
+  if (e.includes("dust storm") && e.includes("warning")) return "DS";
+  if (e.includes("storm surge") && e.includes("warning")) return "SS";
+  if (e.includes("hurricane") && e.includes("warning")) return "HU";
+  if (e.includes("tropical storm") && e.includes("warning")) return "TR";
+  return null;
+}
+
+async function fetchNwsActiveWarningPolygons(lat: number, lon: number) {
+  try {
+    const url = `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`;
+    let res = await fetch(url, { headers: NWS_HEADERS });
+    let data: any = res.ok ? await res.json() : null;
+    let features: any[] = data?.features ?? [];
+    // Point query only returns alerts containing the user; widen by area
+    // (state) so we also get nearby polygons the user can explore.
+    const stateUrl = `https://api.weather.gov/alerts/active?status=actual&message_type=alert,update&region_type=land`;
+    res = await fetch(stateUrl, { headers: NWS_HEADERS });
+    if (res.ok) {
+      const stateData: any = await res.json();
+      const seen = new Set(features.map((f) => f?.properties?.id));
+      for (const f of stateData?.features ?? []) {
+        if (!seen.has(f?.properties?.id)) features.push(f);
+      }
+    }
+    const out: GeoJSON.Feature[] = [];
+    for (const f of features) {
+      const p = f?.properties ?? {};
+      if (!f?.geometry) continue;
+      const event = String(p.event ?? "");
+      const ph = eventToPhenomena(event);
+      if (!ph) continue;
+      // Filter to roughly continental view of user (~600mi) to avoid drawing
+      // alerts from distant states.
+      const ctr = polygonCentroidLngLat(f.geometry);
+      if (ctr) {
+        const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+        const dy = (ctr.lat - lat) * 69;
+        const dx = (ctr.lon - lon) * 69 * cosLat;
+        if (Math.hypot(dx, dy) > 600) continue;
+      }
+      const id = String(p.id ?? `nws-${event}-${p.sent ?? ""}`);
+      const containsUser = pointInGeometry(lat, lon, f.geometry);
+      cacheAlert({
+        id,
+        event,
+        headline: String(p.headline ?? ""),
+        description: String(p.description ?? ""),
+        instruction: String(p.instruction ?? ""),
+        severity: String(p.severity ?? "unknown").toLowerCase(),
+        certainty: String(p.certainty ?? "unknown").toLowerCase(),
+        urgency: String(p.urgency ?? "unknown").toLowerCase(),
+        areaDesc: String(p.areaDesc ?? ""),
+        expires: p.expires ?? null,
+        effective: p.effective ?? null,
+        senderName: String(p.senderName ?? "NWS"),
+      });
+      out.push({
+        type: "Feature",
+        geometry: f.geometry,
+        properties: { id, event, expires: p.expires ?? null, containsUser, phenomena: ph },
+      });
+    }
     if (!out.length) return null;
     return { type: "FeatureCollection" as const, features: out };
   } catch {
@@ -232,6 +319,12 @@ const STYLES = {
   streets: "mapbox://styles/mapbox/dark-v11",
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
 };
+
+/** Keep warning polygons painted above the radar raster after any swap. */
+function enforceLayerOrder(map: mapboxgl.Map) {
+  if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
+  if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
+}
 
 interface MiniCardData {
   id: string;
@@ -352,6 +445,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
         }, beforeId);
         currentProfileRef.current = profileKey;
+        enforceLayerOrder(map);
       }
     } else {
       map.addSource("live-radar", {
@@ -370,6 +464,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
       }, beforeId);
       currentProfileRef.current = profileKey;
+      enforceLayerOrder(map);
     }
     const fr = framesRef.current;
     const isForecast = !isIemMosaic && !isStation && (fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false);
@@ -499,8 +594,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
-      if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
-      if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
+      enforceLayerOrder(map);
       fitToWarnings(map, data, la, lo);
       return;
     }
@@ -527,7 +621,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           "TR", "#B22222",
           "#ef4444"
         ] as any,
-        "fill-opacity": 0.32,
+        "fill-opacity": 0.28,
       },
     });
     map.addLayer({
@@ -553,10 +647,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           "#dc2626"
         ] as any,
         // Slightly thicker stroke when the user is INSIDE the polygon.
-        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
+        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2.5],
       },
     });
     wireWarningInteractions(map);
+    enforceLayerOrder(map);
     fitToWarnings(map, data, la, lo);
   }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
