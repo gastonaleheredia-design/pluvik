@@ -70,6 +70,40 @@ function iemStationTileUrl(siteId: string) {
   return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::${siteId}-N0Q-0/{z}/{x}/{y}.png`;
 }
 
+/**
+ * IEM RIDGE national composite (USCOMP-N0Q). Painted with the canonical
+ * NWS Level III palette — pixel-identical to RadarScope. The trailing
+ * timestamp accepts YYYYMMDDHHMM (UTC) for archived frames or 0 for "now".
+ */
+function iemMosaicTileUrl(frameTimeSec: number | null) {
+  if (frameTimeSec == null) {
+    return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-0/{z}/{x}/{y}.png`;
+  }
+  // Round down to nearest 5-minute mark in UTC.
+  const ms = Math.floor(frameTimeSec / 300) * 300 * 1000;
+  const d = new Date(ms);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
+}
+
+/**
+ * Build a 12-frame loop of the last ~60 min of the IEM USCOMP-N0Q composite.
+ * Synthesized client-side at 5-min cadence (the composite's update rate),
+ * since IEM doesn't publish a public JSON time index for this product.
+ */
+function buildIemMosaicFrames(): PreparedFrames {
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Round down to nearest 5-min mark.
+  const latest = Math.floor(nowSec / 300) * 300;
+  const frames: RVFrame[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const t = latest - i * 300;
+    frames.push({ time: t, path: `iem-mosaic-${t}` });
+  }
+  return { host: "iem", frames, nowcastStartIdx: frames.length };
+}
+
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
   try {
     const res = await fetch(
