@@ -448,43 +448,6 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     map.on("mouseleave", "nws-warnings-fill", () => { map.getCanvas().style.cursor = ""; });
   }, []);
 
-  const refreshWarnings = useCallback(async (map: mapboxgl.Map, la: number, lo: number) => {
-    const fc = await fetchActiveWarningPolygons(la, lo);
-    if (!map.isStyleLoaded()) {
-      map.once("style.load", () => void refreshWarnings(map, la, lo));
-      return;
-    }
-    const empty = { type: "FeatureCollection" as const, features: [] };
-    const data = (fc ?? empty) as GeoJSON.FeatureCollection;
-    const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
-    if (existing) {
-      existing.setData(data);
-      fitToWarnings(map, data, la, lo);
-      return;
-    }
-    map.addSource("nws-warnings", { type: "geojson", data });
-    map.addLayer({
-      id: "nws-warnings-fill",
-      type: "fill",
-      source: "nws-warnings",
-      layout: { visibility: showWarnings ? "visible" : "none" },
-      paint: { "fill-color": "#ef4444", "fill-opacity": 0.32 },
-    });
-    map.addLayer({
-      id: "nws-warnings-line",
-      type: "line",
-      source: "nws-warnings",
-      layout: { visibility: showWarnings ? "visible" : "none" },
-      paint: {
-        "line-color": "#dc2626",
-        // Slightly thicker stroke when the user is INSIDE the polygon.
-        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
-      },
-    });
-    wireWarningInteractions(map);
-    fitToWarnings(map, data, la, lo);
-  }, [showWarnings, wireWarningInteractions]);
-
   /**
    * If there are nearby warning polygons but they sit outside the current
    * viewport, zoom out once so the user can see what the briefing is
@@ -521,6 +484,43 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     didFitWarningsRef.current = true;
     map.fitBounds(bounds, { padding: 60, maxZoom: 8, duration: 700 });
   }, []);
+
+  const refreshWarnings = useCallback(async (map: mapboxgl.Map, la: number, lo: number) => {
+    const fc = await fetchActiveWarningPolygons(la, lo);
+    if (!map.isStyleLoaded()) {
+      map.once("style.load", () => void refreshWarnings(map, la, lo));
+      return;
+    }
+    const empty = { type: "FeatureCollection" as const, features: [] };
+    const data = (fc ?? empty) as GeoJSON.FeatureCollection;
+    const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
+    if (existing) {
+      existing.setData(data);
+      fitToWarnings(map, data, la, lo);
+      return;
+    }
+    map.addSource("nws-warnings", { type: "geojson", data });
+    map.addLayer({
+      id: "nws-warnings-fill",
+      type: "fill",
+      source: "nws-warnings",
+      layout: { visibility: showWarnings ? "visible" : "none" },
+      paint: { "fill-color": "#ef4444", "fill-opacity": 0.32 },
+    });
+    map.addLayer({
+      id: "nws-warnings-line",
+      type: "line",
+      source: "nws-warnings",
+      layout: { visibility: showWarnings ? "visible" : "none" },
+      paint: {
+        "line-color": "#dc2626",
+        // Slightly thicker stroke when the user is INSIDE the polygon.
+        "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
+      },
+    });
+    wireWarningInteractions(map);
+    fitToWarnings(map, data, la, lo);
+  }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
