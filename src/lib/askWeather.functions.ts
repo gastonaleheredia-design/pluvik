@@ -978,5 +978,46 @@ export const askWeather = createServerFn({ method: 'POST' })
       data_sources: stageGatedSources,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
+      // Hurricane: expose the deterministic profile + minimal storm GIS so
+      // the UI can render a quadrant badge, timing strip, and map overlay.
+      // Also hard-override the legacy impacts/storm fields so the screen
+      // never displays placeholder zeros when we have real numbers.
+      hurricane_profile: hurricaneProfile,
+      hurricane_storm: hurricaneStorm
+        ? {
+            id: hurricaneStorm.id,
+            name: hurricaneStorm.name,
+            classification: hurricaneStorm.classification,
+            intensityMph: hurricaneStorm.intensityMph,
+            position: hurricaneStorm.position,
+            movementDir: hurricaneStorm.movementDir,
+            movementKt: hurricaneStorm.movementKt,
+            cone: hurricaneStorm.gis.cone,
+            track: hurricaneStorm.gis.track,
+            watchesWarnings: hurricaneStorm.gis.watchesWarnings,
+          }
+        : null,
+      ...(hurricaneProfile
+        ? {
+            storm_name: hurricaneProfile.stormName,
+            storm_category: hurricaneProfile.classification,
+            advisory_number: hurricaneProfile.advisoryNumber ?? undefined,
+            hours_to_impact: hurricaneProfile.closestApproach.etaHours,
+            confidence: hurricaneProfile.confidence,
+            impacts: {
+              ts_wind_pct: hurricaneProfile.tsWindPct,
+              ts_wind_level: hurricaneProfile.tsWindLevel,
+              hurricane_wind_pct: hurricaneProfile.hurricaneWindPct,
+              hurricane_wind_level: hurricaneProfile.hurricaneWindLevel,
+              rain_inches:
+                ((validated.data as Record<string, unknown>).impacts as { rain_inches?: string } | undefined)?.rain_inches ?? '—',
+              surge:
+                hurricaneProfile.surge === 'INSIDE' ? 'Inside Zone'
+                : hurricaneProfile.surge === 'NEAR' ? 'Near Zone'
+                : hurricaneProfile.surge === 'OUTSIDE' ? 'Outside Zone'
+                : 'Not Issued',
+            },
+          }
+        : {}),
     } as unknown as ExtendedWeatherAnswer;
   });
