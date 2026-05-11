@@ -13,7 +13,7 @@ import { cacheAlert, type CachedAlert } from "@/lib/activeAlertsCache";
 import { nearestSites, type NexradSite } from "@/lib/nexradSites";
 import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
-import { loadActiveSbwGeo, geometryCentroid, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
+import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -108,17 +108,13 @@ function buildIemMosaicFrames(): PreparedFrames {
 
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
   try {
-    // Unified with the Why-sheet briefing: pull warning polygons from the
-    // IEM active-SBW feed (a clean mirror of NWS storm-based warnings) and
-    // keep anything within ~100 mi of the user. Previously we asked NWS for
-    // alerts at the user's exact point and only drew polygons that contained
-    // them — which hid nearby warnings that the briefing was already telling
-    // the user about.
+    // The radar is an exploration surface — it must show every active
+    // storm-based NWS warning, regardless of distance from the user. A
+    // distance filter belongs on the home banner (which only fires when a
+    // warning actually contains the user), not here.
     const geo = await loadActiveSbwGeo();
     if (!geo?.features?.length) return null;
 
-    const RADIUS_MI = 100;
-    const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
     const phenomenaName: Record<string, string> = {
       TO: "Tornado", SV: "Severe Thunderstorm", FF: "Flash Flood",
       MA: "Marine", EW: "Extreme Wind", SQ: "Snow Squall", DS: "Dust Storm",
@@ -130,12 +126,6 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       const sig = String(p.significance ?? "").toUpperCase();
       // Warnings only on the map (W); skip Watches/Advisories.
       if (sig && sig !== "W") continue;
-
-      const centroid = geometryCentroid(f.geometry);
-      if (!centroid) continue;
-      const dy = (centroid.lat - lat) * 69;
-      const dx = (centroid.lon - lon) * 69 * cosLat;
-      if (Math.hypot(dx, dy) > RADIUS_MI) continue;
 
       const ph = String(p.phenomena ?? "").toUpperCase();
       // IEM SBW feed labels warnings with `ps` (e.g. "Severe Thunderstorm
@@ -353,13 +343,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           maxzoom: desiredMaxZoom,
           attribution: "© RainViewer · NOAA",
         });
+        const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
         map.addLayer({
           id: "live-radar-layer",
           type: "raster",
           source: "live-radar",
           layout: { visibility: showRadar ? "visible" : "none" },
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
-        });
+        }, beforeId);
         currentProfileRef.current = profileKey;
       }
     } else {
@@ -370,13 +361,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         maxzoom: desiredMaxZoom,
         attribution: "© RainViewer · NOAA",
       });
+      const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
       map.addLayer({
         id: "live-radar-layer",
         type: "raster",
         source: "live-radar",
         layout: { visibility: showRadar ? "visible" : "none" },
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
-      });
+      }, beforeId);
       currentProfileRef.current = profileKey;
     }
     const fr = framesRef.current;
@@ -463,11 +455,20 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   ) => {
     if (didFitWarningsRef.current) return;
     if (!fc.features.length) return;
+    // Only fit to polygons reasonably near the user — otherwise we'd zoom
+    // out continent-wide just because there's a warning in another state.
+    const FIT_RADIUS_MI = 150;
+    const cosLat = Math.cos((la * Math.PI) / 180) || 1;
     const bounds = new mapboxgl.LngLatBounds([lo, la], [lo, la]);
     let extended = false;
     for (const f of fc.features) {
       const g = f.geometry as GeoJSON.Geometry | undefined;
       if (!g) continue;
+      const ctr = polygonCentroidLngLat(g);
+      if (!ctr) continue;
+      const dy = (ctr.lat - la) * 69;
+      const dx = (ctr.lon - lo) * 69 * cosLat;
+      if (Math.hypot(dx, dy) > FIT_RADIUS_MI) continue;
       const rings: number[][][] = g.type === "Polygon"
         ? (g.coordinates as number[][][])
         : g.type === "MultiPolygon"
@@ -498,6 +499,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
+      if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
+      if (map.getLayer("nws-warnings-line")) map.moveLayer("nws-warnings-line");
       fitToWarnings(map, data, la, lo);
       return;
     }

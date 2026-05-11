@@ -1,53 +1,56 @@
 ## Goal
 
-Make the radar warning polygons and the mini "click on a polygon" banner use the same color the National Weather Service uses for each warning type, so the map reads correctly at a glance (red = tornado, orange = severe thunderstorm, dark red = flash flood, green = flood, etc.).
+Fix three radar issues in one pass, while keeping the rules we already agreed on (NWS-standard polygon colors, banner only when a warning covers the user's location).
 
-Today every warning polygon is painted the same red (`#ef4444` fill, `#dc2626` outline) and the mini info card uses the generic page background. We'll switch to per-phenomena colors driven by NWS's standard VTEC palette.
+## Clarified rules (important distinction)
 
-## NWS standard color palette (VTEC phenomena → color)
+- **Home page warning banner** — appears **only when an active NWS warning polygon actually contains the user's current location**. Stays as-is. A storm "nearby" but not over the user does NOT trigger the home banner.
+- **Radar map (WARNINGS toggle on)** — must show **every active storm-based warning polygon in view**, regardless of distance from the user. The radar is an exploration surface; a curious user opening the map should always see the same polygons other radar apps show (e.g. the Severe Thunderstorm Warnings sitting north of Houston right now).
 
-```text
-TO  Tornado Warning              #FF0000  bright red
-SV  Severe Thunderstorm Warning  #FFA500  orange
-FF  Flash Flood Warning          #8B0000  dark red
-FA  Areal Flood Warning          #00FF00  green
-FL  Flood Warning                #00FF7F  green
-MA  Marine Warning (SMW)         #FFA500  orange
-EW  Extreme Wind Warning         #FF8C00  dark orange
-SQ  Snow Squall Warning          #C71585  magenta
-DS  Dust Storm Warning           #FFE4C4  bisque
-SS  Storm Surge Warning          #B524F7  purple
-HU  Hurricane Warning            #DC143C  crimson
-TR  Tropical Storm Warning       #B22222  firebrick
-fallback                         #ef4444  (current red)
-```
+These two surfaces use the same upstream feed (IEM active SBW), but with different filters: home banner = "contains user", radar = "is active".
 
-(These are the colors NWS publishes in their VTEC color table and what tools like radarscope / weather.gov use in their banners and polygons.)
+## Changes
 
-## Changes (single file: `src/components/LiveRadarMap.tsx`)
+### 1. Radar always shows all active warning polygons
+File: `src/components/LiveRadarMap.tsx` (`fetchActiveWarningPolygons`)
 
-1. **Add a `phenomena` property to each warning feature.** In `fetchActiveWarningPolygons`, when building each feature, also write `properties.phenomena = ph` (the 2-letter code already extracted) so Mapbox can color by it.
+- Remove the ~100-mile centroid radius filter.
+- Keep only: storm-based **Warnings** (SV, TO, FF, FA, FL, MA, EW, SQ, DS, SS, HU, TR — significance `W`), not Watches/Advisories.
+- Keep per-feature properties already in place: `event`, `phenomena`, `expires`, `containsUser`, `id` — needed for click → mini card → `/alert/$id`.
+- Result: the two HGX Severe Thunderstorm Warnings north of Houston render even though the user point is well outside them.
 
-2. **Replace the hard-coded fill color with a data-driven `match` expression.**
-   - `fill-color`: `["match", ["get", "phenomena"], "TO", "#FF0000", "SV", "#FFA500", "FF", "#8B0000", "FA", "#00FF7F", "FL", "#00FF7F", "MA", "#FFA500", "EW", "#FF8C00", "SQ", "#C71585", "DS", "#FFE4C4", "SS", "#B524F7", "HU", "#DC143C", "TR", "#B22222", "#ef4444"]`
-   - `fill-opacity`: keep at `0.32`.
-   - `line-color`: same `match`, but with slightly darker tones for the outline (or just reuse the same colors at full opacity — outline already pops because the fill is translucent).
-   - `line-width`: keep the existing "thicker stroke when user is inside" rule.
+### 2. Warning polygons stay above the radar tiles
+File: `src/components/LiveRadarMap.tsx` (radar/warnings layer wiring)
 
-3. **Color the mini info card banner** to match the clicked polygon. When `setMiniCard` fires from the click handler, also pass the phenomena code (already on the feature props). Then style `miniCardEvent` with `backgroundColor: PHENOMENA_COLOR[ph]` and a contrasting text color (white for dark backgrounds like TO/FF/HU, near-black for light backgrounds like SV/FA/DS).
+- After every radar frame swap, basemap style change, and source refresh, re-assert layer order so:
+  - radar raster layer is **below**
+  - warning fill + outline layers are **above** it
+- Keep the NWS-aligned palette already implemented (TO red, SV orange, FF dark red, FA/FL green, etc.) for both fills and the mini-card banner.
 
-4. **Add a small `PHENOMENA_COLOR` constant** at the bottom of the file (next to the `RAIN_STOPS` palette) so both the Mapbox layer and the mini card share one source of truth.
+### 3. Smarter initial framing (only when nothing else has happened)
+File: `src/components/LiveRadarMap.tsx`
 
-5. **No changes to fetcher logic, Why-sheet, or alert detail page** — request is scoped to the radar polygons + banner.
+- On the **first** open of the radar in a session, if there are active warning polygons within a reasonable window of the user (e.g. the current visible radar range), fit the camera once to include the user marker + nearest polygons, capped at a sensible min-zoom so it still feels local.
+- If no nearby warnings, keep current behavior (centered on the user).
+- Run this fit exactly once per radar session — never fight the user's panning afterwards.
 
-## Out of scope
+### 4. One-finger pan vs. closing the sheet
+Files: `src/components/LiveRadarMap.tsx` and the radar drawer wrapper that hosts it.
 
-- The Why sheet's hazard list and the `/alert/$id` page keep their current styling. We can wire NWS phenomena colors into those in a follow-up if you want.
-- We won't touch the fetch path / IEM SBW source — only how the map paints what comes back.
+- The map surface becomes pure map: one finger anywhere on the map = pan in any direction (including downward) and never drags the sheet.
+- Drawer drag-to-minimize / drag-to-close is restricted to the **drawer handle** and the **top control strip** only (the small grip bar + the row with WARNINGS/RADAR toggles + close button).
+- The existing ▾ minimize and ✕ close buttons keep working as the explicit way to shrink/close the sheet.
+- Keep `cooperativeGestures: false` so two-finger gesture hints don't appear.
+
+### 5. Out of scope (not changing)
+- Home banner logic, Why sheet styling, `/alert/$id` page styling.
+- The IEM SBW fetch path itself — only how we filter and paint what comes back.
+- Watches and Advisories (the radar shows Warnings only, matching current behavior).
 
 ## Verification
 
-After the change, with the current Houston-area Severe Thunderstorm Warnings on screen:
-- Both warning polygons should render in **orange** (#FFA500), not red.
-- Tapping one should show the mini banner in the same orange.
-- If a Tornado Warning shows up later, it'll render bright red; a Flood Warning will render green — matching NWS conventions.
+1. Open radar on the Houston view with WARNINGS on → both HGX Severe Thunderstorm Warning polygons render in NWS orange, above the radar tiles, even though the user is not inside them.
+2. Tap a polygon → mini banner appears in the same orange; tapping it opens `/alert/$id`.
+3. Pan the map down with one finger → map moves, sheet does not start closing. Drag the handle/top strip down → sheet minimizes/closes.
+4. Home page → no warning banner, because no warning contains the user's location (existing behavior preserved).
+5. Toggle basemap or wait for a radar frame refresh → warning polygons stay visible above the radar.

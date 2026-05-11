@@ -144,6 +144,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                 flex: isFull ? 1 : undefined,
                 minHeight: isFull ? 0 : undefined,
               }}
+              data-vaul-no-drag
             >
               <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} />
             </div>
