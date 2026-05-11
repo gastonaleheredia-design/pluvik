@@ -507,7 +507,25 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       type: "fill",
       source: "nws-warnings",
       layout: { visibility: showWarnings ? "visible" : "none" },
-      paint: { "fill-color": "#ef4444", "fill-opacity": 0.32 },
+      paint: {
+        "fill-color": [
+          "match", ["get", "phenomena"],
+          "TO", "#FF0000",
+          "SV", "#FFA500",
+          "FF", "#8B0000",
+          "FA", "#00FF7F",
+          "FL", "#00FF7F",
+          "MA", "#FFA500",
+          "EW", "#FF8C00",
+          "SQ", "#C71585",
+          "DS", "#FFE4C4",
+          "SS", "#B524F7",
+          "HU", "#DC143C",
+          "TR", "#B22222",
+          "#ef4444"
+        ] as any,
+        "fill-opacity": 0.32,
+      },
     });
     map.addLayer({
       id: "nws-warnings-line",
@@ -515,7 +533,22 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       source: "nws-warnings",
       layout: { visibility: showWarnings ? "visible" : "none" },
       paint: {
-        "line-color": "#dc2626",
+        "line-color": [
+          "match", ["get", "phenomena"],
+          "TO", "#CC0000",
+          "SV", "#E08200",
+          "FF", "#660000",
+          "FA", "#00B85C",
+          "FL", "#00B85C",
+          "MA", "#E08200",
+          "EW", "#CC7000",
+          "SQ", "#9C1068",
+          "DS", "#C9B08F",
+          "SS", "#8E1ED1",
+          "HU", "#A6102E",
+          "TR", "#7A1818",
+          "#dc2626"
+        ] as any,
         // Slightly thicker stroke when the user is INSIDE the polygon.
         "line-width": ["case", ["==", ["get", "containsUser"], true], 4, 2],
       },
