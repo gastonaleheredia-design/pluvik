@@ -157,21 +157,26 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                   aria-label="Minimize"
                   style={{
                     position: 'absolute',
-                    top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 4px)',
                     left: 12,
                     zIndex: 6,
                     border: '1px solid rgba(255,255,255,0.18)',
                     background: 'rgba(11,16,24,0.78)',
                     color: '#faf7f0',
                     cursor: 'pointer',
-                    padding: '6px 12px',
-                    borderRadius: 100,
+                    width: 32,
+                    height: 32,
+                    padding: 0,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                    fontSize: '0.6rem', letterSpacing: '0.16em', fontWeight: 700,
+                    fontSize: 14, fontWeight: 700,
                     backdropFilter: 'blur(6px)',
                   }}
                 >
-                  ▾ MIN
+                  ▾
                 </button>
                 <button
                   type="button"
@@ -179,21 +184,26 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                   aria-label="Close"
                   style={{
                     position: 'absolute',
-                    top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 4px)',
                     right: 12,
                     zIndex: 6,
                     border: '1px solid rgba(255,255,255,0.18)',
                     background: 'rgba(11,16,24,0.78)',
                     color: '#faf7f0',
                     cursor: 'pointer',
-                    padding: '6px 12px',
-                    borderRadius: 100,
+                    width: 32,
+                    height: 32,
+                    padding: 0,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                    fontSize: '0.65rem', letterSpacing: '0.16em', fontWeight: 700,
+                    fontSize: 16, fontWeight: 700,
                     backdropFilter: 'blur(6px)',
                   }}
                 >
-                  ✕ CLOSE
+                  ✕
                 </button>
               </>
             )}

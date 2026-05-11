@@ -220,6 +220,19 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const [tool, setTool] = useState<"none" | "ruler" | "pin">("none");
   const [rulerPts, setRulerPts] = useState<[number, number][]>([]); // [lon,lat]
   const [pinInfo, setPinInfo] = useState<{ lon: number; lat: number; label: string | null; distMi: number | null } | null>(null);
+  // Tracks whether the user has precise (GPS) coords. Drives the 📍 button
+  // visual state and gates the silent auto-prompt on first open.
+  const [precise, setPrecise] = useState<boolean>(false);
+
+  // Close every floating panel/tool — used when opening a new one so they
+  // don't stack on top of each other.
+  const closeAllPanels = useCallback(() => {
+    setSourceMenuOpen(false);
+    setMiniCard(null);
+    setPinInfo(null);
+    setRulerPts([]);
+    setTool("none");
+  }, []);
 
   // Single source of truth: the global selected address (passed in as props).
   // The GPS button updates the global address via context, so the radar marker
@@ -241,18 +254,46 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const setRadarTile = useCallback((host: string, frame: RVFrame) => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const url = source === "station" && stationId
-      ? iemStationTileUrl(stationId)
+    const isStation = source === "station" && !!stationId;
+    const url = isStation
+      ? iemStationTileUrl(stationId!)
       : rvTileUrl(host, frame, colorScheme);
-    const src = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
-    if (src) {
-      (src as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
+    const existing = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
+    // Each backend has a different native maxzoom + caching profile.
+    // Recreate source instead of just setTiles() so a stale mosaic source
+    // doesn't cap station zoom to 7 (which left station tiles blank).
+    const desiredMaxZoom = isStation ? 12 : 7;
+    if (existing) {
+      // If maxzoom matches, hot-swap tiles (cheap). Otherwise recreate.
+      const current = (existing as unknown as { tiles?: string[] }).tiles?.[0];
+      const sameProfile =
+        (current?.includes("mesonet.agron.iastate.edu") ?? false) === isStation;
+      if (sameProfile) {
+        (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
+      } else {
+        if (map.getLayer("live-radar-layer")) map.removeLayer("live-radar-layer");
+        map.removeSource("live-radar");
+        map.addSource("live-radar", {
+          type: "raster",
+          tiles: [url],
+          tileSize: 256,
+          maxzoom: desiredMaxZoom,
+          attribution: "© RainViewer · NOAA",
+        });
+        map.addLayer({
+          id: "live-radar-layer",
+          type: "raster",
+          source: "live-radar",
+          layout: { visibility: showRadar ? "visible" : "none" },
+          paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
+        });
+      }
     } else {
       map.addSource("live-radar", {
         type: "raster",
         tiles: [url],
         tileSize: 256,
-        maxzoom: 7,
+        maxzoom: desiredMaxZoom,
         attribution: "© RainViewer · NOAA",
       });
       map.addLayer({
@@ -513,6 +554,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     }
     setGpsBusy(true);
     setGpsError(null);
+    closeAllPanels();
     let settled = false;
     const hardTimer = setTimeout(() => {
       if (settled) return;
@@ -542,6 +584,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       // lat/lon props, which centers the map and refreshes warnings.
       setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
       resumeFollowing();
+      setPrecise(true);
     };
     const onErr = (err: GeolocationPositionError) => {
       if (settled) return;
@@ -558,6 +601,48 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     navigator.geolocation.getCurrentPosition(onOk, onErr,
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 });
   };
+
+  // Silent first-open GPS prompt: if the saved address is the default city
+  // centroid (or any non-FOLLOWING manual pick that lacks a street number),
+  // try once to upgrade to a precise GPS fix without surfacing errors.
+  const autoPromptedRef = useRef(false);
+  useEffect(() => {
+    if (autoPromptedRef.current) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    const looksCoarse =
+      // Default Houston centroid
+      (lat === 29.7604 && lon === -95.3698) ||
+      // Heuristic: city/state-only labels — no digits, ≤2 comma segments.
+      false;
+    if (!looksCoarse) {
+      setPrecise(true);
+      autoPromptedRef.current = true;
+      return;
+    }
+    autoPromptedRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const la = pos.coords.latitude;
+        const lo = pos.coords.longitude;
+        let label = `${la.toFixed(4)}, ${lo.toFixed(4)}`;
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${lo},${la}.json?access_token=${MAPBOX_TOKEN}&limit=1`,
+          );
+          if (res.ok) {
+            const f = (await res.json())?.features?.[0];
+            if (f?.place_name) label = f.place_name;
+          }
+        } catch { /* keep coord label */ }
+        setAddress({ label, meta: 'FOLLOWING', lat: la, lon: lo });
+        resumeFollowing();
+        setPrecise(true);
+      },
+      () => { /* silent — user can still tap 📍 */ },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Ruler tool: render a line + label between rulerPts ---
   useEffect(() => {
@@ -654,28 +739,45 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       </div>
 
       {/* Right toolbar */}
-      <div style={toolbarStyle}>
+      <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
         <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
         <ToolBtn label="◎" title="Recenter" onClick={recenter} />
-        <ToolBtn label={gpsBusy ? "…" : "📍"} title="My location (GPS)" onClick={useMyLocation} />
+        <ToolBtn
+          label={gpsBusy ? "…" : "📍"}
+          title="My location (GPS)"
+          onClick={useMyLocation}
+          accent={precise}
+        />
         <ToolBtn
           label="📡"
           title="Radar source"
-          onClick={() => setSourceMenuOpen((o) => !o)}
+          onClick={() => {
+            const willOpen = !sourceMenuOpen;
+            closeAllPanels();
+            setSourceMenuOpen(willOpen);
+          }}
         />
         {isFullscreen && (
           <>
             <ToolBtn
               label="📏"
               title={tool === "ruler" ? "Exit ruler" : "Measure distance"}
-              onClick={() => { setTool(tool === "ruler" ? "none" : "ruler"); setRulerPts([]); }}
+              onClick={() => {
+                const next = tool === "ruler" ? "none" : "ruler";
+                closeAllPanels();
+                setTool(next);
+              }}
             />
             <ToolBtn
               label="🎯"
               title={tool === "pin" ? "Exit pin" : "Drop a pin"}
-              onClick={() => { setTool(tool === "pin" ? "none" : "pin"); setPinInfo(null); }}
+              onClick={() => {
+                const next = tool === "pin" ? "none" : "pin";
+                closeAllPanels();
+                setTool(next);
+              }}
             />
           </>
         )}
@@ -869,7 +971,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   );
 }
 
-function ToolBtn({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
+function ToolBtn({ label, title, onClick, accent }: { label: string; title: string; onClick: () => void; accent?: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -877,8 +979,8 @@ function ToolBtn({ label, title, onClick }: { label: string; title: string; onCl
       aria-label={title}
       style={{
         width: 32, height: 32, borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.15)",
-        backgroundColor: "rgba(11,16,24,0.78)",
+        border: accent ? "1px solid rgba(239,68,68,0.7)" : "1px solid rgba(255,255,255,0.15)",
+        backgroundColor: accent ? "rgba(239,68,68,0.85)" : "rgba(11,16,24,0.78)",
         color: "#faf7f0", cursor: "pointer",
         fontSize: 14, fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -907,21 +1009,25 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-// Color stops per mode (display only — actual pixels come from RainViewer tiles).
+// Color stops sampled from RainViewer color scheme 6 (NEXRAD Level III) so
+// the legend mirrors the pixels actually painted on the map. The lower
+// dBZ buckets are the cyan/blue rings users see on the outer edge of cells.
 const RAIN_STOPS = [
-  { tag: "5+",  color: "#7cfc8d", label: "Light" },
+  { tag: "5+",  color: "#04e9e7", label: "Trace" },
+  { tag: "15+", color: "#0a73e6", label: "Light" },
   { tag: "20+", color: "#15c40a", label: "Moderate" },
   { tag: "35+", color: "#fef000", label: "Heavy" },
-  { tag: "50+", color: "#fd7e00", label: "Intense" },
-  { tag: "60+", color: "#fc0000", label: "Severe" },
-  { tag: "70+", color: "#fc00ff", label: "Hail" },
+  { tag: "45+", color: "#fd7e00", label: "Intense" },
+  { tag: "55+", color: "#fc0000", label: "Severe" },
+  { tag: "65+", color: "#fc00ff", label: "Extreme / hail" },
 ];
 const MIX_STOPS = [
-  { tag: "5+",  color: "#7cfc8d", label: "Light mix" },
+  { tag: "5+",  color: "#04e9e7", label: "Trace mix" },
+  { tag: "15+", color: "#0a73e6", label: "Light mix" },
   { tag: "20+", color: "#15c40a", label: "Sleet" },
   { tag: "35+", color: "#fef000", label: "Freezing rain" },
-  { tag: "50+", color: "#fd7e00", label: "Heavy mix" },
-  { tag: "60+", color: "#fc0000", label: "Ice storm" },
+  { tag: "45+", color: "#fd7e00", label: "Heavy mix" },
+  { tag: "55+", color: "#fc0000", label: "Ice storm" },
 ];
 const SNOW_STOPS = [
   { tag: "5+",  color: "#cfe8ff", label: "Trace" },
@@ -957,13 +1063,21 @@ const toolbarStyle: React.CSSProperties = {
   position: "absolute", top: 10, right: 10,
   display: "flex", flexDirection: "column", gap: 6,
 };
+// In fullscreen the AlertSheet's MIN/CLOSE pills sit at top:safe-area+4px,
+// so the toolbar starts below them to avoid overlap.
+const toolbarStyleFullscreen: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(env(safe-area-inset-top, 0px) + 48px)",
+  right: 10,
+  display: "flex", flexDirection: "column", gap: 6,
+};
 const togglesStyle: React.CSSProperties = {
-  position: "absolute", bottom: 56, left: 10,
+  position: "absolute", bottom: 78, left: 10,
   display: "flex", gap: 6, flexWrap: "wrap",
 };
 
 const legendWrapStyle: React.CSSProperties = {
-  position: "absolute", bottom: 56, right: 10,
+  position: "absolute", bottom: 78, right: 10,
   backgroundColor: "rgba(11,16,24,0.82)",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.12)",
@@ -995,7 +1109,7 @@ const legendLabel: React.CSSProperties = {
 };
 
 const clockWrapStyle: React.CSSProperties = {
-  position: "absolute", bottom: 10, left: 10, right: 10,
+  position: "absolute", bottom: 32, left: 10, right: 10,
   display: "flex", flexDirection: "column", gap: 4,
   pointerEvents: "none",
 };
