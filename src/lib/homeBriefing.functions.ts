@@ -4,6 +4,109 @@ import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
 
+/* ---------------------------------------------------------------- */
+/* AFD short-term snippet (best-effort, cached)                      */
+/* ---------------------------------------------------------------- */
+
+const AFD_CACHE = new Map<string, { value: string | null; expires: number }>();
+const AFD_TTL_MS = 30 * 60 * 1000;
+const NWS_HEADERS = {
+  'User-Agent': 'Pluvik Weather App (support@pluvik.app)',
+  accept: 'application/geo+json',
+};
+
+async function fetchAfdShortSnippet(lat: number, lon: number): Promise<string | null> {
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const hit = AFD_CACHE.get(key);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  try {
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 5000);
+    const pointsRes = await fetch(
+      `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+      { headers: NWS_HEADERS, signal: ctl.signal },
+    );
+    if (!pointsRes.ok) { clearTimeout(tid); AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS }); return null; }
+    const cwa = (await pointsRes.json())?.properties?.cwa;
+    if (!cwa) { clearTimeout(tid); AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS }); return null; }
+    const listRes = await fetch(
+      `https://api.weather.gov/products?type=AFD&location=${cwa}&limit=1`,
+      { headers: NWS_HEADERS, signal: ctl.signal },
+    );
+    if (!listRes.ok) { clearTimeout(tid); AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS }); return null; }
+    const list = await listRes.json();
+    const id = list?.['@graph']?.[0]?.['@id'];
+    if (!id) { clearTimeout(tid); AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS }); return null; }
+    const afdRes = await fetch(id, { headers: NWS_HEADERS, signal: ctl.signal });
+    clearTimeout(tid);
+    if (!afdRes.ok) { AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS }); return null; }
+    const txt: string = (await afdRes.json())?.productText ?? '';
+    // Pull the SHORT TERM section if present, else NEAR TERM, else SYNOPSIS.
+    const pickSection = (label: RegExp): string | null => {
+      const m = txt.match(new RegExp(`\\.${label.source}[^\\n]*\\.\\.\\.([\\s\\S]*?)(?:\\n&&|\\n\\.[A-Z])`, 'i'));
+      return m ? m[1].replace(/\s+/g, ' ').trim() : null;
+    };
+    const snippet =
+      pickSection(/SHORT TERM/) ??
+      pickSection(/NEAR TERM/) ??
+      pickSection(/SYNOPSIS/) ??
+      pickSection(/DISCUSSION/) ??
+      null;
+    const out = snippet ? snippet.slice(0, 600) : null;
+    AFD_CACHE.set(key, { value: out, expires: Date.now() + AFD_TTL_MS });
+    return out;
+  } catch {
+    AFD_CACHE.set(key, { value: null, expires: Date.now() + AFD_TTL_MS });
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Why-payload orchestrator                                          */
+/* ---------------------------------------------------------------- */
+
+interface BuildWhyArgs {
+  lat: number;
+  lon: number;
+  language: string;
+  word: HomeBriefing['word'];
+  tempF: number | null;
+  cloudCover: number;
+  hoursUntilRain: number | null;
+  nextRainCaption: string | null;
+  nearbyCell: NearbyCellProbe | null;
+  alert: ActiveAlert | null;
+}
+
+async function buildWhyPayload(args: BuildWhyArgs): Promise<WhyNarrative | undefined> {
+  try {
+    const [spcRes, hazardsRes, afdRes] = await Promise.allSettled([
+      fetchSpcOutlook(args.lat, args.lon),
+      fetchNearbyHazards(args.lat, args.lon, 75, 5),
+      fetchAfdShortSnippet(args.lat, args.lon),
+    ]);
+    const spc: SpcSnapshot | null = spcRes.status === 'fulfilled' ? spcRes.value : null;
+    const hazards: NearbyHazard[] = hazardsRes.status === 'fulfilled' ? hazardsRes.value : [];
+    const afdSnippet: string | null = afdRes.status === 'fulfilled' ? afdRes.value : null;
+    return composeWhyNarrative({
+      language: args.language,
+      word: args.word,
+      tempF: args.tempF,
+      cloudCover: args.cloudCover,
+      hoursUntilRain: args.hoursUntilRain,
+      nextRainCaption: args.nextRainCaption,
+      nearbyCell: args.nearbyCell,
+      alert: args.alert,
+      hazards,
+      spc,
+      afdSnippet,
+    });
+  } catch (err) {
+    console.warn('[homeBriefing] buildWhyPayload failed:', (err as Error)?.message);
+    return undefined;
+  }
+}
+
 interface HomeBriefingRequest {
   lat: number;
   lon: number;
