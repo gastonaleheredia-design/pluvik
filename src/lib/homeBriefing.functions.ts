@@ -1,5 +1,8 @@
 import { createServerFn } from '@tanstack/react-start';
 import { probeImminentStorm, probeNearbyCell, getActiveWarning, type NearbyCellProbe, type ActiveAlert } from './metDataFetcher';
+import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
+import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
+import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
 
 interface HomeBriefingRequest {
   lat: number;
