@@ -108,17 +108,13 @@ function buildIemMosaicFrames(): PreparedFrames {
 
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
   try {
-    // Unified with the Why-sheet briefing: pull warning polygons from the
-    // IEM active-SBW feed (a clean mirror of NWS storm-based warnings) and
-    // keep anything within ~100 mi of the user. Previously we asked NWS for
-    // alerts at the user's exact point and only drew polygons that contained
-    // them — which hid nearby warnings that the briefing was already telling
-    // the user about.
+    // The radar is an exploration surface — it must show every active
+    // storm-based NWS warning, regardless of distance from the user. A
+    // distance filter belongs on the home banner (which only fires when a
+    // warning actually contains the user), not here.
     const geo = await loadActiveSbwGeo();
     if (!geo?.features?.length) return null;
 
-    const RADIUS_MI = 100;
-    const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
     const phenomenaName: Record<string, string> = {
       TO: "Tornado", SV: "Severe Thunderstorm", FF: "Flash Flood",
       MA: "Marine", EW: "Extreme Wind", SQ: "Snow Squall", DS: "Dust Storm",
@@ -130,12 +126,6 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       const sig = String(p.significance ?? "").toUpperCase();
       // Warnings only on the map (W); skip Watches/Advisories.
       if (sig && sig !== "W") continue;
-
-      const centroid = geometryCentroid(f.geometry);
-      if (!centroid) continue;
-      const dy = (centroid.lat - lat) * 69;
-      const dx = (centroid.lon - lon) * 69 * cosLat;
-      if (Math.hypot(dx, dy) > RADIUS_MI) continue;
 
       const ph = String(p.phenomena ?? "").toUpperCase();
       // IEM SBW feed labels warnings with `ps` (e.g. "Severe Thunderstorm
