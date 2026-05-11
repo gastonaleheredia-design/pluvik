@@ -343,13 +343,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           maxzoom: desiredMaxZoom,
           attribution: "© RainViewer · NOAA",
         });
+        const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
         map.addLayer({
           id: "live-radar-layer",
           type: "raster",
           source: "live-radar",
           layout: { visibility: showRadar ? "visible" : "none" },
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
-        });
+        }, beforeId);
         currentProfileRef.current = profileKey;
       }
     } else {
@@ -360,13 +361,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         maxzoom: desiredMaxZoom,
         attribution: "© RainViewer · NOAA",
       });
+      const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
       map.addLayer({
         id: "live-radar-layer",
         type: "raster",
         source: "live-radar",
         layout: { visibility: showRadar ? "visible" : "none" },
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
-      });
+      }, beforeId);
       currentProfileRef.current = profileKey;
     }
     const fr = framesRef.current;
