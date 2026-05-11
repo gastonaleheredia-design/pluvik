@@ -178,7 +178,7 @@ function ConfidenceChip({ confidence, severeType }: { confidence: WhyConfidence;
     VERY_LOW: { bg: '#6b63571f', fg: MUTED },
   };
   const c = palette[confidence];
-  const labelParts = [confidence];
+  const labelParts: string[] = [confidence];
   if (severeType && severeType !== 'non_severe') labelParts.push(severeType.replace('_', ' ').toUpperCase());
   return (
     <span style={{
