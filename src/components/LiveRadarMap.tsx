@@ -70,6 +70,40 @@ function iemStationTileUrl(siteId: string) {
   return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::${siteId}-N0Q-0/{z}/{x}/{y}.png`;
 }
 
+/**
+ * IEM RIDGE national composite (USCOMP-N0Q). Painted with the canonical
+ * NWS Level III palette — pixel-identical to RadarScope. The trailing
+ * timestamp accepts YYYYMMDDHHMM (UTC) for archived frames or 0 for "now".
+ */
+function iemMosaicTileUrl(frameTimeSec: number | null) {
+  if (frameTimeSec == null) {
+    return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-0/{z}/{x}/{y}.png`;
+  }
+  // Round down to nearest 5-minute mark in UTC.
+  const ms = Math.floor(frameTimeSec / 300) * 300 * 1000;
+  const d = new Date(ms);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
+}
+
+/**
+ * Build a 12-frame loop of the last ~60 min of the IEM USCOMP-N0Q composite.
+ * Synthesized client-side at 5-min cadence (the composite's update rate),
+ * since IEM doesn't publish a public JSON time index for this product.
+ */
+function buildIemMosaicFrames(): PreparedFrames {
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Round down to nearest 5-min mark.
+  const latest = Math.floor(nowSec / 300) * 300;
+  const frames: RVFrame[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const t = latest - i * 300;
+    frames.push({ time: t, path: `iem-mosaic-${t}` });
+  }
+  return { host: "iem", frames, nowcastStartIdx: frames.length };
+}
+
 async function fetchActiveWarningPolygons(lat: number, lon: number) {
   try {
     const res = await fetch(
@@ -201,6 +235,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const frameIdxRef = useRef<number>(0);
   const playingRef = useRef<boolean>(true);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentProfileRef = useRef<"station" | "iem-mosaic" | "rv" | null>(null);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [playing, setPlaying] = useState(true);
@@ -255,19 +290,29 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     const isStation = source === "station" && !!stationId;
-    const url = isStation
-      ? iemStationTileUrl(stationId!)
-      : rvTileUrl(host, frame, colorScheme);
+    // Rain mosaic uses IEM USCOMP-N0Q (true NWS palette). Snow/Mix mosaic
+    // still uses RainViewer because IEM doesn't paint those layers.
+    const isIemMosaic = !isStation && mode === "rain";
+    let url: string;
+    let profileKey: "station" | "iem-mosaic" | "rv";
+    let desiredMaxZoom: number;
+    if (isStation) {
+      url = iemStationTileUrl(stationId!);
+      profileKey = "station";
+      desiredMaxZoom = 12;
+    } else if (isIemMosaic) {
+      url = iemMosaicTileUrl(frame.time);
+      profileKey = "iem-mosaic";
+      desiredMaxZoom = 9;
+    } else {
+      url = rvTileUrl(host, frame, colorScheme);
+      profileKey = "rv";
+      desiredMaxZoom = 7;
+    }
     const existing = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
-    // Each backend has a different native maxzoom + caching profile.
-    // Recreate source instead of just setTiles() so a stale mosaic source
-    // doesn't cap station zoom to 7 (which left station tiles blank).
-    const desiredMaxZoom = isStation ? 12 : 7;
     if (existing) {
-      // If maxzoom matches, hot-swap tiles (cheap). Otherwise recreate.
-      const current = (existing as unknown as { tiles?: string[] }).tiles?.[0];
-      const sameProfile =
-        (current?.includes("mesonet.agron.iastate.edu") ?? false) === isStation;
+      const prevProfile = currentProfileRef.current;
+      const sameProfile = prevProfile === profileKey;
       if (sameProfile) {
         (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
       } else {
@@ -287,6 +332,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           layout: { visibility: showRadar ? "visible" : "none" },
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
         });
+        currentProfileRef.current = profileKey;
       }
     } else {
       map.addSource("live-radar", {
@@ -303,22 +349,40 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         layout: { visibility: showRadar ? "visible" : "none" },
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
       });
+      currentProfileRef.current = profileKey;
     }
     const fr = framesRef.current;
-    const isForecast = fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false;
+    const isForecast = !isIemMosaic && !isStation && (fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false);
     setFrameTime({ ts: frame.time * 1000, isForecast });
     if (fr && fr.frames.length > 1) {
       setFrameProgress(fr.frames.indexOf(frame) / (fr.frames.length - 1));
     }
-  }, [showRadar, colorScheme, source, stationId]);
+  }, [showRadar, colorScheme, source, stationId, mode]);
 
-  // When mode/source/station changes, force a re-tile of the current frame.
+  // When mode/source/station changes, swap the frame list to match the
+  // active backend (IEM mosaic for rain, RainViewer for snow/mix, IEM for
+  // single station) and re-tile the current frame.
   useEffect(() => {
-    const fr = framesRef.current;
-    if (!fr) return;
-    setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
-    // Pause looping in single-station mode (latest scan only).
-    if (source === "station") setPlaying(false);
+    let cancelled = false;
+    (async () => {
+      const isStation = source === "station" && !!stationId;
+      let fr: PreparedFrames | null;
+      if (isStation) {
+        // Single station: a single "now" frame, no loop.
+        const t = Math.floor(Date.now() / 1000);
+        fr = { host: "iem", frames: [{ time: t, path: `iem-station-${t}` }], nowcastStartIdx: 1 };
+      } else if (mode === "rain") {
+        fr = buildIemMosaicFrames();
+      } else {
+        fr = await fetchFrames();
+      }
+      if (cancelled || !fr) return;
+      framesRef.current = fr;
+      frameIdxRef.current = Math.max(0, fr.nowcastStartIdx - 1);
+      setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
+      if (isStation) setPlaying(false);
+    })();
+    return () => { cancelled = true; };
   }, [mode, source, stationId, setRadarTile]);
 
   const advanceFrame = useCallback(() => {
@@ -463,11 +527,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     mapRef.current = map;
 
     map.on("load", async () => {
-      const fr = await fetchFrames();
+      // Initial load is rain mosaic (default mode/source) → IEM USCOMP-N0Q.
+      const fr = buildIemMosaicFrames();
       if (!fr) { setStatus("error"); return; }
       framesRef.current = fr;
-      // Start near the latest "now" frame.
-      frameIdxRef.current = Math.max(0, fr.nowcastStartIdx - 1);
+      frameIdxRef.current = fr.frames.length - 1;
       setRadarTile(fr.host, fr.frames[frameIdxRef.current]);
       void refreshWarnings(map, lat, lon);
       markerRef.current = new mapboxgl.Marker({ element: buildMarkerEl(), anchor: "center" })
@@ -479,10 +543,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
 
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
 
-    // Periodically re-fetch frame list + warnings so the loop stays "live".
+    // Periodically refresh frames + warnings so the loop stays "live".
     const refresher = setInterval(async () => {
-      const fr = await fetchFrames();
-      if (fr) framesRef.current = fr;
+      const isStation = source === "station" && !!stationId;
+      if (!isStation) {
+        const fr = mode === "rain" ? buildIemMosaicFrames() : await fetchFrames();
+        if (fr) framesRef.current = fr;
+      }
       if (mapRef.current) {
         const { lat: la, lon: lo } = coordsRef.current;
         void refreshWarnings(mapRef.current, la, lo);
@@ -1009,17 +1076,17 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-// Color stops sampled from RainViewer color scheme 6 (NEXRAD Level III) so
-// the legend mirrors the pixels actually painted on the map. The lower
-// dBZ buckets are the cyan/blue rings users see on the outer edge of cells.
+// Canonical NWS NEXRAD Level III reflectivity palette — exactly what IEM's
+// USCOMP-N0Q tiles paint, so the legend mirrors the pixels on the map.
 const RAIN_STOPS = [
   { tag: "5+",  color: "#04e9e7", label: "Trace" },
-  { tag: "15+", color: "#0a73e6", label: "Light" },
-  { tag: "20+", color: "#15c40a", label: "Moderate" },
-  { tag: "35+", color: "#fef000", label: "Heavy" },
-  { tag: "45+", color: "#fd7e00", label: "Intense" },
-  { tag: "55+", color: "#fc0000", label: "Severe" },
-  { tag: "65+", color: "#fc00ff", label: "Extreme / hail" },
+  { tag: "20+", color: "#02fd02", label: "Light" },
+  { tag: "30+", color: "#008e00", label: "Moderate" },
+  { tag: "35+", color: "#fdf802", label: "Heavy" },
+  { tag: "45+", color: "#fd9500", label: "Intense" },
+  { tag: "50+", color: "#fd0000", label: "Severe" },
+  { tag: "60+", color: "#bc0000", label: "Damaging" },
+  { tag: "65+", color: "#f800fd", label: "Hail" },
 ];
 const MIX_STOPS = [
   { tag: "5+",  color: "#04e9e7", label: "Trace mix" },
