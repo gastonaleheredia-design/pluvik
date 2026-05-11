@@ -289,19 +289,29 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     const isStation = source === "station" && !!stationId;
-    const url = isStation
-      ? iemStationTileUrl(stationId!)
-      : rvTileUrl(host, frame, colorScheme);
+    // Rain mosaic uses IEM USCOMP-N0Q (true NWS palette). Snow/Mix mosaic
+    // still uses RainViewer because IEM doesn't paint those layers.
+    const isIemMosaic = !isStation && mode === "rain";
+    let url: string;
+    let profileKey: "station" | "iem-mosaic" | "rv";
+    let desiredMaxZoom: number;
+    if (isStation) {
+      url = iemStationTileUrl(stationId!);
+      profileKey = "station";
+      desiredMaxZoom = 12;
+    } else if (isIemMosaic) {
+      url = iemMosaicTileUrl(frame.time);
+      profileKey = "iem-mosaic";
+      desiredMaxZoom = 9;
+    } else {
+      url = rvTileUrl(host, frame, colorScheme);
+      profileKey = "rv";
+      desiredMaxZoom = 7;
+    }
     const existing = map.getSource("live-radar") as mapboxgl.RasterTileSource | undefined;
-    // Each backend has a different native maxzoom + caching profile.
-    // Recreate source instead of just setTiles() so a stale mosaic source
-    // doesn't cap station zoom to 7 (which left station tiles blank).
-    const desiredMaxZoom = isStation ? 12 : 7;
     if (existing) {
-      // If maxzoom matches, hot-swap tiles (cheap). Otherwise recreate.
-      const current = (existing as unknown as { tiles?: string[] }).tiles?.[0];
-      const sameProfile =
-        (current?.includes("mesonet.agron.iastate.edu") ?? false) === isStation;
+      const prevProfile = currentProfileRef.current;
+      const sameProfile = prevProfile === profileKey;
       if (sameProfile) {
         (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([url]);
       } else {
@@ -321,6 +331,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
           layout: { visibility: showRadar ? "visible" : "none" },
           paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
         });
+        currentProfileRef.current = profileKey;
       }
     } else {
       map.addSource("live-radar", {
@@ -337,14 +348,15 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
         layout: { visibility: showRadar ? "visible" : "none" },
         paint: { "raster-opacity": 0.8, "raster-resampling": "linear" },
       });
+      currentProfileRef.current = profileKey;
     }
     const fr = framesRef.current;
-    const isForecast = fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false;
+    const isForecast = !isIemMosaic && !isStation && (fr ? fr.frames.indexOf(frame) >= fr.nowcastStartIdx : false);
     setFrameTime({ ts: frame.time * 1000, isForecast });
     if (fr && fr.frames.length > 1) {
       setFrameProgress(fr.frames.indexOf(frame) / (fr.frames.length - 1));
     }
-  }, [showRadar, colorScheme, source, stationId]);
+  }, [showRadar, colorScheme, source, stationId, mode]);
 
   // When mode/source/station changes, force a re-tile of the current frame.
   useEffect(() => {
