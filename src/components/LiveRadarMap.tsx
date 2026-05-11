@@ -173,7 +173,7 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event: eventName, expires, containsUser },
+        properties: { id, event: eventName, expires, containsUser, phenomena: ph },
       });
     }
 
