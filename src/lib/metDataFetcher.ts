@@ -205,21 +205,65 @@ export interface MetBriefing {
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
   try {
     const stationsRes = await fetch(
-      `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`,
+      `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations?limit=3`,
       { headers: NWS }
     );
     if (!stationsRes.ok) return '';
     const stData = await stationsRes.json();
-    const stationId = stData.features?.[0]?.properties?.stationIdentifier;
-    if (!stationId) return '';
+    const features: any[] = Array.isArray(stData.features) ? stData.features.slice(0, 3) : [];
+    if (features.length === 0) return '';
 
-    const obsRes = await fetch(
-      `https://api.weather.gov/stations/${stationId}/observations/latest`,
-      { headers: NWS }
-    );
-    if (!obsRes.ok) return '';
-    const obs = await obsRes.json();
-    const p = obs.properties;
+    type Candidate = {
+      stationId: string;
+      distMiles: number;
+      ageMin: number | null;
+      obs: any | null;
+    };
+    const candidates: Candidate[] = [];
+    for (const f of features) {
+      const sid = f?.properties?.stationIdentifier;
+      const coords = f?.geometry?.coordinates; // [lon, lat]
+      if (!sid || !Array.isArray(coords)) continue;
+      const sLon = coords[0];
+      const sLat = coords[1];
+      const distMiles = haversineM(lat, lon, sLat, sLon) / 1609.34;
+      let obs: any = null;
+      let ageMin: number | null = null;
+      try {
+        const r = await fetch(
+          `https://api.weather.gov/stations/${sid}/observations/latest`,
+          { headers: NWS },
+        );
+        if (r.ok) {
+          obs = await r.json();
+          const ts = obs?.properties?.timestamp;
+          if (ts) {
+            const t = new Date(ts).getTime();
+            if (Number.isFinite(t)) ageMin = Math.round((Date.now() - t) / 60000);
+          }
+        }
+      } catch { /* skip */ }
+      candidates.push({ stationId: sid, distMiles, ageMin, obs });
+    }
+
+    // Prefer closest station with distance <35mi AND obs age <90min.
+    const valid = candidates
+      .filter(c => c.obs && c.distMiles < 35 && c.ageMin != null && c.ageMin < 90)
+      .sort((a, b) => a.distMiles - b.distMiles);
+    let chosen: Candidate | null = valid[0] ?? null;
+    let stalenessWarning = '';
+    if (!chosen) {
+      // Last resort: features[0] with whatever obs we got (if any).
+      const fallback = candidates.find(c => c.obs) ?? candidates[0] ?? null;
+      if (!fallback || !fallback.obs) return '';
+      chosen = fallback;
+      stalenessWarning =
+        `⚠ Nearest ASOS is ${Math.round(chosen.distMiles)} miles away — surface obs may not represent local conditions.`;
+    }
+    const stationId = chosen.stationId;
+    const distMiles = Math.round(chosen.distMiles);
+    const ageMin = chosen.ageMin;
+    const p = chosen.obs.properties;
 
     const tempF = p.temperature?.value != null
       ? Math.round(p.temperature.value * 9 / 5 + 32) : null;
@@ -243,7 +287,8 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
       : '';
 
     return [
-      `CURRENT OBS (${stationId}):`,
+      `CURRENT OBS (${stationId} · ${distMiles} mi from user · obs age: ${ageMin ?? '?'} min):`,
+      stalenessWarning,
       tempF != null ? `Temp: ${tempF}°F` : '',
       dewF != null ? `Dewpoint: ${dewF}°F` : '',
       spread != null ? `Temp-Dewpoint spread: ${spread}°F${spread <= 3 ? ' ⚠ FOG RISK' : ''}` : '',
@@ -257,6 +302,16 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
   } catch {
     return '';
   }
+}
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 async function fetchHRRRForecast(lat: number, lon: number, hoursAhead: number): Promise<string> {
