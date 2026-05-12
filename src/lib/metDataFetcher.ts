@@ -35,6 +35,12 @@ function putStructuredCells(key: string, cells: StormInterceptResult[]) {
 let radarFallbackInUse = false;
 export function isRadarFallbackInUse(): boolean { return radarFallbackInUse; }
 
+function bearingToCompass(deg: number): string {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
