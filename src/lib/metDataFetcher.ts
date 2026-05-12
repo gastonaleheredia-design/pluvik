@@ -1657,6 +1657,7 @@ export async function buildMetBriefing(
   const result: MetBriefing = {
     surfaceObs: '',
     hourlyForecast: '',
+    namCrosscheck: '',
     afd: '',
     sounding: '',
     radarCells: '',
