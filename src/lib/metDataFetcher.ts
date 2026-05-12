@@ -27,6 +27,14 @@ function putStructuredCells(key: string, cells: StormInterceptResult[]) {
   }
 }
 
+/**
+ * Tracks whether the most recent radar fetch fell through to the HRRR
+ * grid fallback. assembleBriefingText reads this to prepend an explicit
+ * engine note so the LLM never confuses forecast precip for live NEXRAD.
+ */
+let radarFallbackInUse = false;
+export function isRadarFallbackInUse(): boolean { return radarFallbackInUse; }
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
@@ -308,12 +316,93 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
-  // Note: the historical IEM `nexrad_attr.py` endpoint is dead (301 → HTML
-  // documentation). There is currently no free, real-time JSON source for
-  // raw NEXRAD reflectivity that runs inside a Cloudflare Worker, so we
-  // use the HRRR per-cell nowcast as our primary radar-equivalent feed.
-  // The header makes this explicit so the LLM doesn't claim "NEXRAD said
-  // there's nothing" when the truth is "no real radar was ingested".
+  // Try IEM's current storm-attrs JSON first. If it (or the radar-stations
+  // probe) is unreachable / returns HTML / wrong shape, fall through to
+  // the clearly-labeled HRRR nowcast grid.
+  const cosLat = Math.cos(lat * Math.PI / 180) || 1;
+  const HEADERS = { 'User-Agent': 'Pluvik-Weather/1.0' };
+
+  // Step 1: primary cell list
+  try {
+    const url =
+      `https://mesonet.agron.iastate.edu/api/1/nexrad_storm_attrs.json` +
+      `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=150`;
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(4000) });
+    const ct = res.headers.get('content-type') ?? '';
+    if (res.ok && ct.includes('json')) {
+      const data = await res.json();
+      const raw: any[] =
+        (Array.isArray(data?.features) && data.features) ||
+        (Array.isArray(data?.data) && data.data) ||
+        (Array.isArray(data?.attrs) && data.attrs) ||
+        [];
+      const cells = raw.map((r: any) => {
+        const cLat = r.lat ?? r.latitude ?? r.geometry?.coordinates?.[1];
+        const cLon = r.lon ?? r.longitude ?? r.geometry?.coordinates?.[0];
+        const props = r.properties ?? r;
+        const dbz = Math.round(props.max_dbz ?? props.dbz ?? props.maxdbz ?? 0);
+        const dirDeg = props.drct ?? props.dir ?? props.motion_dir ?? null;
+        const sknt = props.sknt ?? props.speed_kt ?? null;
+        const mph = sknt != null ? Math.round(sknt * 1.15078) : (props.mph ?? null);
+        return { cLat, cLon, dbz, dirDeg, mph };
+      }).filter(c => c.cLat != null && c.cLon != null && c.dbz > 0);
+
+      if (cells.length > 0) {
+        radarFallbackInUse = false;
+        const structured: StormInterceptResult[] = [];
+        const lines = cells.slice(0, 5).map(c => {
+          const dy = (c.cLat - lat) * 69;
+          const dx = (c.cLon - lon) * 69 * cosLat;
+          const distMi = Math.round(Math.sqrt(dx * dx + dy * dy));
+          const bearingDeg = (Math.atan2(c.cLon - lon, c.cLat - lat) * 180 / Math.PI + 360) % 360;
+          const compassDir = compass(bearingDeg);
+          const motionLabel = c.dirDeg != null ? compass(c.dirDeg) : '?';
+          let interceptLine = '';
+          if (c.dirDeg != null && c.mph != null && c.mph > 0) {
+            const ix = calculateStormIntercept(lat, lon, c.cLat, c.cLon, c.dirDeg, c.mph, c.dbz);
+            structured.push({
+              ...ix,
+              bearingFromUser: compassDir, distanceMiles: distMi, dbz: c.dbz,
+              motionDirLabel: motionLabel, motionSpeedMph: c.mph,
+            });
+            const etaTxt = ix.etaMinutes != null ? ` → ETA:${ix.etaMinutes}min` : '';
+            const durTxt = ix.impactDuration != null ? ` (~${ix.impactDuration}min impact)` : '';
+            interceptLine = ` | INTERCEPT:${ix.impactZone.toUpperCase()} (offset ${ix.lateralOffsetMiles}mi, threat:${ix.threatLevel})${etaTxt}${durTxt}`;
+          }
+          const klass = classifyCell(c.dbz, {}, { nearbyCount: cells.length, alignedLine: false });
+          const motionTxt = c.dirDeg != null
+            ? `${c.dirDeg}°(toward ${motionLabel}) at ${c.mph ?? '?'}mph`
+            : '? mph';
+          return (
+            `Cell ${compassDir} at ${distMi}mi | dBZ:${c.dbz} | Motion:${motionTxt}` +
+            ` | TYPE:${cellTypeLabel(klass.type)} | INTENSITY:${klass.intensityWord}` +
+            ` | THREAT:${klass.primaryThreat}${interceptLine}`
+          );
+        });
+        putStructuredCells(`${lat.toFixed(3)},${lon.toFixed(3)}`, structured);
+        return `LIVE NEXRAD CELLS (IEM storm attrs, ~150 mi radius):\n${lines.join('\n')}`;
+      }
+
+      // Primary returned 200/JSON but no cells — confirm IEM radar service
+      // is up via the stations probe before declaring "empty radar".
+      try {
+        const probe = await fetch(
+          'https://mesonet.agron.iastate.edu/json/radar_stations.json',
+          { headers: HEADERS, signal: AbortSignal.timeout(3000) },
+        );
+        const probeCt = probe.headers.get('content-type') ?? '';
+        if (probe.ok && probeCt.includes('json')) {
+          radarFallbackInUse = false;
+          return 'LIVE NEXRAD: No active cells within 150 mi (IEM storm-attrs returned empty).';
+        }
+      } catch { /* fall through to HRRR fallback */ }
+    }
+  } catch (e) {
+    console.warn('[radar] IEM storm-attrs probe failed', e);
+  }
+
+  // Step 3: HRRR fallback — clearly labeled inside the function.
+  radarFallbackInUse = true;
   return await fetchRadarCellsFromGrid(lat, lon);
 }
 
@@ -479,8 +568,8 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
     // "NEXRAD TRACKED CELLS" was misleading the LLM into trusting it as
     // ground truth.
     const headerNote = alignedLine
-      ? 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; line structure detected):'
-      : 'RADAR-EQUIVALENT NOWCAST CELLS (HRRR forecast precip → synthetic dBZ; ~145 mi radius):';
+      ? 'HRRR NOWCAST PRECIP CELLS (radar fallback — real NEXRAD unavailable; line structure detected):'
+      : 'HRRR NOWCAST PRECIP CELLS (radar fallback — real NEXRAD unavailable; ~145 mi radius):';
 
     // "Radar reality check" line: the 3 strongest cells within 60 mi
     // restated as a one-liner so the LLM cannot claim the radar is empty.
