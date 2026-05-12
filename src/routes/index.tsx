@@ -77,6 +77,7 @@ function HomePage() {
   const recordStartRef = useRef<number>(0);
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
+  const questionInputRef = useRef<HTMLInputElement | null>(null);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -812,6 +813,50 @@ function HomePage() {
         <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}`}</style>
       </div>
 
+      {/* Starter question chips — fill empty space, prefill input on tap. */}
+      {!questionText.trim() && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            overflowX: 'auto',
+            padding: '0 20px 12px',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {[
+            t('home.chip_rain_weekend', { defaultValue: 'Will it rain this weekend?' }),
+            t('home.chip_concrete', { defaultValue: 'Is it safe to pour concrete tomorrow morning?' }),
+            t('home.chip_storm_pm', { defaultValue: 'Storm risk this afternoon?' }),
+            t('home.chip_fog_clear', { defaultValue: 'Will fog clear by 8 AM?' }),
+          ].map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => {
+                setQuestionText(label);
+                requestAnimationFrame(() => questionInputRef.current?.focus());
+              }}
+              style={{
+                flexShrink: 0,
+                padding: '7px 14px',
+                borderRadius: 100,
+                border: `1px solid rgba(11,16,24,0.12)`,
+                backgroundColor: PAGE_BG,
+                color: INK,
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Thin question input pinned near bottom */}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
@@ -831,6 +876,7 @@ function HomePage() {
           }}
         >
           <input
+            ref={questionInputRef}
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
             placeholder={

@@ -23,6 +23,15 @@ export function WhySheet({ briefing, onOpenRadar, onClose }: WhySheetProps) {
   const cell = briefing.nearby_cell;
   const alert = briefing.alert;
 
+  // Plain-language summary fields (no forecaster jargon).
+  const whatsHappening = why?.headline ?? briefing.sentence ?? null;
+  const mainConcern = alert?.event ?? reasonDetail ?? null;
+  const whatToDo = alert?.instruction?.trim() || null;
+  const decisionWindow: string | null = null;
+
+  // Hide raw AFD ("Synoptic context") bullet — it's forecaster jargon.
+  const filteredBullets = (why?.bullets ?? []).filter((b) => b.icon !== 'afd');
+
   return (
     <Drawer.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
       <Drawer.Portal>
@@ -70,9 +79,15 @@ export function WhySheet({ briefing, onOpenRadar, onClose }: WhySheetProps) {
 
             {/* Signal list */}
             <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <PlainSummary
+                whatsHappening={whatsHappening}
+                mainConcern={mainConcern}
+                whatToDo={whatToDo}
+                decisionWindow={decisionWindow}
+              />
               {why ? (
                 <>
-                  {why.bullets.map((b, i) => (
+                  {filteredBullets.map((b, i) => (
                     <SignalRow
                       key={`${b.icon}-${i}`}
                       icon={iconGlyph(b.icon)}
@@ -87,7 +102,6 @@ export function WhySheet({ briefing, onOpenRadar, onClose }: WhySheetProps) {
                 </>
               ) : (
                 <>
-                  {reasonDetail && <SignalRow icon="ⓘ" label="Reason" value={reasonDetail} tone="accent" />}
                   {briefing.next_rain_caption && (
                     <SignalRow icon="⛆" label="Next rain" value={briefing.next_rain_caption} />
                   )}
@@ -168,6 +182,29 @@ function iconGlyph(icon: WhyBulletIcon): string {
     case 'forecast': return '⛆';
     case 'time': return '⟳';
   }
+}
+
+function PlainSummary({
+  whatsHappening, mainConcern, whatToDo, decisionWindow,
+}: {
+  whatsHappening: string | null;
+  mainConcern: string | null;
+  whatToDo: string | null;
+  decisionWindow: string | null;
+}) {
+  const rows: Array<{ label: string; value: string; tone?: WhyBulletTone }> = [];
+  if (whatsHappening) rows.push({ label: "What's happening", value: whatsHappening });
+  if (mainConcern) rows.push({ label: 'Main concern', value: mainConcern, tone: 'accent' });
+  if (decisionWindow) rows.push({ label: 'Decision window', value: decisionWindow });
+  if (whatToDo) rows.push({ label: 'What to do', value: whatToDo, tone: 'warn' });
+  if (rows.length === 0) return null;
+  return (
+    <>
+      {rows.map((r) => (
+        <SignalRow key={r.label} icon="·" label={r.label} value={r.value} tone={r.tone} />
+      ))}
+    </>
+  );
 }
 
 function ConfidenceChip({ confidence, severeType }: { confidence: WhyConfidence; severeType?: string }) {

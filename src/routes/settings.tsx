@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { deleteAccount } from '../lib/account.functions';
 import { useNavigate } from '@tanstack/react-router';
 import { TwoFactorSection } from '../components/TwoFactorSection';
+import { AuthModal } from '../components/AuthModal';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -69,6 +70,7 @@ function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [accountMsg, setAccountMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState<'email' | 'password' | 'delete' | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
 
   const isOAuthOnly = !user?.identities?.some((i) => i.provider === 'email');
   const emailUnconfirmed = !!user && !user.email_confirmed_at && !!user.email;
@@ -249,6 +251,34 @@ function SettingsPage() {
         </div>
       )}
 
+      {/* Account quick-access (above Language) */}
+      <div className="mt-10">
+        <p className="mono-label text-neutral-gray mb-3">{t('auth.account_section', { defaultValue: 'Account' })}</p>
+        {user ? (
+          <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-[#f0ebde] border border-[rgba(11,16,24,0.06)]">
+            <div className="min-w-0">
+              <div className="mono-label text-neutral-gray text-[0.55rem] mb-1">
+                {t('auth.signed_in_as', { defaultValue: 'Signed in as' })}
+              </div>
+              <div className="font-serif text-sm text-ink truncate">{user.email}</div>
+            </div>
+            <button
+              onClick={() => signOut()}
+              className="shrink-0 py-2 px-4 rounded-full font-medium text-xs border border-[rgba(11,16,24,0.15)] text-ink bg-paper"
+            >
+              {t('auth.sign_out', { defaultValue: 'Sign out' })}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAuth(true)}
+            className="w-full py-3 px-4 rounded-full font-medium text-sm bg-ink text-paper"
+          >
+            {t('auth.sign_in_or_create', { defaultValue: 'Sign in or create account' })}
+          </button>
+        )}
+      </div>
+
       <div className="mt-10">
         <p className="mono-label text-neutral-gray mb-3">{t('settings.language')}</p>
         <Segmented
@@ -366,6 +396,9 @@ function SettingsPage() {
 
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
+      {showAuth && (
+        <AuthModal onSuccess={() => setShowAuth(false)} onClose={() => setShowAuth(false)} />
+      )}
     </div>
   );
 }
