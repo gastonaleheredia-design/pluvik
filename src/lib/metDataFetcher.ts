@@ -1651,13 +1651,34 @@ export async function buildMetBriefing(
     () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
     () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
     () => fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }),
-    () => fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }),
+    () => {
+      const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
+      if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
+        return fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; });
+      }
+      result.fireWeather = '';
+      return Promise.resolve();
+    },
     () => fetchSPCDayN(2).then(v => { result.spcDay2 = v; }),
     () => fetchSPCDayN(3).then(v => { result.spcDay3 = v; }),
     () => fetchSPCDay48().then(v => { result.spcDay48 = v; }),
     () => fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }),
-    () => fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }),
-    () => fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }),
+    () => {
+      const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
+      if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
+        return fetchSPCFireOutlook().then(v => { result.fireOutlook = v; });
+      }
+      result.fireOutlook = '';
+      return Promise.resolve();
+    },
+    () => {
+      const droughtActivities = ['fishing', 'construction', 'general'];
+      if (droughtActivities.includes(parsed.activityType) && parsed.hoursAhead >= 48) {
+        return fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; });
+      }
+      result.droughtMonitor = '';
+      return Promise.resolve();
+    },
     () => fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }),
     () => fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }),
     () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }),
