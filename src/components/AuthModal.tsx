@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
 import { lovable } from '@/integrations/lovable';
@@ -7,6 +7,20 @@ import { supabase } from '../lib/supabase';
 interface AuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
+}
+
+const LAST_AUTH_KEY = 'pluvik-last-auth';
+type LastProvider = 'google' | 'apple' | 'phone' | 'email' | null;
+
+function readLastProvider(): LastProvider {
+  if (typeof window === 'undefined') return null;
+  const v = window.localStorage.getItem(LAST_AUTH_KEY);
+  if (v === 'google' || v === 'apple' || v === 'phone' || v === 'email') return v;
+  return null;
+}
+
+function rememberProvider(p: Exclude<LastProvider, null>) {
+  try { window.localStorage.setItem(LAST_AUTH_KEY, p); } catch { /* ignore */ }
 }
 
 export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
@@ -24,6 +38,13 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  // Phone OTP state
+  const [phoneStep, setPhoneStep] = useState<'idle' | 'enter' | 'code'>('idle');
+  const [phone, setPhone] = useState('');
+  const [phoneCode, setPhoneCode] = useState('');
+  const [lastProvider, setLastProvider] = useState<LastProvider>(null);
+
+  useEffect(() => { setLastProvider(readLastProvider()); }, []);
 
   const friendlyError = (msg: string | undefined): string => {
     const m = (msg ?? '').toLowerCase();
@@ -86,6 +107,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       } catch {
         // fall through to success
       }
+      rememberProvider('email');
       onSuccess();
     }
   };
@@ -105,6 +127,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       setMfaCode('');
       return;
     }
+    rememberProvider('email');
     onSuccess();
   };
 
@@ -131,6 +154,9 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         }
         return;
       }
+      // Remember the chosen provider regardless of redirect path so the
+      // badge is in place when the user returns from the OAuth round-trip.
+      rememberProvider(provider);
       if (result.redirected) return; // browser will navigate
       onSuccess();
     } catch (e) {
@@ -140,6 +166,40 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       console.error(`[auth] ${provider} sign-in threw:`, e);
       setError(provider === 'apple' ? `${t('auth.apple_failed')} (${msg})` : friendlyError(msg));
     }
+  };
+
+  const handleSendPhoneCode = async () => {
+    const num = phone.trim();
+    if (!num) return;
+    setError(''); setInfo(''); setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ phone: num });
+    setLoading(false);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[auth] phone OTP send failed:', error);
+      setError(`${t('auth.phone_failed')} (${error.message})`);
+      return;
+    }
+    setInfo(t('auth.code_sent'));
+    setPhoneStep('code');
+  };
+
+  const handleVerifyPhoneCode = async () => {
+    if (phoneCode.length < 6) return;
+    setError(''); setLoading(true);
+    const { error } = await supabase.auth.verifyOtp({
+      phone: phone.trim(),
+      token: phoneCode,
+      type: 'sms',
+    });
+    setLoading(false);
+    if (error) {
+      setError(t('auth.code_invalid'));
+      setPhoneCode('');
+      return;
+    }
+    rememberProvider('phone');
+    onSuccess();
   };
 
   return (
@@ -271,10 +331,96 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
               {t('auth.mfa_cancel')}
             </button>
           </div>
+        ) : phoneStep !== 'idle' ? (
+          <div style={{ padding: '8px 0 4px' }}>
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: '1.15rem', fontWeight: 500, marginBottom: 6 }}>
+              📱 {t('auth.continue_phone')}
+            </div>
+            {phoneStep === 'enter' && (
+              <>
+                <input
+                  type="tel"
+                  autoFocus
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendPhoneCode()}
+                  placeholder={t('auth.phone_placeholder')}
+                  style={{
+                    width: '100%', padding: '13px 16px', borderRadius: 12,
+                    border: '1px solid rgba(11,16,24,0.1)', backgroundColor: '#f0ebde',
+                    fontFamily: 'Inter, sans-serif', fontSize: '0.95rem',
+                    marginBottom: 12, outline: 'none', color: '#0b1018',
+                  }}
+                />
+                {error && <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
+                <button
+                  onClick={handleSendPhoneCode}
+                  disabled={loading || !phone.trim()}
+                  style={{
+                    width: '100%', padding: 14, borderRadius: 100, border: 'none',
+                    backgroundColor: loading || !phone.trim() ? '#9ca3af' : '#c2410c',
+                    color: '#faf7f0', fontFamily: 'Inter, sans-serif', fontWeight: 600,
+                    fontSize: '0.92rem', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8,
+                  }}
+                >
+                  {loading ? t('auth.loading') : t('auth.send_code')}
+                </button>
+              </>
+            )}
+            {phoneStep === 'code' && (
+              <>
+                <div style={{ fontSize: '0.85rem', color: '#4b5563', marginBottom: 12 }}>{info || t('auth.code_sent')}</div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoFocus
+                  value={phoneCode}
+                  onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyPhoneCode()}
+                  placeholder={t('auth.code_placeholder')}
+                  style={{
+                    width: '100%', padding: '14px 16px', borderRadius: 12,
+                    border: '1px solid rgba(11,16,24,0.1)', backgroundColor: '#f0ebde',
+                    fontFamily: 'Inter, sans-serif', fontSize: '1.2rem', letterSpacing: '0.4em',
+                    textAlign: 'center', marginBottom: 12, outline: 'none', color: '#0b1018',
+                  }}
+                />
+                {error && <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
+                <button
+                  onClick={handleVerifyPhoneCode}
+                  disabled={loading || phoneCode.length < 6}
+                  style={{
+                    width: '100%', padding: 14, borderRadius: 100, border: 'none',
+                    backgroundColor: loading || phoneCode.length < 6 ? '#9ca3af' : '#c2410c',
+                    color: '#faf7f0', fontFamily: 'Inter, sans-serif', fontWeight: 600,
+                    fontSize: '0.92rem', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8,
+                  }}
+                >
+                  {loading ? t('auth.loading') : t('auth.verify')}
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => { setPhoneStep('idle'); setPhone(''); setPhoneCode(''); setError(''); setInfo(''); }}
+              style={{
+                width: '100%', padding: 10, background: 'none', border: 'none',
+                color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer',
+              }}
+            >
+              ← {t('auth.back')}
+            </button>
+          </div>
         ) : (
         <>
 
         {/* Google sign-in */}
+        <div style={{ position: 'relative', marginBottom: '10px' }}>
+        {lastProvider === 'google' && (
+          <div style={{ position: 'absolute', top: -8, right: 10, backgroundColor: '#c2410c', color: '#faf7f0', fontSize: '0.62rem', fontWeight: 600, padding: '2px 8px', borderRadius: 100, letterSpacing: '0.04em', zIndex: 1 }}>
+            {t('auth.last_used')}
+          </div>
+        )}
         <button
           onClick={() => handleOAuth('google')}
           disabled={loading}
@@ -282,7 +428,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             width: '100%',
             padding: '12px',
             borderRadius: '100px',
-            border: '1px solid rgba(11,16,24,0.15)',
+            border: lastProvider === 'google' ? '2px solid #c2410c' : '1px solid rgba(11,16,24,0.15)',
             backgroundColor: '#fff',
             color: '#0b1018',
             fontFamily: 'Inter, sans-serif',
@@ -293,7 +439,6 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '10px',
-            marginBottom: '10px',
           }}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
@@ -304,17 +449,24 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           </svg>
           {t('auth.continue_google')}
         </button>
+        </div>
         {/* Apple sign-in */}
+        <div style={{ position: 'relative', marginBottom: '10px' }}>
+        {lastProvider === 'apple' && (
+          <div style={{ position: 'absolute', top: -8, right: 10, backgroundColor: '#c2410c', color: '#faf7f0', fontSize: '0.62rem', fontWeight: 600, padding: '2px 8px', borderRadius: 100, letterSpacing: '0.04em', zIndex: 1 }}>
+            {t('auth.last_used')}
+          </div>
+        )}
         <button
           onClick={() => handleOAuth('apple')}
           disabled={loading}
           style={{
-            width: '100%', padding: '12px', borderRadius: '100px', border: 'none',
+            width: '100%', padding: '12px', borderRadius: '100px',
+            border: lastProvider === 'apple' ? '2px solid #c2410c' : 'none',
             backgroundColor: '#000', color: '#fff',
             fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
             cursor: loading ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-            marginBottom: '14px',
           }}
         >
           <svg width="16" height="18" viewBox="0 0 16 18" aria-hidden fill="#fff">
@@ -322,6 +474,31 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           </svg>
           {t('auth.continue_apple')}
         </button>
+        </div>
+
+        {/* Phone sign-in */}
+        <div style={{ position: 'relative', marginBottom: '14px' }}>
+        {lastProvider === 'phone' && (
+          <div style={{ position: 'absolute', top: -8, right: 10, backgroundColor: '#c2410c', color: '#faf7f0', fontSize: '0.62rem', fontWeight: 600, padding: '2px 8px', borderRadius: 100, letterSpacing: '0.04em', zIndex: 1 }}>
+            {t('auth.last_used')}
+          </div>
+        )}
+        <button
+          onClick={() => { setPhoneStep('enter'); setError(''); setInfo(''); }}
+          disabled={loading}
+          style={{
+            width: '100%', padding: '12px', borderRadius: '100px',
+            border: lastProvider === 'phone' ? '2px solid #c2410c' : '1px solid rgba(11,16,24,0.15)',
+            backgroundColor: '#fff', color: '#0b1018',
+            fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
+            cursor: loading ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+          }}
+        >
+          <span aria-hidden>📱</span>
+          {t('auth.continue_phone')}
+        </button>
+        </div>
 
         {/* OAuth error display (visible even when email panel collapsed) */}
         {!showEmail && error && (
