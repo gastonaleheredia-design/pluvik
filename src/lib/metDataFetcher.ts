@@ -1608,7 +1608,7 @@ export async function buildMetBriefing(
     () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }),
     () => fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }),
     () => fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }),
-    () => fetchSPCOutlook().then(v => { result.spcOutlook = v; }),
+    () => fetchSPCOutlook(lat, lon).then(v => { result.spcOutlook = v; }),
     () => fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }),
     () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
     () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
@@ -1856,16 +1856,32 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     const end = new Date();
     const start = new Date(end.getTime() - 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 19).replace('T', '%20');
-    // Iowa State Mesonet GLM JSON endpoint — flashes in a bbox
     const dLat = 25 / 69; // ~25 mile radius in degrees
     const dLon = 25 / (69 * Math.cos(lat * Math.PI / 180));
-    const url = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
+    // Primary: legacy IEM glmtotal.py (now serves HTML docs — kept as a probe in case it returns).
+    const legacyUrl = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
       `?north=${(lat + dLat).toFixed(4)}&south=${(lat - dLat).toFixed(4)}` +
       `&east=${(lon + dLon).toFixed(4)}&west=${(lon - dLon).toFixed(4)}` +
       `&sts=${fmt(start)}&ets=${fmt(end)}`;
-    const res = await fetch(url, { headers: UA });
-    if (!res.ok) return 'GOES GLM LIGHTNING: Data unavailable.';
-    const data = await res.json();
+    const tryJson = async (url: string): Promise<any | null> => {
+      try {
+        const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(4000) });
+        if (!r.ok) return null;
+        const ct = r.headers.get('content-type') ?? '';
+        if (!ct.includes('json')) return null;
+        return await r.json();
+      } catch { return null; }
+    };
+    let data = await tryJson(legacyUrl);
+    if (!data) {
+      const fallbackUrl =
+        `https://mesonet.agron.iastate.edu/api/1/lightning/total.json` +
+        `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=40&minutes=60`;
+      data = await tryJson(fallbackUrl);
+    }
+    if (!data) {
+      return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
+    }
     const flashes = data.flashes ?? data.count ?? (Array.isArray(data.events) ? data.events.length : null);
     if (flashes == null) {
       return 'GOES GLM LIGHTNING (past 60 min within 25mi): no data returned.';
@@ -1875,6 +1891,6 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     }
     return `GOES GLM LIGHTNING (past 60 min within 25mi): ${flashes} flashes detected — active lightning in area.`;
   } catch {
-    return '';
+    return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
   }
 }
