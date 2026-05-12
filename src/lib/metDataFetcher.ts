@@ -323,11 +323,33 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
     );
     if (!res.ok) return '';
     const text = await res.text();
-    const lines = text.split('\n').slice(0, 40).join('\n');
-    return `ATMOSPHERIC SOUNDING (RUC analysis):\n${lines}`;
+    const lines = text.split('\n').slice(0, 60).join('\n');
+    return (
+      `RUC SOUNDING (virtual — Op40 analysis at exact lat/lon):\n` +
+      `${lines}\n` +
+      `[Note: standard sounding reads surface → ~100 mb. CAPE/CIN/LI/SRH ` +
+      `are the key derived indices — reference them by name if present.]`
+    );
   } catch {
     return '';
   }
+}
+
+// Spread/agreement summary across multi-model precip values for a given day.
+function computeModelSpread(values: number[]): {
+  min: number; max: number; spread: number; agreement: string;
+} {
+  const valid = values.filter(v => Number.isFinite(v));
+  if (valid.length < 2) return { min: 0, max: 0, spread: 0, agreement: 'INSUFFICIENT DATA' };
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const spread = max - min;
+  const agreement =
+    spread < 0.15 ? 'HIGH AGREEMENT' :
+    spread < 0.50 ? 'MODERATE SPREAD' :
+    spread < 1.00 ? 'HIGH SPREAD' :
+    'VERY HIGH SPREAD — LOW CONFIDENCE';
+  return { min, max, spread, agreement };
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
@@ -1226,9 +1248,9 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
       `MULTI-MODEL COMPARISON (11 models · 9 physics + 2 AI · next 3 days — look for agreement vs spread):`,
     ];
     for (let d = 0; d < Math.min(3, days.length); d++) {
-      lines.push(`\n${days[d]}:`);
       const dayPrecip: number[] = [];
       const dayPop: number[] = [];
+      const modelLines: string[] = [];
       for (const m of models) {
         const precip = data.daily[`precipitation_sum_${m.id}`]?.[d];
         const wind = data.daily[`windspeed_10m_max_${m.id}`]?.[d];
@@ -1238,7 +1260,7 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
         if (precip == null && wind == null) continue;
         if (Number.isFinite(precip)) dayPrecip.push(precip);
         if (Number.isFinite(pop)) dayPop.push(pop);
-        lines.push(
+        modelLines.push(
           `  ${m.short.padEnd(10)} ` +
           `Precip:${(precip ?? 0).toFixed(2)}" ` +
           `PoP:${pop ?? '?'}% ` +
@@ -1246,6 +1268,22 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
           `MaxWind:${Math.round(wind ?? 0)}mph`,
         );
       }
+      lines.push(`\n${days[d]}:`);
+      const sp = computeModelSpread(dayPrecip);
+      const confSignal =
+        sp.agreement === 'HIGH AGREEMENT'      ? 'HIGH' :
+        sp.agreement === 'MODERATE SPREAD'     ? 'MEDIUM' :
+        sp.agreement === 'HIGH SPREAD'         ? 'LOW' :
+        sp.agreement.startsWith('VERY HIGH')   ? 'VERY LOW' :
+        'UNKNOWN';
+      if (sp.agreement !== 'INSUFFICIENT DATA') {
+        lines.push(
+          `  Day ${d + 1} model spread: ${sp.spread.toFixed(2)}" (${sp.agreement}) · ` +
+          `Range: ${sp.min.toFixed(2)}–${sp.max.toFixed(2)}" · ` +
+          `Confidence signal: ${confSignal}`,
+        );
+      }
+      lines.push(...modelLines);
       if (dayPrecip.length >= 2) {
         const min = Math.min(...dayPrecip);
         const max = Math.max(...dayPrecip);
@@ -1613,13 +1651,34 @@ export async function buildMetBriefing(
     () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
     () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
     () => fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }),
-    () => fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; }),
+    () => {
+      const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
+      if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
+        return fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; });
+      }
+      result.fireWeather = '';
+      return Promise.resolve();
+    },
     () => fetchSPCDayN(2).then(v => { result.spcDay2 = v; }),
     () => fetchSPCDayN(3).then(v => { result.spcDay3 = v; }),
     () => fetchSPCDay48().then(v => { result.spcDay48 = v; }),
     () => fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }),
-    () => fetchSPCFireOutlook().then(v => { result.fireOutlook = v; }),
-    () => fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; }),
+    () => {
+      const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
+      if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
+        return fetchSPCFireOutlook().then(v => { result.fireOutlook = v; });
+      }
+      result.fireOutlook = '';
+      return Promise.resolve();
+    },
+    () => {
+      const droughtActivities = ['fishing', 'construction', 'general'];
+      if (droughtActivities.includes(parsed.activityType) && parsed.hoursAhead >= 48) {
+        return fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; });
+      }
+      result.droughtMonitor = '';
+      return Promise.resolve();
+    },
     () => fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }),
     () => fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }),
     () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }),
