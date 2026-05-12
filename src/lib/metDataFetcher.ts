@@ -233,14 +233,23 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
     const visMiles = p.visibility?.value != null
       ? Math.round(p.visibility.value / 1609.34 * 10) / 10 : null;
 
+    const windDir = p.windDirection?.value != null
+      ? `${bearingToCompass(p.windDirection.value)} (FROM ${p.windDirection.value}°)`
+      : '?';
+    const tendencyStr = p.pressureTendency?.value != null
+      ? p.pressureTendency.value > 0.5 ? ' (rising)'
+        : p.pressureTendency.value < -0.5 ? ' (falling)'
+        : ' (steady)'
+      : '';
+
     return [
       `CURRENT OBS (${stationId}):`,
       tempF != null ? `Temp: ${tempF}°F` : '',
       dewF != null ? `Dewpoint: ${dewF}°F` : '',
       spread != null ? `Temp-Dewpoint spread: ${spread}°F${spread <= 3 ? ' ⚠ FOG RISK' : ''}` : '',
       p.relativeHumidity?.value != null ? `RH: ${Math.round(p.relativeHumidity.value)}%` : '',
-      windMph != null ? `Wind: ${p.windDirection?.value ?? '?'}° at ${windMph} mph${gustMph ? ` gusting ${gustMph} mph` : ''}` : '',
-      p.barometricPressure?.value != null ? `Pressure: ${Math.round(p.barometricPressure.value / 100)} mb (${p.pressureTendency?.value > 0 ? 'rising' : 'falling'})` : '',
+      windMph != null ? `Wind: ${windDir} at ${windMph} mph${gustMph ? ` gusting ${gustMph} mph` : ''}` : '',
+      p.barometricPressure?.value != null ? `Pressure: ${Math.round(p.barometricPressure.value / 100)} mb${tendencyStr}` : '',
       visMiles != null ? `Visibility: ${visMiles} miles` : '',
       p.presentWeather?.length ? `Present weather: ${p.presentWeather.map((w: any) => w.weather).join(', ')}` : '',
       p.cloudLayers?.length ? `Cloud layers: ${p.cloudLayers.map((c: any) => `${c.amount} at ${Math.round((c.base?.value ?? 0) * 3.28084)} ft`).join(', ')}` : '',
