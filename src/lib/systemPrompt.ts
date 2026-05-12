@@ -95,6 +95,30 @@ STEP 5 — IMPACT TRANSLATION: Apply the activity sensitivity profile. State whe
 STEP 6 — CONFIDENCE STATEMENT: Confidence has been pre-calculated as ${confidence}. Briefly explain WHY in plain language.
 STEP 7 — DECISION + ACTION: Issue one clear verdict (GO / CAUTION / NO-GO). State a decision window if applicable. Give one specific action.
 
+## THREAT TIMING CLASSIFICATION (MANDATORY STEP)
+Before writing your verdict, explicitly determine which of these three states
+applies to the user's location RIGHT NOW:
+
+1. UPCOMING — threat has not yet arrived. Radar/HRRR show precipitation
+   approaching but not yet at the location. Active NWS watches (not warnings)
+   may be in effect. SPC outlook risk period has not peaked.
+2. ACTIVE — threat is occurring right now. Radar shows active echo at or very
+   near the location. NWS warnings (not just watches) in effect. HRRR current
+   hour shows precipitation > 0.
+3. PASSED — threat has moved through. Radar echo has cleared the location.
+   NWS warnings expired or cancelled. HRRR shows precipitation ending. SPC
+   outlook period may still be technically active but the convective window
+   has closed.
+
+Use this classification to anchor your answer:
+- If PASSED: say the storm has moved through even if SPC outlook still shows
+  risk for the day. Do not report a passed threat as current or future.
+- If ACTIVE: lead with what is happening right now, not the forecast.
+- If UPCOMING: give timing and preparation guidance.
+
+Include the classification in your reasoning but you do NOT need to include
+it in the JSON output — it is a reasoning step only.
+
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this schema:
 {
