@@ -87,6 +87,15 @@ function AnswerPage() {
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
 
+  // Detected place override from the question text. Computed synchronously so
+  // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
+  // geocode round-trip resolves. Per-question only — does not change the
+  // active saved address.
+  const detectedPlace = (() => {
+    if (typeof searchLat === 'number' && typeof searchLon === 'number') return null;
+    return extractPlaceFromQuestion(question);
+  })();
+
   // Stage-aware loading copy. We classify the question on the client so the
   // loading screen matches the kind of answer we are about to return.
   const predictedStage: ForecastStage = (() => {
@@ -368,8 +377,8 @@ function AnswerPage() {
           &ldquo;{question}&rdquo;
         </div>
         <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em' }}>
-          {t('answer.for_location')} {resolvedAddress}
-          {resolvedAddress !== address && (
+          {t('answer.for_location')} {detectedPlace ?? resolvedAddress}
+          {(detectedPlace || resolvedAddress !== address) && (
             <div style={{ marginTop: 6, fontSize: '0.7rem', color: ACCENT, letterSpacing: '0.1em' }}>
               ↳ FROM YOUR QUESTION
             </div>
@@ -717,11 +726,14 @@ function AnswerPage() {
                   ? 'clamp(2.2rem, 9vw, 3.4rem)'
                   : isModelTrend
                   ? 'clamp(3rem, 14vw, 5rem)'
-                  : 'clamp(5rem, 24vw, 9rem)',
+                  : 'clamp(3rem, 18vw, 8rem)',
                 lineHeight: 0.95,
                 letterSpacing: '-0.03em',
                 marginBottom: '20px',
                 color: isClimate ? MUTED : INK,
+                maxWidth: '100%',
+                overflowWrap: 'break-word',
+                wordBreak: 'break-word',
               }}
             >
               {displayVerdictWord}
