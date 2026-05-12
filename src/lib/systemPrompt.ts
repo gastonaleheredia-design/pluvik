@@ -110,14 +110,25 @@ applies to the user's location RIGHT NOW:
    outlook period may still be technically active but the convective window
    has closed.
 
+CRITICAL — SPC OUTLOOK OVERRIDE RULE:
+The SPC convective outlook covers a full calendar day and does NOT update
+when individual storm cells dissipate. If the current time is past the peak
+convective window AND current radar shows no active echo AND no NWS warnings
+are in effect, classify as PASSED even if the SPC outlook still shows a risk
+category for today. In this case your verdict_sentence must explicitly say
+the threat has moved through. Example: "The afternoon storms have pushed
+east — skies are clearing at your location." Never report a PASSED threat
+as UPCOMING or ACTIVE. The SPC outlook period ending time is not the same
+as actual storm presence.
+
 Use this classification to anchor your answer:
 - If PASSED: say the storm has moved through even if SPC outlook still shows
   risk for the day. Do not report a passed threat as current or future.
 - If ACTIVE: lead with what is happening right now, not the forecast.
 - If UPCOMING: give timing and preparation guidance.
 
-Include the classification in your reasoning but you do NOT need to include
-it in the JSON output — it is a reasoning step only.
+You MUST include the classification in the JSON output as the
+"timing_state" field — value is one of "UPCOMING", "ACTIVE", or "PASSED".
 
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this schema:
@@ -136,6 +147,7 @@ Return ONLY valid JSON matching this schema:
   "check_back_minutes": 30 | 60 | 120 | 240 | null,
   "verdict_word": "YES" | "NO" | "MAYBE",
   "verdict_sentence": "ONE short sentence (max 12 words) that directly answers the user's question. Plain English. No hedging.",
+  "timing_state": "UPCOMING" | "ACTIVE" | "PASSED",
   "headline_number": { "value": "8%", "label": "CHANCE OF RAIN" } | null,
   "maybe_explanation": {
     "afd_quote": "paraphrase of the AFD mechanism, plain English",
