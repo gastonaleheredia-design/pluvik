@@ -1248,9 +1248,9 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
       `MULTI-MODEL COMPARISON (11 models · 9 physics + 2 AI · next 3 days — look for agreement vs spread):`,
     ];
     for (let d = 0; d < Math.min(3, days.length); d++) {
-      lines.push(`\n${days[d]}:`);
       const dayPrecip: number[] = [];
       const dayPop: number[] = [];
+      const modelLines: string[] = [];
       for (const m of models) {
         const precip = data.daily[`precipitation_sum_${m.id}`]?.[d];
         const wind = data.daily[`windspeed_10m_max_${m.id}`]?.[d];
@@ -1260,7 +1260,7 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
         if (precip == null && wind == null) continue;
         if (Number.isFinite(precip)) dayPrecip.push(precip);
         if (Number.isFinite(pop)) dayPop.push(pop);
-        lines.push(
+        modelLines.push(
           `  ${m.short.padEnd(10)} ` +
           `Precip:${(precip ?? 0).toFixed(2)}" ` +
           `PoP:${pop ?? '?'}% ` +
@@ -1268,6 +1268,22 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
           `MaxWind:${Math.round(wind ?? 0)}mph`,
         );
       }
+      lines.push(`\n${days[d]}:`);
+      const sp = computeModelSpread(dayPrecip);
+      const confSignal =
+        sp.agreement === 'HIGH AGREEMENT'      ? 'HIGH' :
+        sp.agreement === 'MODERATE SPREAD'     ? 'MEDIUM' :
+        sp.agreement === 'HIGH SPREAD'         ? 'LOW' :
+        sp.agreement.startsWith('VERY HIGH')   ? 'VERY LOW' :
+        'UNKNOWN';
+      if (sp.agreement !== 'INSUFFICIENT DATA') {
+        lines.push(
+          `  Day ${d + 1} model spread: ${sp.spread.toFixed(2)}" (${sp.agreement}) · ` +
+          `Range: ${sp.min.toFixed(2)}–${sp.max.toFixed(2)}" · ` +
+          `Confidence signal: ${confSignal}`,
+        );
+      }
+      lines.push(...modelLines);
       if (dayPrecip.length >= 2) {
         const min = Math.min(...dayPrecip);
         const max = Math.max(...dayPrecip);
