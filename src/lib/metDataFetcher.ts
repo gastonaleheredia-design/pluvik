@@ -174,6 +174,7 @@ const UA = { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' };
 export interface MetBriefing {
   surfaceObs: string;
   hourlyForecast: string;
+  namCrosscheck: string;
   afd: string;
   sounding: string;
   radarCells: string;
