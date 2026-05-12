@@ -1624,6 +1624,11 @@ export async function buildMetBriefing(
 }
 
 export function assembleBriefingText(briefing: MetBriefing): string {
+  const radarCells = briefing.radarCells
+    ? (radarFallbackInUse
+        ? `[ENGINE NOTE: NEXRAD cell tracker offline — precipitation data is HRRR model forecast, not live radar. Do not report cell ETAs as radar-confirmed.]\n${briefing.radarCells}`
+        : briefing.radarCells)
+    : '';
   return [
     briefing.alerts,
     briefing.spcOutlook,
@@ -1642,7 +1647,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.rotationSignatures,
     briefing.hourlyForecast,
     briefing.modelComparison,
-    briefing.radarCells,
+    radarCells,
     briefing.sounding,
     briefing.satellite,
     briefing.marine,
@@ -1715,9 +1720,12 @@ export function assemblePrioritizedBriefing(
   const contextBlocks: string[] = [];
 
   for (const f of allFields) {
-    const value = briefing[f];
+    let value = briefing[f];
     if (!value) continue;
     if (ignoreSet.has(f)) continue;
+    if (f === 'radarCells' && radarFallbackInUse) {
+      value = `[ENGINE NOTE: NEXRAD cell tracker offline — precipitation data is HRRR model forecast, not live radar. Do not report cell ETAs as radar-confirmed.]\n${value}`;
+    }
     if (primarySet.has(f)) primaryBlocks.push(`[PRIMARY] ${value}`);
     else if (secondarySet.has(f)) secondaryBlocks.push(`[SECONDARY] ${value}`);
     else contextBlocks.push(`[CONTEXT] ${value}`);
