@@ -391,6 +391,70 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
   }
 }
 
+// NAM 12–48h cross-check vs HRRR. Independent of the main HRRR fetch — failure
+// here never affects fetchHRRRForecast. Open-Meteo NAM model id is
+// `ncep_nam_conus` (the user-facing alias `nam_conus` returns HTTP 400).
+async function fetchNAMCrosscheck(lat: number, lon: number): Promise<string> {
+  const FALLBACK = 'NAM 12-48H: Model unavailable on Open-Meteo — HRRR sole source.';
+  try {
+    const base = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&hourly=precipitation_probability,precipitation,temperature_2m,windspeed_10m,cape` +
+      `&forecast_days=3&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+    const [namRes, hrrrRes] = await Promise.all([
+      fetch(`${base}&models=ncep_nam_conus`),
+      fetch(`${base}&models=gfs_hrrr`),
+    ]);
+    if (!namRes.ok) return FALLBACK;
+    const nam = await namRes.json();
+    const hrrr = hrrrRes.ok ? await hrrrRes.json() : null;
+    const nh = nam.hourly;
+    if (!nh?.time?.length) return FALLBACK;
+    const hh = hrrr?.hourly ?? null;
+
+    // Build HRRR lookup by ISO timestamp for AGREE/SPREAD comparison.
+    const hrrrByTime = new Map<string, number | null>();
+    if (hh?.time && hh?.precipitation_probability) {
+      for (let i = 0; i < hh.time.length; i++) {
+        hrrrByTime.set(hh.time[i], hh.precipitation_probability[i] ?? null);
+      }
+    }
+
+    const now = Date.now();
+    const lines: string[] = ['NAM HOURLY (12–48h cross-check vs HRRR):'];
+    for (let i = 0; i < nh.time.length; i++) {
+      const t = new Date(nh.time[i]);
+      const diffH = (t.getTime() - now) / 3_600_000;
+      if (diffH < 12 || diffH > 48) continue;
+
+      const temp = nh.temperature_2m?.[i];
+      const pop = nh.precipitation_probability?.[i];
+      const precip = nh.precipitation?.[i];
+      const wind = nh.windspeed_10m?.[i];
+      const hrrrPop = hrrrByTime.get(nh.time[i]) ?? null;
+
+      let agreement = '';
+      if (typeof pop === 'number' && typeof hrrrPop === 'number') {
+        const delta = Math.abs(pop - hrrrPop);
+        if (delta <= 10) agreement = ` [AGREE pop Δ${Math.round(delta)}%]`;
+        else if (delta > 20) agreement = ` [SPREAD pop NAM ${pop}% vs HRRR ${hrrrPop}%]`;
+      }
+
+      lines.push(
+        `${t.toLocaleString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: true })} ` +
+        `${Math.round(temp ?? 0)}°F ` +
+        `POP:${pop ?? 0}% ` +
+        `Precip:${(precip ?? 0).toFixed(2)}" ` +
+        `Wind:${Math.round(wind ?? 0)}mph` +
+        agreement,
+      );
+    }
+    if (lines.length === 1) return FALLBACK;
+    return lines.join('\n');
+  } catch {
+    return FALLBACK;
+  }
+}
+
 // Spread/agreement summary across multi-model precip values for a given day.
 function computeModelSpread(values: number[]): {
   min: number; max: number; spread: number; agreement: string;
