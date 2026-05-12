@@ -184,6 +184,29 @@ function iconGlyph(icon: WhyBulletIcon): string {
   }
 }
 
+function PlainSummary({
+  whatsHappening, mainConcern, whatToDo, decisionWindow,
+}: {
+  whatsHappening: string | null;
+  mainConcern: string | null;
+  whatToDo: string | null;
+  decisionWindow: string | null;
+}) {
+  const rows: Array<{ label: string; value: string; tone?: WhyBulletTone }> = [];
+  if (whatsHappening) rows.push({ label: "What's happening", value: whatsHappening });
+  if (mainConcern) rows.push({ label: 'Main concern', value: mainConcern, tone: 'accent' });
+  if (decisionWindow) rows.push({ label: 'Decision window', value: decisionWindow });
+  if (whatToDo) rows.push({ label: 'What to do', value: whatToDo, tone: 'warn' });
+  if (rows.length === 0) return null;
+  return (
+    <>
+      {rows.map((r) => (
+        <SignalRow key={r.label} icon="·" label={r.label} value={r.value} tone={r.tone} />
+      ))}
+    </>
+  );
+}
+
 function ConfidenceChip({ confidence, severeType }: { confidence: WhyConfidence; severeType?: string }) {
   const palette: Record<WhyConfidence, { bg: string; fg: string }> = {
     HIGH: { bg: '#0b101814', fg: INK },
