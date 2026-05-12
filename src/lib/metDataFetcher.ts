@@ -323,11 +323,33 @@ async function fetchRUCSounding(lat: number, lon: number): Promise<string> {
     );
     if (!res.ok) return '';
     const text = await res.text();
-    const lines = text.split('\n').slice(0, 40).join('\n');
-    return `ATMOSPHERIC SOUNDING (RUC analysis):\n${lines}`;
+    const lines = text.split('\n').slice(0, 60).join('\n');
+    return (
+      `RUC SOUNDING (virtual — Op40 analysis at exact lat/lon):\n` +
+      `${lines}\n` +
+      `[Note: standard sounding reads surface → ~100 mb. CAPE/CIN/LI/SRH ` +
+      `are the key derived indices — reference them by name if present.]`
+    );
   } catch {
     return '';
   }
+}
+
+// Spread/agreement summary across multi-model precip values for a given day.
+function computeModelSpread(values: number[]): {
+  min: number; max: number; spread: number; agreement: string;
+} {
+  const valid = values.filter(v => Number.isFinite(v));
+  if (valid.length < 2) return { min: 0, max: 0, spread: 0, agreement: 'INSUFFICIENT DATA' };
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const spread = max - min;
+  const agreement =
+    spread < 0.15 ? 'HIGH AGREEMENT' :
+    spread < 0.50 ? 'MODERATE SPREAD' :
+    spread < 1.00 ? 'HIGH SPREAD' :
+    'VERY HIGH SPREAD — LOW CONFIDENCE';
+  return { min, max, spread, agreement };
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
