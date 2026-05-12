@@ -77,6 +77,7 @@ function HomePage() {
   const recordStartRef = useRef<number>(0);
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
+  const questionInputRef = useRef<HTMLInputElement | null>(null);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
@@ -831,6 +832,7 @@ function HomePage() {
           }}
         >
           <input
+            ref={questionInputRef}
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
             placeholder={
