@@ -1843,6 +1843,7 @@ export function assembleBriefingText(briefing: MetBriefing): string {
     briefing.radarTrend,
     briefing.rotationSignatures,
     briefing.hourlyForecast,
+    briefing.namCrosscheck,
     briefing.modelComparison,
     radarCells,
     briefing.sounding,
