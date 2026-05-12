@@ -1760,6 +1760,7 @@ export async function buildMetBriefing(
   const tasks: Array<() => Promise<void>> = [
     () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }),
     () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }),
+    () => fetchNAMCrosscheck(lat, lon).then(v => { result.namCrosscheck = v; }),
     () => fetchAFD(lat, lon, parsed.hoursAhead).then(v => { result.afd = v; }),
     () => fetchAlerts(lat, lon).then(v => { result.alerts = v; }),
     () => fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }),
