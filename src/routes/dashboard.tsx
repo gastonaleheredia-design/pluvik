@@ -721,7 +721,7 @@ function DashboardPage() {
                       color: INK,
                     }}
                   >
-                    {displayWord}
+                    {displayWord === 'MAYBE' ? 'CAUTION' : displayWord}
                   </div>
                 )}
                 {isClimate && (
