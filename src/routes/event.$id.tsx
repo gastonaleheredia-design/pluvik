@@ -512,7 +512,7 @@ function EventPage() {
                 letterSpacing: '0.05em',
               }}
             >
-              {displayVerdict}
+              {displayVerdict === 'MAYBE' ? 'CAUTION' : displayVerdict}
             </span>
           </div>
 
