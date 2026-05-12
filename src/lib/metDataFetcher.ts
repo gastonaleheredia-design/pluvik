@@ -1269,13 +1269,15 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
 }
 
 // SPC Day 1-3 Convective Outlook (categorical risk: TSTM/MRGL/SLGT/ENH/MDT/HIGH)
-async function fetchSPCOutlook(): Promise<string> {
+async function fetchSPCOutlook(lat?: number, lon?: number): Promise<string> {
   try {
     const res = await fetch('https://www.spc.noaa.gov/products/outlook/day1otlk.txt', { headers: UA });
     if (!res.ok) return '';
     const text = await res.text();
-    // Grab the first ~1500 chars — contains the categorical and probabilistic discussion
-    return `SPC DAY 1 CONVECTIVE OUTLOOK:\n${text.slice(0, 1500)}`;
+    const coordHint = lat != null && lon != null
+      ? ` Claude must determine if coordinates ${lat.toFixed(2)}N, ${Math.abs(lon).toFixed(2)}W fall within any risk area mentioned. If location is not explicitly named, infer from regional description.`
+      : '';
+    return `SPC DAY 1 CONVECTIVE OUTLOOK (full national text —${coordHint}):\n${text.slice(0, 1500)}`;
   } catch {
     return '';
   }
