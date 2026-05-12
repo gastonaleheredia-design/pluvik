@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
 import { lovable } from '@/integrations/lovable';
@@ -7,6 +7,20 @@ import { supabase } from '../lib/supabase';
 interface AuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
+}
+
+const LAST_AUTH_KEY = 'pluvik-last-auth';
+type LastProvider = 'google' | 'apple' | 'phone' | 'email' | null;
+
+function readLastProvider(): LastProvider {
+  if (typeof window === 'undefined') return null;
+  const v = window.localStorage.getItem(LAST_AUTH_KEY);
+  if (v === 'google' || v === 'apple' || v === 'phone' || v === 'email') return v;
+  return null;
+}
+
+function rememberProvider(p: Exclude<LastProvider, null>) {
+  try { window.localStorage.setItem(LAST_AUTH_KEY, p); } catch { /* ignore */ }
 }
 
 export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
@@ -24,6 +38,13 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  // Phone OTP state
+  const [phoneStep, setPhoneStep] = useState<'idle' | 'enter' | 'code'>('idle');
+  const [phone, setPhone] = useState('');
+  const [phoneCode, setPhoneCode] = useState('');
+  const [lastProvider, setLastProvider] = useState<LastProvider>(null);
+
+  useEffect(() => { setLastProvider(readLastProvider()); }, []);
 
   const friendlyError = (msg: string | undefined): string => {
     const m = (msg ?? '').toLowerCase();
@@ -86,6 +107,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       } catch {
         // fall through to success
       }
+      rememberProvider('email');
       onSuccess();
     }
   };
@@ -105,6 +127,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       setMfaCode('');
       return;
     }
+    rememberProvider('email');
     onSuccess();
   };
 
@@ -131,6 +154,9 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         }
         return;
       }
+      // Remember the chosen provider regardless of redirect path so the
+      // badge is in place when the user returns from the OAuth round-trip.
+      rememberProvider(provider);
       if (result.redirected) return; // browser will navigate
       onSuccess();
     } catch (e) {
@@ -140,6 +166,40 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       console.error(`[auth] ${provider} sign-in threw:`, e);
       setError(provider === 'apple' ? `${t('auth.apple_failed')} (${msg})` : friendlyError(msg));
     }
+  };
+
+  const handleSendPhoneCode = async () => {
+    const num = phone.trim();
+    if (!num) return;
+    setError(''); setInfo(''); setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ phone: num });
+    setLoading(false);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[auth] phone OTP send failed:', error);
+      setError(`${t('auth.phone_failed')} (${error.message})`);
+      return;
+    }
+    setInfo(t('auth.code_sent'));
+    setPhoneStep('code');
+  };
+
+  const handleVerifyPhoneCode = async () => {
+    if (phoneCode.length < 6) return;
+    setError(''); setLoading(true);
+    const { error } = await supabase.auth.verifyOtp({
+      phone: phone.trim(),
+      token: phoneCode,
+      type: 'sms',
+    });
+    setLoading(false);
+    if (error) {
+      setError(t('auth.code_invalid'));
+      setPhoneCode('');
+      return;
+    }
+    rememberProvider('phone');
+    onSuccess();
   };
 
   return (
