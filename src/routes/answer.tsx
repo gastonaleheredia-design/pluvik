@@ -741,6 +741,50 @@ function AnswerPage() {
             </div>
           )}
 
+          {/* timing-state indicator: ACTIVE pulses amber, PASSED is gray, UPCOMING shows nothing */}
+          {timingState === 'ACTIVE' && (
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem',
+                letterSpacing: '0.14em',
+                color: '#f59e0b',
+                marginTop: '-8px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  backgroundColor: '#f59e0b',
+                  display: 'inline-block',
+                  animation: 'timingPulse 1.4s ease-in-out infinite',
+                }}
+              />
+              <style>{`@keyframes timingPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}`}</style>
+              HAPPENING NOW
+            </div>
+          )}
+          {timingState === 'PASSED' && (
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem',
+                letterSpacing: '0.14em',
+                color: MUTED,
+                marginTop: '-8px',
+                marginBottom: '20px',
+              }}
+            >
+              ✓ STORM HAS PASSED · CONDITIONS CLEARING
+            </div>
+          )}
+
           {/* outlook tendency chip */}
           {isOutlook && decisionLabel && (
             <div
