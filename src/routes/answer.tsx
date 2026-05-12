@@ -547,6 +547,7 @@ function AnswerPage() {
   const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
     ?? answer.summary;
   const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
+  const timingState = (answer as { timing_state?: 'UPCOMING' | 'ACTIVE' | 'PASSED' }).timing_state;
   const topicTag = stageBadgeLabel[stage];
   const contextLine = `${resolvedAddress.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
   const stageOutro = (answer as { stage_outro?: string }).stage_outro ?? null;
