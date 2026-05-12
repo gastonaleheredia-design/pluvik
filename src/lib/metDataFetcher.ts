@@ -1284,7 +1284,6 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
     { id: 'gfs_graphcast025',         short: 'graphcast' },
     { id: 'ecmwf_aifs025_single',     short: 'aifs' },
     { id: 'ncep_nbm_conus',           short: 'nbm' },
-    { id: 'gfs_rap',                  short: 'rap' },
     { id: 'jma_gsm',                  short: 'jma' },
   ];
   try {
@@ -1300,7 +1299,7 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
     if (!days.length) return '';
 
     const lines: string[] = [
-      `MULTI-MODEL COMPARISON (11 models · 9 physics + 2 AI · next 3 days — look for agreement vs spread):`,
+      `MULTI-MODEL COMPARISON (10 models · 8 physics + 2 AI · next 3 days — look for agreement vs spread):`,
     ];
     for (let d = 0; d < Math.min(3, days.length); d++) {
       const dayPrecip: number[] = [];
@@ -1883,13 +1882,22 @@ async function fetchSPCDayN(day: 2 | 3): Promise<string> {
 
 // SPC Day 4-8 Extended Convective Outlook (one combined product, lower resolution)
 async function fetchSPCDay48(): Promise<string> {
+  const FALLBACK = 'SPC DAY 4-8: Outlook unavailable — URL updated, verify current path.';
   try {
-    const res = await fetch('https://www.spc.noaa.gov/products/exper/day4-8/day4-8.txt', { headers: UA });
-    if (!res.ok) return '';
-    const text = await res.text();
+    // The static day4-8.txt path is dead. The current product is the latest dated file
+    // linked from the index page at /products/exper/day4-8/.
+    const indexRes = await fetch('https://www.spc.noaa.gov/products/exper/day4-8/', { headers: UA });
+    if (!indexRes.ok) return FALLBACK;
+    const html = await indexRes.text();
+    const match = html.match(/href="(\/products\/exper\/day4-8\/archive\/\d{4}\/KWNSPTSD48_\d{8}\.txt)"/i);
+    if (!match) return FALLBACK;
+    const txtRes = await fetch(`https://www.spc.noaa.gov${match[1]}`, { headers: UA });
+    if (!txtRes.ok) return FALLBACK;
+    const text = await txtRes.text();
+    if (!text || text.length < 50) return FALLBACK;
     return `SPC DAY 4-8 EXTENDED OUTLOOK:\n${text.slice(0, 1200)}`;
   } catch {
-    return '';
+    return FALLBACK;
   }
 }
 
