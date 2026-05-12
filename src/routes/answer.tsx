@@ -726,11 +726,14 @@ function AnswerPage() {
                   ? 'clamp(2.2rem, 9vw, 3.4rem)'
                   : isModelTrend
                   ? 'clamp(3rem, 14vw, 5rem)'
-                  : 'clamp(5rem, 24vw, 9rem)',
+                  : 'clamp(3rem, 18vw, 8rem)',
                 lineHeight: 0.95,
                 letterSpacing: '-0.03em',
                 marginBottom: '20px',
                 color: isClimate ? MUTED : INK,
+                maxWidth: '100%',
+                overflowWrap: 'break-word',
+                wordBreak: 'break-word',
               }}
             >
               {displayVerdictWord}
