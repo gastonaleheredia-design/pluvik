@@ -90,6 +90,8 @@ export const WeatherAnswerSchema = z.object({
   // Minimal-view fields (3-second test layer).
   verdict_word: z.enum(['YES', 'NO', 'MAYBE']).optional(),
   verdict_sentence: z.string().optional(),
+  // Threat timing state from the THREAT TIMING CLASSIFICATION reasoning step.
+  timing_state: z.enum(['UPCOMING', 'ACTIVE', 'PASSED']).optional(),
   headline_number: z.object({
     value: z.string(),
     label: z.string(),
