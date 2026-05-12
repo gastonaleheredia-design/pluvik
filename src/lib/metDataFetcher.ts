@@ -35,6 +35,12 @@ function putStructuredCells(key: string, cells: StormInterceptResult[]) {
 let radarFallbackInUse = false;
 export function isRadarFallbackInUse(): boolean { return radarFallbackInUse; }
 
+function bearingToCompass(deg: number): string {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
@@ -227,14 +233,23 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
     const visMiles = p.visibility?.value != null
       ? Math.round(p.visibility.value / 1609.34 * 10) / 10 : null;
 
+    const windDir = p.windDirection?.value != null
+      ? `${bearingToCompass(p.windDirection.value)} (FROM ${p.windDirection.value}°)`
+      : '?';
+    const tendencyStr = p.pressureTendency?.value != null
+      ? p.pressureTendency.value > 0.5 ? ' (rising)'
+        : p.pressureTendency.value < -0.5 ? ' (falling)'
+        : ' (steady)'
+      : '';
+
     return [
       `CURRENT OBS (${stationId}):`,
       tempF != null ? `Temp: ${tempF}°F` : '',
       dewF != null ? `Dewpoint: ${dewF}°F` : '',
       spread != null ? `Temp-Dewpoint spread: ${spread}°F${spread <= 3 ? ' ⚠ FOG RISK' : ''}` : '',
       p.relativeHumidity?.value != null ? `RH: ${Math.round(p.relativeHumidity.value)}%` : '',
-      windMph != null ? `Wind: ${p.windDirection?.value ?? '?'}° at ${windMph} mph${gustMph ? ` gusting ${gustMph} mph` : ''}` : '',
-      p.barometricPressure?.value != null ? `Pressure: ${Math.round(p.barometricPressure.value / 100)} mb (${p.pressureTendency?.value > 0 ? 'rising' : 'falling'})` : '',
+      windMph != null ? `Wind: ${windDir} at ${windMph} mph${gustMph ? ` gusting ${gustMph} mph` : ''}` : '',
+      p.barometricPressure?.value != null ? `Pressure: ${Math.round(p.barometricPressure.value / 100)} mb${tendencyStr}` : '',
       visMiles != null ? `Visibility: ${visMiles} miles` : '',
       p.presentWeather?.length ? `Present weather: ${p.presentWeather.map((w: any) => w.weather).join(', ')}` : '',
       p.cloudLayers?.length ? `Cloud layers: ${p.cloudLayers.map((c: any) => `${c.amount} at ${Math.round((c.base?.value ?? 0) * 3.28084)} ft`).join(', ')}` : '',
@@ -1254,13 +1269,15 @@ async function fetchModelComparison(lat: number, lon: number): Promise<string> {
 }
 
 // SPC Day 1-3 Convective Outlook (categorical risk: TSTM/MRGL/SLGT/ENH/MDT/HIGH)
-async function fetchSPCOutlook(): Promise<string> {
+async function fetchSPCOutlook(lat?: number, lon?: number): Promise<string> {
   try {
     const res = await fetch('https://www.spc.noaa.gov/products/outlook/day1otlk.txt', { headers: UA });
     if (!res.ok) return '';
     const text = await res.text();
-    // Grab the first ~1500 chars — contains the categorical and probabilistic discussion
-    return `SPC DAY 1 CONVECTIVE OUTLOOK:\n${text.slice(0, 1500)}`;
+    const coordHint = lat != null && lon != null
+      ? ` Claude must determine if coordinates ${lat.toFixed(2)}N, ${Math.abs(lon).toFixed(2)}W fall within any risk area mentioned. If location is not explicitly named, infer from regional description.`
+      : '';
+    return `SPC DAY 1 CONVECTIVE OUTLOOK (full national text —${coordHint}):\n${text.slice(0, 1500)}`;
   } catch {
     return '';
   }
@@ -1591,7 +1608,7 @@ export async function buildMetBriefing(
     () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }),
     () => fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }),
     () => fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }),
-    () => fetchSPCOutlook().then(v => { result.spcOutlook = v; }),
+    () => fetchSPCOutlook(lat, lon).then(v => { result.spcOutlook = v; }),
     () => fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }),
     () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
     () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
@@ -1839,16 +1856,32 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     const end = new Date();
     const start = new Date(end.getTime() - 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 19).replace('T', '%20');
-    // Iowa State Mesonet GLM JSON endpoint — flashes in a bbox
     const dLat = 25 / 69; // ~25 mile radius in degrees
     const dLon = 25 / (69 * Math.cos(lat * Math.PI / 180));
-    const url = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
+    // Primary: legacy IEM glmtotal.py (now serves HTML docs — kept as a probe in case it returns).
+    const legacyUrl = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
       `?north=${(lat + dLat).toFixed(4)}&south=${(lat - dLat).toFixed(4)}` +
       `&east=${(lon + dLon).toFixed(4)}&west=${(lon - dLon).toFixed(4)}` +
       `&sts=${fmt(start)}&ets=${fmt(end)}`;
-    const res = await fetch(url, { headers: UA });
-    if (!res.ok) return 'GOES GLM LIGHTNING: Data unavailable.';
-    const data = await res.json();
+    const tryJson = async (url: string): Promise<any | null> => {
+      try {
+        const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(4000) });
+        if (!r.ok) return null;
+        const ct = r.headers.get('content-type') ?? '';
+        if (!ct.includes('json')) return null;
+        return await r.json();
+      } catch { return null; }
+    };
+    let data = await tryJson(legacyUrl);
+    if (!data) {
+      const fallbackUrl =
+        `https://mesonet.agron.iastate.edu/api/1/lightning/total.json` +
+        `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=40&minutes=60`;
+      data = await tryJson(fallbackUrl);
+    }
+    if (!data) {
+      return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
+    }
     const flashes = data.flashes ?? data.count ?? (Array.isArray(data.events) ? data.events.length : null);
     if (flashes == null) {
       return 'GOES GLM LIGHTNING (past 60 min within 25mi): no data returned.';
@@ -1858,6 +1891,6 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     }
     return `GOES GLM LIGHTNING (past 60 min within 25mi): ${flashes} flashes detected — active lightning in area.`;
   } catch {
-    return '';
+    return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
   }
 }
