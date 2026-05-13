@@ -22,7 +22,9 @@ export function classifyIntent(question: string): ForecastIntent {
     return 'storm_risk';
   }
   if (/\b(lightning|strike)\b/.test(q)) return 'lightning';
-  if (/\b(snow|snowing|snowfall|sleet|wintry mix|blizzard)\b/.test(q)) return 'snow';
+  // Snow / ice / winter
+  if (/\b(snow|snowfall|blizzard|ice storm|freezing rain|sleet|black ice|winter storm|accumulation|whiteout|wintry mix|snowing)\b/i.test(q))
+    return 'snow_ice';
   if (/\b(humidity|humid|muggy|sticky|dew\s?point)\b/.test(q)) return 'humidity';
   if (/\b(feels like|heat index|how hot|how warm|sweltering|heat advisory)\b/.test(q)) return 'heat_index';
   if (/\b(hot|cold|warm|cool|temperature|degrees|fahrenheit|celsius|temp)\b/.test(q)) return 'temperature';
@@ -33,11 +35,30 @@ export function classifyIntent(question: string): ForecastIntent {
   if (/\b(fog|foggy|mist|haze|murky|visibility|clear up)\b/.test(q)) {
     return /\bvisibility\b/.test(q) ? 'visibility' : 'fog';
   }
-  if (/\b(uv|sunburn|sun index|sunscreen)\b/.test(q)) return 'uv_index';
-  if (/\b(air quality|aqi|smoke|smog|pollution|pm2\.5)\b/.test(q)) return 'air_quality';
-  if (/\b(flood|flooding|flash flood)\b/.test(q)) return 'flood';
-  if (/\b(wave|waves|swell|marine|offshore|surf|seas)\b/.test(q)) return 'marine';
-  if (/\b(turbulence|aviation|flying|takeoff|landing|airport)\b/.test(q)) return 'aviation';
+  // Air quality / smoke
+  if (/\b(air quality|aqi|smoke|haze|pollution|particulate|pm2\.?5|unhealthy air)\b/i.test(q))
+    return 'air_quality';
+  // UV / sun exposure
+  if (/\b(uv|ultraviolet|sunburn|sun protection|spf|sun index)\b/i.test(q))
+    return 'uv_index';
+  // Marine / boating
+  if (/\b(boat|boating|fish(ing)?|sail(ing)?|marina|offshore|wave|swell|sea state|nautical|vessel|kayak|surf(ing)?)\b/i.test(q))
+    return 'marine';
+  // Fire weather / wildfire
+  if (/\b(wildfire|fire weather|fire risk|smoke from fire|fire danger|burn ban|red flag)\b/i.test(q))
+    return 'fire_weather';
+  // High altitude / mountain
+  if (/\b(mountain|summit|peak|alpine|treeline|above treeline|fourteener|hike|trail|climb|altitude|elevation)\b/i.test(q))
+    return 'altitude';
+  // Aviation
+  if (/\b(fly|flight|flying|pilot|vfr|ifr|ceiling|aviation|airspace|turbulence|metar|taf|crosswind|aircraft)\b/i.test(q))
+    return 'aviation';
+  // Drought
+  if (/\b(drought|dry conditions|water restriction|dryland)\b/i.test(q))
+    return 'drought';
+  // Flood
+  if (/\b(flood|flooding|flash flood|high water|river level|stream level|overflow)\b/i.test(q))
+    return 'flood';
   return 'general';
 }
 
