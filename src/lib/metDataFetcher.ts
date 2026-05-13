@@ -41,6 +41,19 @@ function bearingToCompass(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+/**
+ * NWS api.weather.gov only covers the contiguous US (plus AK/HI/territories
+ * via separate endpoints). For points outside this bbox, the API returns
+ * an error that previously bubbled up as a generic failure screen. Gate
+ * every NWS call with this helper and substitute a short note so the
+ * briefing still assembles using Open-Meteo model data alone.
+ */
+function isUSLocation(lat: number, lon: number): boolean {
+  return lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
+}
+const NWS_OUT_OF_COVERAGE_NOTE =
+  'NWS DATA: Location outside NWS coverage — using model data only.';
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
