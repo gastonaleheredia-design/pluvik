@@ -412,7 +412,10 @@ function HomePage() {
         const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
           ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
           : null;
-        const geo = await geocodeVenueNear(extracted.place, proximity, { skipProximityGuard: true });
+        const geo = await geocodeVenueNear(extracted.place, proximity, {
+          skipProximityGuard: true,
+          skipProximityBias: true,
+        });
         if (geo) finalPlace = geo;
       }
     }
@@ -462,7 +465,10 @@ function HomePage() {
         // High-confidence city/state extractions (e.g. "Phoenix, AZ") don't
         // need the proximity guard — they're explicit, not venue
         // disambiguation.
-        geocodeVenueNear(venue, proximity, { skipProximityGuard: isHighConfidence }).then((p) => {
+        geocodeVenueNear(venue, proximity, {
+          skipProximityGuard: isHighConfidence,
+          skipProximityBias: isHighConfidence,
+        }).then((p) => {
           if (cancelled) return;
           setPlaceResolving(false);
           if (p) setPickedPlace(p);
