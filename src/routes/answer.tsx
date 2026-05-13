@@ -922,10 +922,7 @@ function AnswerPage() {
             )}
           </div>
 
-          {/* forecast maturity ladder — between context and verdict */}
-          <div style={{ marginBottom: '24px', marginLeft: -20, marginRight: -20 }}>
-            <MaturityLadder />
-          </div>
+          <MaturityLadder />
 
           {/* big verdict word — sized by stage */}
           {displayVerdictWord && (
