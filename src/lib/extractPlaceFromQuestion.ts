@@ -106,19 +106,25 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
   if (!question) return null;
   const q = stripFiller(question.trim());
 
+  // Strip temporal phrases so e.g. "tomorrow at 5 PM in Phoenix" doesn't
+  // have the PREP_RE lookahead fire on "tomorrow"/"at 5 PM" before it can
+  // reach "Phoenix".
+  const TIME_STRIP = /\b(?:tomorrow|tonight|today|this\s+(?:morning|afternoon|evening|weekend)|next\s+\w+|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b[\s,]*/gi;
+  const qNoTime = q.replace(TIME_STRIP, ' ').replace(/\s{2,}/g, ' ').trim();
+
   // ZIP — strongest
   const zip = q.match(/\b(?:in|at|for|near|around)\s+(\d{5})\b/i) ?? q.match(/\b(\d{5})\b/);
   if (zip) return { place: zip[1], confidence: 'high' };
 
   // "City, ST"
-  const cityState = q.match(/\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3}),\s*([A-Za-z]{2})\b/);
+  const cityState = qNoTime.match(/\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3}),\s*([A-Za-z]{2})\b/);
   if (cityState && STATE_ABBR.has(cityState[2].toLowerCase())) {
     return { place: `${cityState[1]}, ${cityState[2].toUpperCase()}`, confidence: 'high' };
   }
 
   // "City Full-State" (no comma, voice transcripts). Strip a leading
   // preposition if the regex over-captured (e.g. "in Phoenix Arizona").
-  const cityFullState = q.match(
+  const cityFullState = qNoTime.match(
     new RegExp(`\\b([A-Za-z][A-Za-z.'-]+(?:\\s+[A-Za-z.'-]+){0,3})\\s+(${STATE_NAMES.join('|')})\\b`, 'i'),
   );
   if (cityFullState) {
@@ -133,7 +139,7 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
   let best: ExtractedPlace | null = null;
   let m: RegExpExecArray | null;
   PREP_RE.lastIndex = 0;
-  while ((m = PREP_RE.exec(q)) !== null) {
+  while ((m = PREP_RE.exec(qNoTime)) !== null) {
     let cand = m[1].trim()
       .replace(/\s+\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?$/i, '')
       .replace(/[.,!?]+$/g, '')
