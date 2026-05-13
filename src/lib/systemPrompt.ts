@@ -2,6 +2,72 @@ import type { AtmosphericScenario, TimeHorizon } from './classifyScenario';
 import type { AtmosphericState } from './atmosphericInterpreter';
 import type { StormInterceptResult } from './stormIntercept';
 import type { ConfidenceLevel } from './confidenceCalculator';
+import type { ForecastIntent } from './forecastRequest';
+
+/**
+ * Intent-specific opening instructions. Injected as the FIRST instruction
+ * the model sees so the answer leads with the variable the user actually
+ * asked about, not a generic weather summary.
+ */
+export function buildIntentPrefix(intent: ForecastIntent): string {
+  switch (intent) {
+    case 'temperature':
+      return `## USER INTENT — TEMPERATURE
+The user asked about TEMPERATURE. Your first sentence MUST state the
+expected temperature at the time they asked about. Format: "Temperatures
+will reach [X]°F at [time] in [place]." Then add heat index, comfort
+level, and any heat concerns. Do NOT lead with rain or storm information.`;
+    case 'rain_chance':
+      return `## USER INTENT — RAIN PROBABILITY
+The user asked about RAIN PROBABILITY. Your first sentence MUST state the
+rain chance as a percentage for the time they asked about. Format:
+"Rain chance is [X]% at [time] in [place]." Then add timing, intensity,
+and duration.`;
+    case 'storm_risk':
+    case 'severe_weather':
+    case 'tornado_risk':
+    case 'lightning':
+      return `## USER INTENT — STORM / SEVERE WEATHER RISK
+The user asked about STORM or SEVERE WEATHER RISK. Lead with the primary
+threat level. Mention tornado, hail, wind, and lightning separately if
+relevant.`;
+    case 'wind':
+      return `## USER INTENT — WIND
+The user asked about WIND. Lead with expected wind speed and direction at
+the time asked. Include gusts. Note if winds are dangerous for their
+implied activity.`;
+    case 'humidity':
+    case 'heat_index':
+      return `## USER INTENT — HUMIDITY / HEAT
+The user asked about HUMIDITY or HEAT. Lead with the feels-like
+temperature and humidity percentage. Note heat index and any heat
+advisories.`;
+    case 'plan_impact':
+      return `## USER INTENT — PLAN IMPACT
+The user asked whether weather will AFFECT A SPECIFIC PLAN. Lead with a
+clear GO / CAUTION / NO-GO verdict. Then explain the weather factors
+relevant to that specific activity. Use the activity sensitivity profile.`;
+    case 'nowcast':
+      return `## USER INTENT — CURRENT CONDITIONS
+The user asked about CURRENT CONDITIONS. Lead with what is happening
+RIGHT NOW at their location based on the surface observation data. Do not
+lead with forecast.`;
+    case 'fog':
+    case 'visibility':
+      return `## USER INTENT — FOG / VISIBILITY
+The user asked about FOG or VISIBILITY. Lead with current visibility
+and the dewpoint-temperature spread. Note expected burn-off / clearing
+time.`;
+    case 'snow':
+      return `## USER INTENT — SNOW
+The user asked about SNOW. Lead with expected snowfall amount and timing
+at their location.`;
+    default:
+      return `## USER INTENT — GENERAL
+Answer the user's question directly. Identify the most relevant weather
+variable for what they asked and lead with that. Never bury the answer.`;
+  }
+}
 
 export function buildSystemPrompt(
   scenario: AtmosphericScenario,
@@ -11,6 +77,7 @@ export function buildSystemPrompt(
   confidence: ConfidenceLevel,
   sensitivityProfile: string,
   eventHourLabel: string = 'the user\'s event time',
+  intent: ForecastIntent = 'general',
 ): string {
   const horizonGuidance =
     horizon === 'nowcast'    ? 'Use radar extrapolation and observations ONLY. Models are not reliable at this range.' :
@@ -40,6 +107,21 @@ You MUST:
 ` : '';
 
   return `
+${buildIntentPrefix(intent)}
+
+## RESPONSE STRUCTURE (mandatory order)
+1. DIRECT ANSWER — answer the exact question in the first sentence.
+   If they asked temperature, state temperature first. If they asked
+   rain chance, state rain chance first. Never bury the answer.
+2. KEY IMPACT — one sentence on what matters most for their specific
+   question or activity.
+3. SUPPORTING CONTEXT — brief additional weather context relevant to
+   their question only. Skip irrelevant data.
+4. CONFIDENCE — HIGH / MEDIUM / LOW with one-word reason.
+
+The verdict_sentence field in JSON must contain the DIRECT ANSWER as its
+first clause, not a general weather summary.
+
 You are a professional operational meteorologist providing a personalized forecast for a specific geopoint.
 ${imminentBanner}
 

@@ -7,6 +7,8 @@ import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, type HomeBriefing } from '../lib/homeBriefing.functions';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
+import { classifyIntent } from '../lib/weatherIntelligence';
+import { distillQuestion } from '../lib/weatherIntelligence';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AlertSheet } from '../components/AlertSheet';
@@ -398,6 +400,8 @@ function HomePage() {
     if (!questionText.trim()) return;
     const finalPlace = pickedPlace;
     const finalTime = pickedTime;
+    const distilled = distillQuestion(questionText.trim());
+    const intent = classifyIntent(distilled);
     navigate({
       to: '/answer',
       search: {
@@ -407,6 +411,8 @@ function HomePage() {
         lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
         eventAtIso: finalTime ? finalTime.start.toISOString() : undefined,
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
+        intent,
+        placeSource: finalPlace ? 'question' : 'active_address',
       },
     });
   };
@@ -429,7 +435,7 @@ function HomePage() {
       }
       // Place — try the lightweight extractor first, then venue + geocode.
       if (!pickedPlaceManual) {
-        const direct = extractPlaceFromQuestion(text);
+        const direct = extractPlaceFromQuestion(text)?.place ?? null;
         const venue = direct ?? extractVenueCandidate(text);
         if (!venue) { setPickedPlace(null); setPlaceResolving(false); return; }
         setPlaceResolving(true);
