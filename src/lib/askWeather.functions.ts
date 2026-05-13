@@ -17,6 +17,7 @@ import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
 import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchClimateNormals';
+import { fetchAirNowAQI, fetchNearbyWildfires } from './metDataFetcher';
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
 import { fetchCpcDiscussion } from './fetchers/fetchCpcDiscussion';
 import { buildLongRangeDigest, isCpcHorizonValidForEvent } from './longRangeDigest';
