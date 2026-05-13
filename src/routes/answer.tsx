@@ -16,6 +16,7 @@ import { useAddress } from '../lib/addressContext';
 import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
+import type { ForecastIntent } from '../lib/forecastRequest';
 import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage';
 import { buildWindowLabel } from '../lib/windowLabel';
 import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
@@ -32,6 +33,10 @@ export const Route = createFileRoute('/answer')({
       : (typeof search.lon === 'string' && search.lon ? Number(search.lon) : undefined),
     eventAtIso: typeof search.eventAtIso === 'string' && search.eventAtIso ? search.eventAtIso : undefined,
     eventEndIso: typeof search.eventEndIso === 'string' && search.eventEndIso ? search.eventEndIso : undefined,
+    intent: typeof search.intent === 'string' ? (search.intent as ForecastIntent) : undefined,
+    placeSource: typeof search.placeSource === 'string'
+      ? (search.placeSource as 'question' | 'active_address' | 'gps')
+      : undefined,
   }),
   component: AnswerPage,
 });
@@ -87,7 +92,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -244,6 +249,7 @@ function AnswerPage() {
             timeFormat,
             hoursAhead,
             endHoursAhead,
+            intent,
           },
         });
 
