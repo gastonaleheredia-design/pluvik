@@ -1,4 +1,45 @@
 import { extractEventTimeFromQuestion } from './extractEventTimeFromQuestion';
+import type { ForecastIntent } from './forecastRequest';
+
+/**
+ * Classify the user's primary forecast intent from the (already distilled)
+ * question text using keyword matching. Returns the FIRST matching category.
+ * Falls back to 'general' when nothing matches.
+ */
+export function classifyIntent(question: string): ForecastIntent {
+  const q = (question || '').toLowerCase();
+  if (!q.trim()) return 'general';
+
+  // Activities / plans first — these eclipse single-variable questions.
+  if (/\b(wedding|game|tournament|match|event|concrete|pour|outdoor|motorcycle|fish(?:ing)?|construction|ceremony|festival|race|bbq|cookout|hike|hiking|ride|reception)\b/.test(q)) {
+    return 'plan_impact';
+  }
+  if (/\b(right now|currently|outside now|at the moment|today now|right outside)\b/.test(q)) {
+    return 'nowcast';
+  }
+  if (/\b(tornado|funnel|twister)\b/.test(q)) return 'tornado_risk';
+  if (/\b(storm|thunder|severe|hail|squall|dangerous|bad weather|thunderstorm)\b/.test(q)) {
+    return 'storm_risk';
+  }
+  if (/\b(lightning|strike)\b/.test(q)) return 'lightning';
+  if (/\b(snow|snowing|snowfall|sleet|wintry mix|blizzard)\b/.test(q)) return 'snow';
+  if (/\b(humidity|humid|muggy|sticky|dew\s?point)\b/.test(q)) return 'humidity';
+  if (/\b(feels like|heat index|how hot|how warm|sweltering|heat advisory)\b/.test(q)) return 'heat_index';
+  if (/\b(hot|cold|warm|cool|temperature|degrees|fahrenheit|celsius|temp)\b/.test(q)) return 'temperature';
+  if (/\b(rain|raining|shower|showers|drizzle|precipitation|umbrella|wet|downpour|chance of rain)\b/.test(q)) {
+    return 'rain_chance';
+  }
+  if (/\b(wind|windy|breeze|breezy|gusts?|mph|knots)\b/.test(q)) return 'wind';
+  if (/\b(fog|foggy|mist|haze|murky|visibility|clear up)\b/.test(q)) {
+    return /\bvisibility\b/.test(q) ? 'visibility' : 'fog';
+  }
+  if (/\b(uv|sunburn|sun index|sunscreen)\b/.test(q)) return 'uv_index';
+  if (/\b(air quality|aqi|smoke|smog|pollution|pm2\.5)\b/.test(q)) return 'air_quality';
+  if (/\b(flood|flooding|flash flood)\b/.test(q)) return 'flooding';
+  if (/\b(wave|waves|swell|marine|offshore|surf|seas)\b/.test(q)) return 'marine';
+  if (/\b(turbulence|aviation|flying|takeoff|landing|airport)\b/.test(q)) return 'aviation';
+  return 'general';
+}
 
 /**
  * Strip filler/hedging language from a verbose question and reconstruct a
