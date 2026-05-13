@@ -1803,7 +1803,18 @@ export async function buildMetBriefing(
   // fan-out through a small concurrency limiter instead.
   const tasks: Array<() => Promise<void>> = [
     () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }),
-    () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(v => { result.hourlyForecast = v; }),
+    () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(async v => {
+      // If primary HRRR (Open-Meteo) returned empty / errored, fall back
+      // to Tomorrow.io free-tier forecast so the briefing is not blank.
+      if (!v || v.trim().length === 0) {
+        const { fetchTomorrowIoBackup } = await import('./fetchers/fetchTomorrowIoBackup');
+        const backup = await fetchTomorrowIoBackup(lat, lon, parsed.hoursAhead);
+        result.hourlyForecast = backup || '';
+        if (backup) result.usedTomorrowIoBackup = true;
+      } else {
+        result.hourlyForecast = v;
+      }
+    }),
     () => fetchNAMCrosscheck(lat, lon).then(v => { result.namCrosscheck = v; }),
     () => fetchAFD(lat, lon, parsed.hoursAhead).then(v => { result.afd = v; }),
     () => fetchAlerts(lat, lon).then(v => { result.alerts = v; }),
