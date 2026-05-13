@@ -124,7 +124,7 @@ location. Format: "[Location] is currently in [D0 Abnormally Dry / D1
 Moderate / D2 Severe / D3 Extreme / D4 Exceptional] drought." Then note
 fire risk, any water restriction context, and when meaningful rainfall
 is next expected.`;
-    case 'flooding':
+    case 'flood':
       return `## USER INTENT — FLOODING / FLASH FLOOD RISK
 The user asked about flood or flash flood risk. Lead with whether a Flash
 Flood Watch or Warning is active. Then state the WPC Excessive Rainfall

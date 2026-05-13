@@ -32,7 +32,7 @@ export type SevereType =
   | 'tornadic'
   | 'damaging_wind'
   | 'large_hail'
-  | 'flooding'
+  | 'flood'
   | 'non_severe';
 
 export type WhyConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
@@ -137,9 +137,9 @@ function triageSevere(inputs: WhyInputs): SevereType {
   if (spc?.watch?.type === 'TOR') return 'tornadic';
   if ((spc?.tornado?.percent ?? 0) >= 5) return 'tornadic';
 
-  if (/Flash Flood/i.test(alert?.event ?? '')) return 'flooding';
-  if (hazards.some(h => /Flash Flood/i.test(h.event))) return 'flooding';
-  if (spc?.ero && (spc.ero.level === 'MDT' || spc.ero.level === 'HIGH')) return 'flooding';
+  if (/Flash Flood/i.test(alert?.event ?? '')) return 'flood';
+  if (hazards.some(h => /Flash Flood/i.test(h.event))) return 'flood';
+  if (spc?.ero && (spc.ero.level === 'MDT' || spc.ero.level === 'HIGH')) return 'flood';
 
   if ((alert?.maxHailInches ?? 0) >= 1) return 'large_hail';
   if ((spc?.hail?.percent ?? 0) >= 30) return 'large_hail';

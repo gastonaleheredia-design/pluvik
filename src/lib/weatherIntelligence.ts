@@ -35,7 +35,7 @@ export function classifyIntent(question: string): ForecastIntent {
   }
   if (/\b(uv|sunburn|sun index|sunscreen)\b/.test(q)) return 'uv_index';
   if (/\b(air quality|aqi|smoke|smog|pollution|pm2\.5)\b/.test(q)) return 'air_quality';
-  if (/\b(flood|flooding|flash flood)\b/.test(q)) return 'flooding';
+  if (/\b(flood|flooding|flash flood)\b/.test(q)) return 'flood';
   if (/\b(wave|waves|swell|marine|offshore|surf|seas)\b/.test(q)) return 'marine';
   if (/\b(turbulence|aviation|flying|takeoff|landing|airport)\b/.test(q)) return 'aviation';
   return 'general';
