@@ -18,6 +18,7 @@ import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventIdRouteImport } from './routes/event.$id'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
+import { Route as ApiPublicTestTomorrowIoRouteImport } from './routes/api/public/test-tomorrow-io'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
 
@@ -66,6 +67,11 @@ const AlertIdRoute = AlertIdRouteImport.update({
   path: '/alert/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTestTomorrowIoRoute = ApiPublicTestTomorrowIoRouteImport.update({
+  id: '/api/public/test-tomorrow-io',
+  path: '/api/public/test-tomorrow-io',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicSweepEventsRoute = ApiPublicSweepEventsRouteImport.update({
   id: '/api/public/sweep-events',
   path: '/api/public/sweep-events',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/test-tomorrow-io': typeof ApiPublicTestTomorrowIoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/test-tomorrow-io': typeof ApiPublicTestTomorrowIoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/test-tomorrow-io': typeof ApiPublicTestTomorrowIoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/test-tomorrow-io'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/test-tomorrow-io'
   id:
     | '__root__'
     | '/'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/test-tomorrow-io'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -171,6 +183,7 @@ export interface RootRouteChildren {
   EventIdRoute: typeof EventIdRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
   ApiPublicSweepEventsRoute: typeof ApiPublicSweepEventsRoute
+  ApiPublicTestTomorrowIoRoute: typeof ApiPublicTestTomorrowIoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AlertIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/test-tomorrow-io': {
+      id: '/api/public/test-tomorrow-io'
+      path: '/api/public/test-tomorrow-io'
+      fullPath: '/api/public/test-tomorrow-io'
+      preLoaderRoute: typeof ApiPublicTestTomorrowIoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/sweep-events': {
       id: '/api/public/sweep-events'
       path: '/api/public/sweep-events'
@@ -267,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventIdRoute: EventIdRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
   ApiPublicSweepEventsRoute: ApiPublicSweepEventsRoute,
+  ApiPublicTestTomorrowIoRoute: ApiPublicTestTomorrowIoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
