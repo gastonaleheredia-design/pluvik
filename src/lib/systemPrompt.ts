@@ -33,15 +33,22 @@ threat level. Mention tornado, hail, wind, and lightning separately if
 relevant.`;
     case 'wind':
       return `## USER INTENT — WIND
-The user asked about WIND. Lead with expected wind speed and direction at
-the time asked. Include gusts. Note if winds are dangerous for their
-implied activity.`;
+The user asked about wind. Your first sentence MUST state the expected
+wind speed and direction at the time asked. Format: "Winds [X]–[Y] mph
+from the [direction] with gusts to [Z] mph in [place]." Then note
+whether winds are dangerous for the implied activity — above 20 mph
+affects concrete pours, above 25 mph grounds roofing, above 35 mph
+dangerous for boating, above 45 mph dangerous for driving.`;
     case 'humidity':
     case 'heat_index':
-      return `## USER INTENT — HUMIDITY / HEAT
-The user asked about HUMIDITY or HEAT. Lead with the feels-like
-temperature and humidity percentage. Note heat index and any heat
-advisories.`;
+      return `## USER INTENT — HEAT / HUMIDITY / HEAT INDEX
+The user asked about heat or humidity. Your first sentence MUST state
+the heat index (feels-like temperature). Format: "Heat index reaches
+[X]°F in [place] at [time]." Then actual temperature and humidity
+percentage. Note any NWS Heat Advisory or Excessive Heat Warning.
+Always state the outdoor activity risk level for the heat index value:
+under 91°F normal precautions, 91–103°F caution, 103–124°F danger,
+above 124°F extreme danger.`;
     case 'plan_impact':
       return `## USER INTENT — PLAN IMPACT
 The user asked whether weather will AFFECT A SPECIFIC PLAN. Lead with a
@@ -55,47 +62,75 @@ lead with forecast.`;
     case 'fog':
     case 'visibility':
       return `## USER INTENT — FOG / VISIBILITY
-The user asked about FOG or VISIBILITY. Lead with current visibility
-and the dewpoint-temperature spread. Note expected burn-off / clearing
-time.`;
+The user asked about fog or visibility. Your first sentence MUST state
+current or expected visibility in miles. Format: "Visibility drops to
+[X] mile(s) in [place] by [time] due to [fog/smoke/haze]." Then the
+dewpoint-temperature spread (closer = more fog risk). Always state
+expected burn-off or clearing time. Note impact on driving, aviation,
+or marine navigation as appropriate.`;
     case 'snow':
-      return `## USER INTENT — SNOW
-The user asked about SNOW. Lead with expected snowfall amount and timing
-at their location.`;
+      return `## USER INTENT — SNOW / ICE / WINTER WEATHER
+The user asked about snow, ice, or winter weather impact. Your first
+sentence MUST state expected snow accumulation or ice accretion. Format:
+"[X]–[Y] inches of snow expected [timeframe] in [place]." or "[X] inches
+of ice accumulation possible." Then timing of onset and end, road
+conditions, and whether travel will be impacted.`;
     case 'air_quality':
       return `## USER INTENT — AIR QUALITY
-The user asked about AIR QUALITY or smoke. Lead with the current AQI
-value and category (Good/Moderate/Unhealthy). Name the primary pollutant.
-Note if it affects outdoor activity.`;
+The user asked about AIR QUALITY, smoke, or pollution. Your first sentence
+MUST state the current AQI value and category (Good / Moderate / Unhealthy
+for Sensitive Groups / Unhealthy / Very Unhealthy / Hazardous). Format:
+"Air quality is [Category] (AQI [X]) in [place]." Then name the primary
+pollutant and note whether outdoor activity is advisable.`;
     case 'uv_index':
       return `## USER INTENT — UV INDEX
-The user asked about UV exposure or sun safety. Lead with the UV index
-value and risk level. State what protection is needed and the peak hours.`;
+The user asked about UV exposure, sun safety, or sunburn risk. Your first
+sentence MUST state the UV index value and risk level. Format: "UV index
+reaches [X] ([Low/Moderate/High/Very High/Extreme]) in [place] at [time]."
+Then state peak hours and what protection is needed.`;
     case 'marine':
-      return `## USER INTENT — MARINE / BOATING
-The user asked about marine conditions. Lead with wave height and period.
-Then wind speed and direction. Then visibility. State whether conditions
-are safe for the implied vessel size.`;
+      return `## USER INTENT — MARINE / BOATING / FISHING
+The user asked about marine or boating conditions. Your first sentence MUST
+state wave height and period. Format: "Seas [X]–[Y] ft with [Z]-second
+period [location]." Then wind speed and direction, visibility, and whether
+conditions are safe for the implied vessel size. Never use nautical jargon
+without plain-English translation.`;
     case 'fire_weather':
-      return `## USER INTENT — FIRE / SMOKE / AIR QUALITY
-The user asked about fire weather, smoke, or air quality near wildfires.
-Lead with the fire weather outlook category if active. State AQI and
-visibility impact. Note wind direction relative to any active fires.`;
+      return `## USER INTENT — FIRE WEATHER / SMOKE / WILDFIRE
+The user asked about wildfire, fire weather, or smoke impact. Lead with
+the fire weather outlook category if active (Critical / Extremely Critical).
+Then AQI if available. Then note wind direction relative to any active fires
+and visibility impact. If no active fire threat, say so clearly first.`;
     case 'altitude':
-      return `## USER INTENT — HIGH ALTITUDE / MOUNTAIN
-The user asked about mountain or high-altitude conditions. Lead with
-summit or high-elevation temperature and wind. State the temperature
-drop per 1,000 ft gain. Note afternoon lightning risk explicitly.`;
+      return `## USER INTENT — HIGH ALTITUDE / MOUNTAIN / HIKING
+The user asked about mountain or high-altitude conditions. Your first
+sentence MUST state the temperature and wind at the target elevation.
+Format: "At [X] ft, expect [Y]°F with winds [Z] mph." Then state the
+temperature drop rate (~3.5°F per 1,000 ft gain). Always note afternoon
+lightning risk explicitly — this is the primary safety concern above
+treeline. Give a hard turnaround time if afternoon storms are forecast.`;
     case 'aviation':
-      return `## USER INTENT — AVIATION
-The user asked about flying conditions. Lead with ceiling and visibility.
-State VFR/MVFR/IFR category. Note turbulence, icing, and crosswind
-components if relevant.`;
+      return `## USER INTENT — AVIATION / FLYING
+The user asked about flying conditions. Your first sentence MUST state
+the flight category. Format: "Conditions are [VFR/MVFR/IFR/LIFR] at
+[airport/location]." Then ceiling height, visibility, and any significant
+hazards — turbulence, icing, wind shear, convection on route. Always note
+if conditions improve or deteriorate during the planned flight window.`;
     case 'drought':
       return `## USER INTENT — DROUGHT / DRY CONDITIONS
-The user asked about drought or very dry conditions. Lead with the
-current drought monitor category for their location. Note fire risk
-and any water restrictions context.`;
+The user asked about drought severity or very dry conditions. Your first
+sentence MUST state the current US Drought Monitor category for their
+location. Format: "[Location] is currently in [D0 Abnormally Dry / D1
+Moderate / D2 Severe / D3 Extreme / D4 Exceptional] drought." Then note
+fire risk, any water restriction context, and when meaningful rainfall
+is next expected.`;
+    case 'flooding':
+      return `## USER INTENT — FLOODING / FLASH FLOOD RISK
+The user asked about flood or flash flood risk. Lead with whether a Flash
+Flood Watch or Warning is active. Then state the WPC Excessive Rainfall
+Outlook category for their area. Give the expected rainfall total and the
+time window of highest risk. Always distinguish between flash flooding
+(rapid onset, stream/street) and river flooding (slower, prolonged).`;
     default:
       return `## USER INTENT — GENERAL
 Answer the user's question directly. Identify the most relevant weather
