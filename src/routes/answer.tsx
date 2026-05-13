@@ -600,6 +600,95 @@ function AnswerPage() {
     return buildWindowLabel(start, end);
   })();
 
+  const STAGE_STEPS: { key: ForecastStage; label: string }[] = [
+    { key: 'climate',     label: 'Climate' },
+    { key: 'outlook',     label: 'Outlook' },
+    { key: 'model_trend', label: 'Trend' },
+    { key: 'short_range', label: 'Forecast' },
+    { key: 'live',        label: 'Live' },
+  ];
+  const stageIndex = STAGE_STEPS.findIndex(s => s.key === stage);
+
+  // MaturityLadder — renders as a horizontal 5-step progress bar.
+  // Completed steps are filled, current step is accented, future steps
+  // are empty. Always honest about where the data is in the pipeline.
+  const MaturityLadder = () => (
+    <div style={{
+      padding: '12px 20px',
+      borderBottom: `1px solid rgba(11,16,24,0.08)`,
+    }}>
+      <div style={{
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.46rem',
+        letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: MUTED,
+        marginBottom: '8px',
+      }}>
+        Forecast confidence
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+        {STAGE_STEPS.map((step, i) => {
+          const isPast    = i < stageIndex;
+          const isCurrent = i === stageIndex;
+          return (
+            <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {i < STAGE_STEPS.length - 1 && (
+                <div style={{
+                  position: 'absolute',
+                  top: 9,
+                  left: '60%',
+                  width: '80%',
+                  height: 2,
+                  background: isPast ? ACCENT : 'rgba(11,16,24,0.1)',
+                  zIndex: 0,
+                }} />
+              )}
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%',
+                background: isCurrent ? ACCENT : isPast ? 'rgba(194,65,12,0.25)' : 'rgba(11,16,24,0.08)',
+                border: isCurrent ? `2px solid ${ACCENT}` : '2px solid transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 1, position: 'relative',
+                fontSize: '0.5rem',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontWeight: 600,
+                color: isCurrent ? '#faf7f0' : isPast ? ACCENT : 'rgba(11,16,24,0.25)',
+              }}>
+                {isPast ? '✓' : i + 1}
+              </div>
+              <div style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.38rem',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: isCurrent ? ACCENT : MUTED,
+                fontWeight: isCurrent ? 600 : 400,
+                marginTop: 4,
+                textAlign: 'center',
+              }}>
+                {step.label}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {(stage === 'climate' || stage === 'outlook') && (
+        <div style={{
+          marginTop: 8,
+          fontFamily: 'Inter, sans-serif',
+          fontSize: '0.72rem',
+          color: MUTED,
+          lineHeight: 1.4,
+        }}>
+          {stage === 'climate'
+            ? 'No forecast exists yet for this date — showing historical patterns. A real forecast arrives closer to the event.'
+            : 'Early atmospheric signal available. Confidence is low — this will sharpen as the date approaches.'}
+        </div>
+      )}
+    </div>
+  );
+
   // Confidence-matched headline word — overrides the raw YES/NO/MAYBE so a
   // LOW-confidence answer never wears a confident verdict.
   const softWord =
