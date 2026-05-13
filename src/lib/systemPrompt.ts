@@ -62,6 +62,40 @@ time.`;
       return `## USER INTENT — SNOW
 The user asked about SNOW. Lead with expected snowfall amount and timing
 at their location.`;
+    case 'air_quality':
+      return `## USER INTENT — AIR QUALITY
+The user asked about AIR QUALITY or smoke. Lead with the current AQI
+value and category (Good/Moderate/Unhealthy). Name the primary pollutant.
+Note if it affects outdoor activity.`;
+    case 'uv_index':
+      return `## USER INTENT — UV INDEX
+The user asked about UV exposure or sun safety. Lead with the UV index
+value and risk level. State what protection is needed and the peak hours.`;
+    case 'marine':
+      return `## USER INTENT — MARINE / BOATING
+The user asked about marine conditions. Lead with wave height and period.
+Then wind speed and direction. Then visibility. State whether conditions
+are safe for the implied vessel size.`;
+    case 'fire_weather':
+      return `## USER INTENT — FIRE / SMOKE / AIR QUALITY
+The user asked about fire weather, smoke, or air quality near wildfires.
+Lead with the fire weather outlook category if active. State AQI and
+visibility impact. Note wind direction relative to any active fires.`;
+    case 'altitude':
+      return `## USER INTENT — HIGH ALTITUDE / MOUNTAIN
+The user asked about mountain or high-altitude conditions. Lead with
+summit or high-elevation temperature and wind. State the temperature
+drop per 1,000 ft gain. Note afternoon lightning risk explicitly.`;
+    case 'aviation':
+      return `## USER INTENT — AVIATION
+The user asked about flying conditions. Lead with ceiling and visibility.
+State VFR/MVFR/IFR category. Note turbulence, icing, and crosswind
+components if relevant.`;
+    case 'drought':
+      return `## USER INTENT — DROUGHT / DRY CONDITIONS
+The user asked about drought or very dry conditions. Lead with the
+current drought monitor category for their location. Note fire risk
+and any water restrictions context.`;
     default:
       return `## USER INTENT — GENERAL
 Answer the user's question directly. Identify the most relevant weather
