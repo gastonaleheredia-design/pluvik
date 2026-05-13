@@ -172,7 +172,9 @@ export function filterBriefingBySources(
   }
   const out = { ...briefing };
   (Object.keys(out) as (keyof MetBriefing)[]).forEach(k => {
-    if (!keep.has(k)) (out as Record<string, string>)[k as string] = '';
+    if (keep.has(k)) return;
+    const v = (out as Record<string, unknown>)[k as string];
+    if (typeof v === 'string') (out as Record<string, unknown>)[k as string] = '';
   });
   return out;
 }
