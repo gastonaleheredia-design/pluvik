@@ -593,7 +593,56 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     // 8. Filter briefing by stage-gated source priority, then assemble plain text.
     const filteredBriefing = filterBriefingBySources(briefing, stageGatedSources);
-    const briefingText = assembleBriefingText(filteredBriefing);
+    let briefingText = assembleBriefingText(filteredBriefing);
+
+    // 8a. Air quality + wildfire augmentation. AQI is only fetched at
+    // short_range/live stages (no point at climate/outlook horizons).
+    // Wildfires are fetched when intent is fire/air-quality related or
+    // the question mentions fire/smoke/haze keywords.
+    const wantsFireData =
+      intent === 'fire_weather' ||
+      intent === 'air_quality' ||
+      /\b(fire|smoke|wildfire|haze|burn)\b/i.test(distilledQuestion);
+    const wantsAqi =
+      stageInfo.stage === 'short_range' || stageInfo.stage === 'live';
+
+    const [aqiResult, fireResult] = await Promise.allSettled([
+      wantsAqi ? fetchAirNowAQI(lat, lon) : Promise.resolve(null),
+      wantsFireData ? fetchNearbyWildfires(lat, lon) : Promise.resolve(null),
+    ]);
+    const aqiData = aqiResult.status === 'fulfilled' ? aqiResult.value : null;
+    const fireData = fireResult.status === 'fulfilled' ? fireResult.value : null;
+
+    const augmentSections: string[] = [];
+    if (aqiData && (aqiData.aqi > 50 || intent === 'air_quality' || intent === 'fire_weather')) {
+      augmentSections.push(
+        `AIR QUALITY:\n` +
+        `Current AQI: ${aqiData.aqi} (${aqiData.category}) — primary pollutant: ${aqiData.pollutant}` +
+        (aqiData.forecast.length
+          ? `\nForecast: ${aqiData.forecast.slice(0, 3)
+              .map(f => `${f.date}: AQI ${f.aqi} (${f.category})`)
+              .join('; ')}`
+          : ''),
+      );
+    }
+    if (wantsFireData && fireData) {
+      if (fireData.count > 0) {
+        augmentSections.push(
+          `WILDFIRES WITHIN 150 MILES:\n` +
+          `${fireData.count} active fire(s) nearby.\n` +
+          fireData.fires.map(f =>
+            `- ${f.name}${f.state ? ` (${f.state})` : ''}: ` +
+            `${f.acres.toLocaleString()} acres` +
+            (f.containment != null ? `, ${f.containment}% contained` : ', containment unknown'),
+          ).join('\n'),
+        );
+      } else {
+        augmentSections.push(`ACTIVE WILDFIRES: No active fires within 150 miles.`);
+      }
+    }
+    if (augmentSections.length) {
+      briefingText = `${briefingText}\n\n${augmentSections.join('\n\n')}`;
+    }
 
     // 8b. Plain-Language Translator (Phase 6). For climate/outlook stages,
     // fetch the long-range signals and pre-digest them into human sentences
