@@ -27,6 +27,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Migrate any guest events captured before sign-in into the new
+      // user's tracked_events. Runs once per sign-in; clears localStorage
+      // on success so we never double-import.
+      if (event === 'SIGNED_IN' && session?.user) {
+        void migrateGuestEvents(session.user.id);
+      }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -72,4 +79,38 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
+}
+
+interface GuestEvent {
+  id: string;
+  question: string;
+  address: string;
+  lat?: number | null;
+  lon?: number | null;
+  savedAt: string;
+  eventAtIso: string | null;
+}
+
+async function migrateGuestEvents(userId: string): Promise<void> {
+  try {
+    const raw = localStorage.getItem('pluvik-guest-events');
+    if (!raw) return;
+    const events: GuestEvent[] = JSON.parse(raw);
+    if (!Array.isArray(events) || events.length === 0) {
+      localStorage.removeItem('pluvik-guest-events');
+      return;
+    }
+    const rows = events.map((e) => ({
+      user_id: userId,
+      question: e.question,
+      address: e.address,
+      lat: e.lat ?? null,
+      lon: e.lon ?? null,
+      event_at: e.eventAtIso ?? null,
+    }));
+    const { error } = await supabase.from('tracked_events').insert(rows);
+    if (!error) localStorage.removeItem('pluvik-guest-events');
+  } catch (err) {
+    console.error('[auth] migrateGuestEvents failed', err);
+  }
 }

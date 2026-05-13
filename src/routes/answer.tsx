@@ -102,6 +102,7 @@ function AnswerPage() {
   const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showGuestSheet, setShowGuestSheet] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
@@ -352,7 +353,28 @@ function AnswerPage() {
     if (user) {
       saveAndTrack();
     } else {
-      setShowAuthModal(true);
+      // Guest path — persist to localStorage so the work isn't lost,
+      // then nudge with a non-blocking sheet (not the auth modal).
+      try {
+        const raw = localStorage.getItem('pluvik-guest-events') || '[]';
+        const guestEvents: unknown[] = JSON.parse(raw);
+        guestEvents.push({
+          id: crypto.randomUUID(),
+          question,
+          address: resolvedAddress,
+          lat: coords?.lat,
+          lon: coords?.lon,
+          savedAt: new Date().toISOString(),
+          eventAtIso: eventAtIso ?? null,
+        });
+        localStorage.setItem(
+          'pluvik-guest-events',
+          JSON.stringify(guestEvents.slice(-5)),
+        );
+      } catch (e) {
+        console.error('[answer] guest save failed', e);
+      }
+      setShowGuestSheet(true);
     }
   };
 
@@ -1350,6 +1372,66 @@ function AnswerPage() {
           onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
           onClose={() => setShowAuthModal(false)}
         />
+      )}
+      {showGuestSheet && (
+        <div
+          onClick={() => setShowGuestSheet(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 50,
+            background: 'rgba(11,16,24,0.45)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 480,
+              background: '#faf7f0',
+              borderTopLeftRadius: 16, borderTopRightRadius: 16,
+              padding: '24px 20px 28px',
+              boxShadow: '0 -8px 24px rgba(0,0,0,0.15)',
+            }}
+          >
+            <div style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.6rem', letterSpacing: '0.18em',
+              textTransform: 'uppercase', color: ACCENT, marginBottom: 10,
+            }}>
+              Event saved
+            </div>
+            <div style={{
+              fontFamily: 'Inter, sans-serif', fontSize: '0.95rem',
+              color: INK, lineHeight: 1.45, marginBottom: 20,
+            }}>
+              Create a free account to get notified when the forecast changes.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { setShowGuestSheet(false); setShowAuthModal(true); }}
+                style={{
+                  flex: 1, padding: '12px 16px', borderRadius: 10,
+                  background: ACCENT, color: '#faf7f0', border: 'none',
+                  fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.9rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Create account
+              </button>
+              <button
+                onClick={() => setShowGuestSheet(false)}
+                style={{
+                  flex: 1, padding: '12px 16px', borderRadius: 10,
+                  background: 'transparent', color: MUTED,
+                  border: '1px solid rgba(11,16,24,0.15)',
+                  fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
