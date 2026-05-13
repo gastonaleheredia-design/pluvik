@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { parseQuestion } from './weatherIntelligence';
+import { parseQuestion, distillQuestion } from './weatherIntelligence';
 import { buildMetBriefing, assembleBriefingText, getStructuredCellsForKey } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
 import { validateWeatherAnswer } from './weatherAnswerSchema';
@@ -478,8 +478,12 @@ export const askWeather = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: WeatherRequest }) => {
     const { question, lat, lon, language, address, hoursAhead, endHoursAhead } = data;
 
-    // 1. Parse question
-    const parsed = parseQuestion(question);
+    // 1. Distill verbose / rambling questions to their core intent BEFORE
+    //    parsing or prompting. The original `question` stays untouched so the
+    //    UI keeps showing exactly what the user said; the engine reasons on
+    //    the cleaned form.
+    const distilledQuestion = distillQuestion(question);
+    const parsed = parseQuestion(distilledQuestion);
 
     // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
@@ -717,7 +721,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         : '') +
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
-      `User question: ${question}\n\n` +
+      `User question: ${distilledQuestion}\n\n` +
       (hurricaneContextBlock ? `${hurricaneContextBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
