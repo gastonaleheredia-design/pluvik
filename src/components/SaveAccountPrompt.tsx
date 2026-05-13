@@ -46,45 +46,57 @@ export function SaveAccountPrompt({ open, onCreateAccount, onDismiss }: SaveAcco
               marginBottom: 8,
             }}
           />
-          <Drawer.Title
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontWeight: 400,
-              fontSize: '1.6rem',
-              letterSpacing: '-0.02em',
-              lineHeight: 1.2,
-              margin: 0,
-            }}
-          >
-            Your event is saved
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            background: 'rgba(21,128,61,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.2rem',
+            margin: '0 auto 14px',
+            color: '#15803d',
+          }}>
+            ✓
+          </div>
+          <Drawer.Title style={{
+            fontFamily: 'Fraunces, serif',
+            fontSize: '1.2rem',
+            fontWeight: 400,
+            color: INK,
+            textAlign: 'center',
+            marginBottom: 8,
+          }}>
+            Event saved
           </Drawer.Title>
-          <Drawer.Description
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontWeight: 300,
-              fontSize: '1rem',
-              lineHeight: 1.5,
-              color: MUTED,
-              margin: 0,
-            }}
-          >
-            Create a free account to get notified when the forecast changes — and to access your event from any device.
+          <Drawer.Description style={{
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '0.85rem',
+            color: MUTED,
+            textAlign: 'center',
+            lineHeight: 1.55,
+            maxWidth: 300,
+            margin: '0 auto 24px',
+          }}>
+            Create a free account to get notified when the forecast changes — and to access your saved events from any device.
           </Drawer.Description>
           <button
             onClick={onCreateAccount}
             style={{
-              marginTop: 8,
               width: '100%',
-              padding: '16px 20px',
-              borderRadius: 100,
-              border: 'none',
+              padding: '14px',
+              borderRadius: '100px',
               background: ACCENT,
-              color: PAGE_BG,
-              fontFamily: 'inherit',
-              fontSize: '1rem',
+              color: '#faf7f0',
+              border: 'none',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.58rem',
+              letterSpacing: '0.14em',
               fontWeight: 600,
+              textTransform: 'uppercase',
               cursor: 'pointer',
+              marginBottom: 10,
             }}
           >
             Create free account
@@ -93,15 +105,14 @@ export function SaveAccountPrompt({ open, onCreateAccount, onDismiss }: SaveAcco
             onClick={onDismiss}
             style={{
               width: '100%',
-              padding: '12px 20px',
-              borderRadius: 100,
-              border: 'none',
+              padding: '12px',
+              borderRadius: '100px',
               background: 'transparent',
               color: MUTED,
+              border: '1px solid rgba(11,16,24,0.12)',
               fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.7rem',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
+              fontSize: '0.58rem',
+              letterSpacing: '0.14em',
               cursor: 'pointer',
             }}
           >
