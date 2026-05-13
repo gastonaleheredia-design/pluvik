@@ -2173,20 +2173,26 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
 }
 
 /**
- * Fetch current AQI from AirNow for a lat/lon point.
- * Free API — requires registration at airnow.gov for a key.
- * Returns null on failure so callers can degrade gracefully.
+ * Fetch current and forecast AQI from AirNow for a lat/lon point.
+ * Reads AIRNOW_API_KEY from server env. Returns null on failure
+ * so callers can degrade gracefully.
  */
 export async function fetchAirNowAQI(
   lat: number,
   lon: number,
-  apiKey: string,
-): Promise<{ aqi: number; category: string; pollutant: string } | null> {
+): Promise<{
+  aqi: number;
+  category: string;
+  pollutant: string;
+  forecast: Array<{ date: string; aqi: number; category: string }>;
+} | null> {
+  const apiKey = process.env.AIRNOW_API_KEY;
+  if (!apiKey) return null;
   try {
-    const url = `https://www.airnowapi.org/aq/observation/latLong/current/`
+    const currentUrl = `https://www.airnowapi.org/aq/observation/latLong/current/`
       + `?format=application/json&latitude=${lat}&longitude=${lon}`
       + `&distance=25&API_KEY=${apiKey}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(currentUrl, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const data: Array<{
       AQI: number;
@@ -2195,10 +2201,40 @@ export async function fetchAirNowAQI(
     }> = await res.json();
     if (!data?.length) return null;
     const primary = data.sort((a, b) => b.AQI - a.AQI)[0];
+
+    // Forecast (best-effort — some areas have no forecast coverage).
+    let forecast: Array<{ date: string; aqi: number; category: string }> = [];
+    try {
+      const fUrl = `https://www.airnowapi.org/aq/forecast/latLong/`
+        + `?format=application/json&latitude=${lat}&longitude=${lon}`
+        + `&distance=25&API_KEY=${apiKey}`;
+      const fRes = await fetch(fUrl, { signal: AbortSignal.timeout(5000) });
+      if (fRes.ok) {
+        const fData: Array<{
+          DateForecast: string;
+          AQI: number;
+          Category: { Name: string };
+        }> = await fRes.json();
+        const byDate = new Map<string, { date: string; aqi: number; category: string }>();
+        for (const row of fData ?? []) {
+          const date = (row.DateForecast ?? '').trim();
+          if (!date || row.AQI == null || row.AQI < 0) continue;
+          const prev = byDate.get(date);
+          if (!prev || row.AQI > prev.aqi) {
+            byDate.set(date, { date, aqi: row.AQI, category: row.Category?.Name ?? 'Unknown' });
+          }
+        }
+        forecast = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+      }
+    } catch {
+      // forecast is optional
+    }
+
     return {
       aqi: primary.AQI,
       category: primary.Category.Name,
       pollutant: primary.ParameterName,
+      forecast,
     };
   } catch {
     return null;
@@ -2206,35 +2242,51 @@ export async function fetchAirNowAQI(
 }
 
 /**
- * Fetch active wildfire perimeters near a point from NIFC ArcGIS REST.
- * Returns count of fires within ~100 miles and the nearest one's name.
- * Free, no API key required.
+ * Fetch active wildfire perimeters within ~150 mi from NIFC ArcGIS REST.
+ * Returns count + top 5 largest fires. Free, no API key required.
  */
 export async function fetchNearbyWildfires(
   lat: number,
   lon: number,
-): Promise<{ count: number; nearest: string | null } | null> {
+): Promise<{
+  count: number;
+  fires: Array<{
+    name: string;
+    acres: number;
+    containment: number | null;
+    state: string | null;
+  }>;
+} | null> {
   try {
-    // NIFC Current Wildland Fire Perimeters
     const url = `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/`
       + `WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query`
       + `?geometry=${lon},${lat}&geometryType=esriGeometryPoint`
       + `&inSR=4326&spatialRel=esriSpatialRelIntersects`
-      + `&distance=160934&units=esriSRUnit_Meter`
-      + `&outFields=IncidentName,GISAcres&returnGeometry=false&f=json`;
+      + `&distance=241402&units=esriSRUnit_Meter`
+      + `&outFields=IncidentName,GISAcres,PercentContained,POOState`
+      + `&returnGeometry=false&f=json`;
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     const data = await res.json();
-    const features: Array<{ attributes: { IncidentName: string; GISAcres: number } }>
-      = data?.features ?? [];
-    if (!features.length) return { count: 0, nearest: null };
-    const sorted = features.sort(
-      (a, b) => b.attributes.GISAcres - a.attributes.GISAcres,
-    );
-    return {
-      count: features.length,
-      nearest: sorted[0].attributes.IncidentName ?? null,
-    };
+    const features: Array<{
+      attributes: {
+        IncidentName: string | null;
+        GISAcres: number | null;
+        PercentContained: number | null;
+        POOState: string | null;
+      };
+    }> = data?.features ?? [];
+    if (!features.length) return { count: 0, fires: [] };
+    const fires = features
+      .map(f => ({
+        name: f.attributes.IncidentName ?? 'Unknown Fire',
+        acres: Math.round(f.attributes.GISAcres ?? 0),
+        containment: f.attributes.PercentContained ?? null,
+        state: f.attributes.POOState ?? null,
+      }))
+      .sort((a, b) => b.acres - a.acres)
+      .slice(0, 5);
+    return { count: features.length, fires };
   } catch {
     return null;
   }
