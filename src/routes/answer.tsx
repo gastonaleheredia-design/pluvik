@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { askWeather } from '../lib/askWeather.functions';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
@@ -784,6 +784,23 @@ function AnswerPage() {
   const isClimate = stage === 'climate';
   const isOutlook = stage === 'outlook';
   const isModelTrend = stage === 'model_trend';
+
+  // Stage drives the visual weight of the answer sentence.
+  // Climate and outlook answers should look tentative — smaller, more muted.
+  // Short range and live answers should look confident — full size, full ink.
+  const verdictSentenceStyle: CSSProperties = {
+    fontFamily: 'Fraunces, serif',
+    fontStyle: 'italic',
+    fontWeight: 300,
+    fontSize: isClimate || isOutlook
+      ? 'clamp(0.95rem, 3.5vw, 1.1rem)'   // smaller — less confident
+      : 'clamp(1.1rem, 4.5vw, 1.3rem)',    // full size — confident
+    lineHeight: 1.5,
+    color: isClimate || isOutlook
+      ? MUTED                              // muted — this is historical data
+      : INK,                               // full ink — this is a real forecast
+    padding: '14px 20px 0',
+  };
 
   // ── Briefing block data (rain strip + vitals + feel + verdict pill) ──
   // Map the per-hour timeline returned by the model to bar intensities.
