@@ -66,6 +66,7 @@ export interface GeocodedPlace {
 export async function geocodeVenueNear(
   query: string,
   proximity: { lat: number; lon: number } | null,
+  options?: { skipProximityGuard?: boolean },
 ): Promise<GeocodedPlace | null> {
   if (!query.trim()) return null;
   try {
@@ -85,10 +86,15 @@ export async function geocodeVenueNear(
     const f = data?.features?.[0];
     if (!f?.center || f.center.length !== 2) return null;
     const [lon, lat] = f.center as [number, number];
-    // Note: we intentionally do NOT reject far-away matches here. The
-    // question may explicitly name a distant city (e.g. "in Phoenix" while
-    // the user is in Houston). Mapbox proximity already biases toward local
-    // results when the query is ambiguous; trust its top hit.
+    // Reject cross-country matches when the caller is searching for a
+    // local venue (e.g. "Bumpy Pickle's"). Callers that pass an explicit
+    // city name extracted from the question can opt out via
+    // skipProximityGuard so distant cities (e.g. "Phoenix" while in
+    // Houston) still resolve.
+    if (proximity && !options?.skipProximityGuard) {
+      const distMi = haversineMiles(proximity.lat, proximity.lon, lat, lon);
+      if (distMi > 150) return null;
+    }
     return { label: f.place_name ?? f.text ?? query, lat, lon };
   } catch {
     return null;
