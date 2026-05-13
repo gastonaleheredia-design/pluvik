@@ -217,6 +217,7 @@ export interface MetBriefing {
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const stationsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations?limit=3`,
@@ -763,6 +764,7 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
 }
 
 async function fetchAlerts(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const res = await fetch(
       `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
@@ -1036,6 +1038,7 @@ export function pointInAlertGeometry(lat: number, lon: number, geom: any): boole
 }
 
 export async function getActiveWarning(lat: number, lon: number): Promise<ActiveAlert | null> {
+  if (!isUSLocation(lat, lon)) return null;
   try {
     const res = await fetch(
       `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
