@@ -25,6 +25,9 @@ export type ForecastIntent =
   | 'outdoor_comfort'
   | 'plan_impact'
   | 'nowcast'
+  | 'fire_weather'
+  | 'altitude'
+  | 'drought'
   | 'general';
 
 export interface ForecastRequest {
