@@ -40,14 +40,28 @@ type GeocodeResult =
   | { ok: true; lat: number; lon: number }
   | { ok: false; reason: 'out_of_coverage' | 'not_found' | 'network' };
 
-async function geocodeAddress(address: string): Promise<GeocodeResult> {
+/**
+ * Returns true when (lat, lon) lies inside the contiguous US bounding box
+ * (roughly lat 24-50, lon -125 to -66). NWS API only serves US points;
+ * calling it for non-US coords returns an error that bubbles up as a
+ * generic failure screen, so we skip those NWS fetches entirely.
+ */
+export function isUSLocation(lat: number, lon: number): boolean {
+  return lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
+}
+
+async function geocodeAddress(address: string, timeoutMs = 5000): Promise<GeocodeResult> {
   try {
     const encoded = encodeURIComponent(address);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     // Search globally, then check the country in the result so we can
     // explain the limit instead of silently failing for non-US users.
     const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address,place,postcode,poi,region,locality`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address,place,postcode,poi,region,locality`,
+      { signal: controller.signal },
     );
+    clearTimeout(timer);
     if (!res.ok) return { ok: false, reason: 'network' };
     const data = await res.json();
     const feature = data.features?.[0];
