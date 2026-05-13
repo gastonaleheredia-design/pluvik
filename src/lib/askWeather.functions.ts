@@ -478,8 +478,12 @@ export const askWeather = createServerFn({ method: 'POST' })
   .handler(async ({ data }: { data: WeatherRequest }) => {
     const { question, lat, lon, language, address, hoursAhead, endHoursAhead } = data;
 
-    // 1. Parse question
-    const parsed = parseQuestion(question);
+    // 1. Distill verbose / rambling questions to their core intent BEFORE
+    //    parsing or prompting. The original `question` stays untouched so the
+    //    UI keeps showing exactly what the user said; the engine reasons on
+    //    the cleaned form.
+    const distilledQuestion = distillQuestion(question);
+    const parsed = parseQuestion(distilledQuestion);
 
     // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
