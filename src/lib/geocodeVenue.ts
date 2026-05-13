@@ -85,10 +85,10 @@ export async function geocodeVenueNear(
     const f = data?.features?.[0];
     if (!f?.center || f.center.length !== 2) return null;
     const [lon, lat] = f.center as [number, number];
-    if (proximity) {
-      const distMi = haversineMiles(proximity.lat, proximity.lon, lat, lon);
-      if (distMi > 150) return null;
-    }
+    // Note: we intentionally do NOT reject far-away matches here. The
+    // question may explicitly name a distant city (e.g. "in Phoenix" while
+    // the user is in Houston). Mapbox proximity already biases toward local
+    // results when the query is ambiguous; trust its top hit.
     return { label: f.place_name ?? f.text ?? query, lat, lon };
   } catch {
     return null;
