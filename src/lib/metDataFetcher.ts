@@ -2171,3 +2171,71 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
   }
 }
+
+/**
+ * Fetch current AQI from AirNow for a lat/lon point.
+ * Free API — requires registration at airnow.gov for a key.
+ * Returns null on failure so callers can degrade gracefully.
+ */
+export async function fetchAirNowAQI(
+  lat: number,
+  lon: number,
+  apiKey: string,
+): Promise<{ aqi: number; category: string; pollutant: string } | null> {
+  try {
+    const url = `https://www.airnowapi.org/aq/observation/latLong/current/`
+      + `?format=application/json&latitude=${lat}&longitude=${lon}`
+      + `&distance=25&API_KEY=${apiKey}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const data: Array<{
+      AQI: number;
+      Category: { Name: string };
+      ParameterName: string;
+    }> = await res.json();
+    if (!data?.length) return null;
+    const primary = data.sort((a, b) => b.AQI - a.AQI)[0];
+    return {
+      aqi: primary.AQI,
+      category: primary.Category.Name,
+      pollutant: primary.ParameterName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch active wildfire perimeters near a point from NIFC ArcGIS REST.
+ * Returns count of fires within ~100 miles and the nearest one's name.
+ * Free, no API key required.
+ */
+export async function fetchNearbyWildfires(
+  lat: number,
+  lon: number,
+): Promise<{ count: number; nearest: string | null } | null> {
+  try {
+    // NIFC Current Wildland Fire Perimeters
+    const url = `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/`
+      + `WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query`
+      + `?geometry=${lon},${lat}&geometryType=esriGeometryPoint`
+      + `&inSR=4326&spatialRel=esriSpatialRelIntersects`
+      + `&distance=160934&units=esriSRUnit_Meter`
+      + `&outFields=IncidentName,GISAcres&returnGeometry=false&f=json`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const features: Array<{ attributes: { IncidentName: string; GISAcres: number } }>
+      = data?.features ?? [];
+    if (!features.length) return { count: 0, nearest: null };
+    const sorted = features.sort(
+      (a, b) => b.attributes.GISAcres - a.attributes.GISAcres,
+    );
+    return {
+      count: features.length,
+      nearest: sorted[0].attributes.IncidentName ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
