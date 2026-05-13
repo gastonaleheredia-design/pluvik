@@ -102,6 +102,7 @@ function AnswerPage() {
   const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showGuestSheet, setShowGuestSheet] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
