@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { parseQuestion } from './weatherIntelligence';
+import { parseQuestion, distillQuestion } from './weatherIntelligence';
 import { buildMetBriefing, assembleBriefingText, getStructuredCellsForKey } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
 import { validateWeatherAnswer } from './weatherAnswerSchema';
