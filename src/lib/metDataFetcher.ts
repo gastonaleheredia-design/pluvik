@@ -2090,8 +2090,9 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     const end = new Date();
     const start = new Date(end.getTime() - 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 19).replace('T', '%20');
-    const dLat = 25 / 69; // ~25 mile radius in degrees
-    const dLon = 25 / (69 * Math.cos(lat * Math.PI / 180));
+    const RADIUS_MI = 50; // 25 mi missed approaching storms; 50 mi gives ~10–15 min lead
+    const dLat = RADIUS_MI / 69;
+    const dLon = RADIUS_MI / (69 * Math.cos(lat * Math.PI / 180));
     // Primary: legacy IEM glmtotal.py (now serves HTML docs — kept as a probe in case it returns).
     const legacyUrl = `https://mesonet.agron.iastate.edu/json/glmtotal.py` +
       `?north=${(lat + dLat).toFixed(4)}&south=${(lat - dLat).toFixed(4)}` +
@@ -2110,20 +2111,49 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
     if (!data) {
       const fallbackUrl =
         `https://mesonet.agron.iastate.edu/api/1/lightning/total.json` +
-        `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=40&minutes=60`;
+        `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${RADIUS_MI}&minutes=60`;
       data = await tryJson(fallbackUrl);
     }
     if (!data) {
       return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
     }
-    const flashes = data.flashes ?? data.count ?? (Array.isArray(data.events) ? data.events.length : null);
-    if (flashes == null) {
-      return 'GOES GLM LIGHTNING (past 60 min within 25mi): no data returned.';
+    // Try to extract individual flash events for distance + trend.
+    const events: Array<{ lat?: number; lon?: number; time?: string }> =
+      Array.isArray(data.events) ? data.events :
+      Array.isArray(data.features) ? data.features.map((f: any) => ({
+        lat: f.geometry?.coordinates?.[1],
+        lon: f.geometry?.coordinates?.[0],
+        time: f.properties?.valid ?? f.properties?.time,
+      })) : [];
+    const flashes = data.flashes ?? data.count ?? (events.length || null);
+    const header = `GOES-19 GLM LIGHTNING (past 60 min within ${RADIUS_MI}mi)`;
+    if (flashes == null) return `${header}: no data returned.`;
+    if (flashes === 0) return `${header}: 0 flashes — no recent lightning activity.`;
+    // Compute nearest flash + 15-min trend if events are available.
+    let extras = '';
+    if (events.length > 0 && events[0].lat != null) {
+      const cosL = Math.cos(lat * Math.PI / 180) || 1;
+      let minDist = Infinity;
+      let minBearing = '';
+      for (const ev of events) {
+        if (ev.lat == null || ev.lon == null) continue;
+        const dy = (ev.lat - lat) * 69;
+        const dx = (ev.lon - lon) * 69 * cosL;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minDist) {
+          minDist = d;
+          const bDeg = (Math.atan2(ev.lon - lon, ev.lat - lat) * 180 / Math.PI + 360) % 360;
+          minBearing = compass(bDeg);
+        }
+      }
+      const cutoff = end.getTime() - 15 * 60 * 1000;
+      const recent = events.filter(ev => ev.time && new Date(ev.time).getTime() >= cutoff).length;
+      const trend = recent / 15 > (flashes - recent) / 45 ? 'increasing' : 'steady/decreasing';
+      if (Number.isFinite(minDist)) {
+        extras = ` | nearest:${Math.round(minDist)}mi ${minBearing} | last-15-min:${recent} (${trend})`;
+      }
     }
-    if (flashes === 0) {
-      return 'GOES GLM LIGHTNING (past 60 min within 25mi): 0 flashes — no recent lightning activity.';
-    }
-    return `GOES GLM LIGHTNING (past 60 min within 25mi): ${flashes} flashes detected — active lightning in area.`;
+    return `${header}: ${flashes} flashes${extras} — active lightning in area.`;
   } catch {
     return 'GLM LIGHTNING: Endpoint unavailable — lightning data offline.';
   }
