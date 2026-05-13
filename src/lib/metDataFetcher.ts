@@ -1292,6 +1292,7 @@ async function fetchAFD(
   lon: number,
   hoursAhead: number = 0,
 ): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const pointsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
@@ -1460,6 +1461,7 @@ async function fetchSPCOutlook(lat?: number, lon?: number): Promise<string> {
 // Geo-filtered: only returns MDs whose state-zone list (e.g. OKZ000-, TXZ000-)
 // contains the user's state, so an OK user never sees a Florida MD.
 async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     // 1. Resolve the user's state via NWS points (free, fast, cached).
     let userState: string | null = null;
