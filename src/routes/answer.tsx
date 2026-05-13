@@ -1014,10 +1014,8 @@ function AnswerPage() {
           {/* sentence */}
           <div
             style={{
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: 'clamp(1.05rem, 4.5vw, 1.35rem)',
-              lineHeight: 1.35,
+              ...verdictSentenceStyle,
+              padding: 0,
               maxWidth: '480px',
               marginBottom: headlineForStage ? '40px' : '32px',
             }}
