@@ -30,13 +30,13 @@ export function extractVenueCandidate(question: string): string | null {
 
   // Pattern B: noun phrase after "at", "@", "near", "by", "in".
   // Allow lowercase too — voice transcripts often arrive lowercased.
-  const re = /\b(?:at|@|near|by|in)\s+([A-Za-z][A-Za-z0-9.'’&\-]*(?:\s+[A-Za-z0-9.'’&\-]+){0,4})/g;
+  const re = /\b(?:at|@|near|by|in)\s+([A-Za-z][A-Za-z0-9.''&\-]*(?:\s+[A-Za-z0-9.''&\-]+){0,4})/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(question)) !== null) {
     let candidate = m[1].trim();
     // Strip a trailing time fragment like "at 6", "at 6:30pm".
     candidate = candidate.replace(/\s+\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?$/i, '').trim();
-    // Strip trailing "at" if regex over-captured.
+    // Strip trailing prepositions if regex over-captured.
     candidate = candidate.replace(/\s+(at|on|by|near|in)$/i, '').trim();
     if (!candidate) continue;
     const firstWord = candidate.split(/\s+/)[0].toLowerCase();
@@ -54,21 +54,51 @@ export interface GeocodedPlace {
   lon: number;
 }
 
+export interface GeocodeVenueOptions {
+  /**
+   * When true, skip the 150-mile proximity guard.
+   *
+   * Use this for high-confidence city/state extractions (e.g. "Phoenix, AZ",
+   * "New York") where the user explicitly named a location — proximity bias
+   * would return the wrong city (e.g. "New York, TX" near Houston instead of
+   * New York City). Leave false (default) for venue/POI disambiguation where
+   * proximity helps pick the right local result.
+   */
+  skipProximityGuard?: boolean;
+
+  /**
+   * When true, omit the proximity hint from the Mapbox geocode request.
+   *
+   * Use alongside skipProximityGuard for city-level queries so Mapbox returns
+   * the most prominent canonical result (e.g. "New York" → NYC, not the
+   * hamlet of New York, TX). For venue searches, keep false so Mapbox biases
+   * results toward the user's location.
+   */
+  skipProximityBias?: boolean;
+}
+
 /**
- * Forward-geocode a venue name through Mapbox, biased to the user's
- * current location so "Bumpy Pickle's" near Houston resolves to the
- * actual Houston venue rather than a same-named place across the country.
+ * Forward-geocode a venue name through Mapbox.
  *
- * Returns null on no-match, network error, or when the result is more
- * than ~150 mi from the proximity hint (avoids accidental cross-country
- * matches when the user clearly meant something local).
+ * For venue/POI searches (default): biases results toward the user's location
+ * and rejects results more than 150 miles away, so "Hermann Park" resolves to
+ * the Houston location rather than a same-named place across the country.
+ *
+ * For high-confidence city/state queries (skipProximityGuard + skipProximityBias):
+ * sends no proximity hint and skips the distance guard so "New York" always
+ * resolves to NYC rather than the hamlet of New York, TX.
+ *
+ * Returns null on no-match, network error, or when the result exceeds the
+ * proximity guard distance and skipProximityGuard is false.
  */
 export async function geocodeVenueNear(
   query: string,
   proximity: { lat: number; lon: number } | null,
-  options?: { skipProximityGuard?: boolean },
+  options: GeocodeVenueOptions = {},
 ): Promise<GeocodedPlace | null> {
   if (!query.trim()) return null;
+  const { skipProximityGuard = false, skipProximityBias = false } = options;
+
   try {
     const params = new URLSearchParams({
       access_token: MAPBOX_TOKEN,
@@ -77,7 +107,11 @@ export async function geocodeVenueNear(
       types: 'poi,address,place,locality,neighborhood',
       autocomplete: 'true',
     });
-    if (proximity) params.set('proximity', `${proximity.lon},${proximity.lat}`);
+
+    if (proximity && !skipProximityBias) {
+      params.set('proximity', `${proximity.lon},${proximity.lat}`);
+    }
+
     const res = await fetch(
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`,
     );
@@ -86,27 +120,28 @@ export async function geocodeVenueNear(
     const f = data?.features?.[0];
     if (!f?.center || f.center.length !== 2) return null;
     const [lon, lat] = f.center as [number, number];
-    // Reject cross-country matches when the caller is searching for a
-    // local venue (e.g. "Bumpy Pickle's"). Callers that pass an explicit
-    // city name extracted from the question can opt out via
-    // skipProximityGuard so distant cities (e.g. "Phoenix" while in
-    // Houston) still resolve.
-    if (proximity && !options?.skipProximityGuard) {
+
+    if (proximity && !skipProximityGuard) {
       const distMi = haversineMiles(proximity.lat, proximity.lon, lat, lon);
       if (distMi > 150) return null;
     }
+
     return { label: f.place_name ?? f.text ?? query, lat, lon };
   } catch {
     return null;
   }
 }
 
-function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+function haversineMiles(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number,
+): number {
   const R = 3959;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
