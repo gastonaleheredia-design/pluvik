@@ -44,7 +44,7 @@ const FILLER = [
   /\b(?:do you know|i was wondering|i think|you know)\b/gi,
 ];
 
-const PREP_RE = /\b(?:in|near|around|at|by|for|over)\s+([^,.!?]+?)(?=\s+(?:tomorrow|tonight|today|this|next|on|at|by|for|about|because|—|-)|[,.!?]|$)/gi;
+const PREP_RE = /\b(?:in|near|around|at|by|for|over)\s+([^,.!?]+?)(?=\s+(?:tomorrow|tonight|today|now|this|next|last|on|at|by|for|about|because|around|after|before|during|while|when|so|but|and|or|if|will|would|should|could|is|are|was|were|gonna|going|do|does|did|the|a|an|my|our|their|please|thanks|—|-)|[,.!?]|$)/gi;
 
 function stripFiller(s: string): string {
   let out = s;
