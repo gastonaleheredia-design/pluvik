@@ -40,14 +40,28 @@ type GeocodeResult =
   | { ok: true; lat: number; lon: number }
   | { ok: false; reason: 'out_of_coverage' | 'not_found' | 'network' };
 
-async function geocodeAddress(address: string): Promise<GeocodeResult> {
+/**
+ * Returns true when (lat, lon) lies inside the contiguous US bounding box
+ * (roughly lat 24-50, lon -125 to -66). NWS API only serves US points;
+ * calling it for non-US coords returns an error that bubbles up as a
+ * generic failure screen, so we skip those NWS fetches entirely.
+ */
+export function isUSLocation(lat: number, lon: number): boolean {
+  return lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
+}
+
+async function geocodeAddress(address: string, timeoutMs = 5000): Promise<GeocodeResult> {
   try {
     const encoded = encodeURIComponent(address);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     // Search globally, then check the country in the result so we can
     // explain the limit instead of silently failing for non-US users.
     const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address,place,postcode,poi,region,locality`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address,place,postcode,poi,region,locality`,
+      { signal: controller.signal },
     );
+    clearTimeout(timer);
     if (!res.ok) return { ok: false, reason: 'network' };
     const data = await res.json();
     const feature = data.features?.[0];
@@ -173,11 +187,13 @@ function AnswerPage() {
           if (geo.ok) {
             coords = { lat: geo.lat, lon: geo.lon };
             effectiveAddress = placeOverride;
-          } else if (geo.reason === 'out_of_coverage') {
-            setStatus('out_of_coverage');
-            return;
+          } else {
+            // Detected place failed (timeout, not_found, network, or
+            // out-of-coverage). Silently fall back to the active address
+            // rather than showing a generic error — the user still gets
+            // a useful answer for where they are.
+            console.warn('[location] geocode failed for detected place, falling back to active address', { placeOverride, reason: geo.reason });
           }
-          // If not_found / network, silently fall back to the home address.
         }
         if (!coords) {
           if (selectedAddress.lat && selectedAddress.lon) {

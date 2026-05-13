@@ -41,6 +41,19 @@ function bearingToCompass(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+/**
+ * NWS api.weather.gov only covers the contiguous US (plus AK/HI/territories
+ * via separate endpoints). For points outside this bbox, the API returns
+ * an error that previously bubbled up as a generic failure screen. Gate
+ * every NWS call with this helper and substitute a short note so the
+ * briefing still assembles using Open-Meteo model data alone.
+ */
+function isUSLocation(lat: number, lon: number): boolean {
+  return lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
+}
+const NWS_OUT_OF_COVERAGE_NOTE =
+  'NWS DATA: Location outside NWS coverage — using model data only.';
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
@@ -204,6 +217,7 @@ export interface MetBriefing {
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const stationsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations?limit=3`,
@@ -750,6 +764,7 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
 }
 
 async function fetchAlerts(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const res = await fetch(
       `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
@@ -1023,6 +1038,7 @@ export function pointInAlertGeometry(lat: number, lon: number, geom: any): boole
 }
 
 export async function getActiveWarning(lat: number, lon: number): Promise<ActiveAlert | null> {
+  if (!isUSLocation(lat, lon)) return null;
   try {
     const res = await fetch(
       `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}&status=actual`,
@@ -1276,6 +1292,7 @@ async function fetchAFD(
   lon: number,
   hoursAhead: number = 0,
 ): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     const pointsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
@@ -1444,6 +1461,7 @@ async function fetchSPCOutlook(lat?: number, lon?: number): Promise<string> {
 // Geo-filtered: only returns MDs whose state-zone list (e.g. OKZ000-, TXZ000-)
 // contains the user's state, so an OK user never sees a Florida MD.
 async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<string> {
+  if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
   try {
     // 1. Resolve the user's state via NWS points (free, fast, cached).
     let userState: string | null = null;
