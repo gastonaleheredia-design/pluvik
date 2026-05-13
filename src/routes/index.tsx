@@ -429,7 +429,7 @@ function HomePage() {
       }
       // Place — try the lightweight extractor first, then venue + geocode.
       if (!pickedPlaceManual) {
-        const direct = extractPlaceFromQuestion(text);
+        const direct = extractPlaceFromQuestion(text)?.place ?? null;
         const venue = direct ?? extractVenueCandidate(text);
         if (!venue) { setPickedPlace(null); setPlaceResolving(false); return; }
         setPlaceResolving(true);
