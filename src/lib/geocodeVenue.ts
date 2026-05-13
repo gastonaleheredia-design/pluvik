@@ -161,7 +161,29 @@ export async function geocodeVenueNear(
     if (distMi > 150) return null;
   }
 
+  // Name-match guard for venue/POI queries.
+  // Mapbox is a geocoder, not a business directory — for an unknown business
+  // like "Bumpy Pickle's" it will fall back to the closest-sounding street
+  // name ("Pickles Drive"). Reject results whose label shares no meaningful
+  // word with the query so we don't silently substitute a wrong location.
+  if (placeType === 'address' && !skipProximityBias) {
+    const queryTokens = tokenize(query);
+    const labelTokens = tokenize(place.label);
+    const significantOverlap = queryTokens.some(
+      (t) => t.length >= 4 && labelTokens.some((lt) => lt === t || lt.startsWith(t) || t.startsWith(lt)),
+    );
+    if (!significantOverlap) return null;
+  }
+
   return place;
+}
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/['']s\b/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3);
 }
 
 function haversineMiles(
