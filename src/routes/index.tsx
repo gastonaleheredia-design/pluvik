@@ -396,12 +396,26 @@ function HomePage() {
     return () => clearInterval(id);
   }, [briefing?.alert?.expires_iso, selectedAddress.lat, selectedAddress.lon, i18n.language]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!questionText.trim()) return;
-    const finalPlace = pickedPlace;
+    let finalPlace = pickedPlace;
     const finalTime = pickedTime;
     const distilled = distillQuestion(questionText.trim());
     const intent = classifyIntent(distilled);
+    // Defense-in-depth: if the chip resolver didn't land on a place but
+    // the question contains a high-confidence city/state, geocode it
+    // here (bypassing the proximity guard) so we don't fall back to the
+    // active address coords.
+    if (!finalPlace && !pickedPlaceManual) {
+      const extracted = extractPlaceFromQuestion(questionText.trim());
+      if (extracted && extracted.confidence === 'high') {
+        const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
+          ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
+          : null;
+        const geo = await geocodeVenueNear(extracted.place, proximity, { skipProximityGuard: true });
+        if (geo) finalPlace = geo;
+      }
+    }
     navigate({
       to: '/answer',
       search: {
