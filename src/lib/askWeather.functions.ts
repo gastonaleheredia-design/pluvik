@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start';
-import { parseQuestion, distillQuestion } from './weatherIntelligence';
+import { parseQuestion, distillQuestion, classifyIntent } from './weatherIntelligence';
+import type { ForecastIntent } from './forecastRequest';
 import { buildMetBriefing, assembleBriefingText, getStructuredCellsForKey } from './metDataFetcher';
 import { classifyScenario } from './classifyScenario';
 import { validateWeatherAnswer } from './weatherAnswerSchema';
@@ -178,6 +179,8 @@ interface WeatherRequest {
   hoursAhead?: number;
   /** Hours from now until the END of the user's event window (optional). */
   endHoursAhead?: number;
+  /** Pre-classified intent from the home screen (optional — server falls back to keyword classifier). */
+  intent?: ForecastIntent;
 }
 
 export interface ExtendedWeatherAnswer {
@@ -484,6 +487,7 @@ export const askWeather = createServerFn({ method: 'POST' })
     //    the cleaned form.
     const distilledQuestion = distillQuestion(question);
     const parsed = parseQuestion(distilledQuestion);
+    const intent: ForecastIntent = data.intent ?? classifyIntent(distilledQuestion);
 
     // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
@@ -709,6 +713,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         confidence,
         parsed.sensitivityProfile,
         parsed.timeWindow ? `the user's plan around ${parsed.timeWindow}` : `the user's event time`,
+        intent,
       ) + '\n' + stageRules;
 
     const userMessage =
