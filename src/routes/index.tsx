@@ -435,7 +435,9 @@ function HomePage() {
       }
       // Place — try the lightweight extractor first, then venue + geocode.
       if (!pickedPlaceManual) {
-        const direct = extractPlaceFromQuestion(text)?.place ?? null;
+        const extracted = extractPlaceFromQuestion(text);
+        const direct = extracted?.place ?? null;
+        const isHighConfidence = extracted?.confidence === 'high';
         const venue = direct ?? extractVenueCandidate(text);
         if (!venue) { setPickedPlace(null); setPlaceResolving(false); return; }
         setPlaceResolving(true);
@@ -443,7 +445,10 @@ function HomePage() {
           ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
           : null;
         let cancelled = false;
-        geocodeVenueNear(venue, proximity).then((p) => {
+        // High-confidence city/state extractions (e.g. "Phoenix, AZ") don't
+        // need the proximity guard — they're explicit, not venue
+        // disambiguation.
+        geocodeVenueNear(venue, proximity, { skipProximityGuard: isHighConfidence }).then((p) => {
           if (cancelled) return;
           setPlaceResolving(false);
           if (p) setPickedPlace(p);
