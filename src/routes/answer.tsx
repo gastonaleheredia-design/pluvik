@@ -622,6 +622,9 @@ function AnswerPage() {
     return buildWindowLabel(start, end);
   })();
 
+  // ── FORECAST MATURITY LADDER ─────────────────────────────────────────
+  // Always visible. Always honest about where the data is in the pipeline.
+  // Completed steps filled, current step accented, future steps empty.
   const STAGE_STEPS: { key: ForecastStage; label: string }[] = [
     { key: 'climate',     label: 'Climate' },
     { key: 'outlook',     label: 'Outlook' },
@@ -630,82 +633,133 @@ function AnswerPage() {
     { key: 'live',        label: 'Live' },
   ];
   const stageIndex = STAGE_STEPS.findIndex(s => s.key === stage);
+  const maturityNote: string | null =
+    stage === 'climate'
+      ? 'No forecast exists yet — showing 30-year historical patterns. A real forecast arrives as the date gets closer.'
+      : stage === 'outlook'
+      ? 'First atmospheric signal available. Confidence is low — this sharpens significantly inside 10 days.'
+      : stage === 'model_trend'
+      ? 'Models have signal but still disagree on specifics. Check back in 2–3 days for a sharper picture.'
+      : null;
 
-  // MaturityLadder — renders as a horizontal 5-step progress bar.
-  // Completed steps are filled, current step is accented, future steps
-  // are empty. Always honest about where the data is in the pipeline.
   const MaturityLadder = () => (
     <div style={{
-      padding: '12px 20px',
+      padding: '14px 20px 12px',
       borderBottom: `1px solid rgba(11,16,24,0.08)`,
+      background: PAGE_BG,
     }}>
       <div style={{
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '0.46rem',
+        fontSize: '0.44rem',
         letterSpacing: '0.14em',
-        textTransform: 'uppercase',
+        textTransform: 'uppercase' as const,
         color: MUTED,
-        marginBottom: '8px',
+        marginBottom: '10px',
       }}>
         Forecast confidence
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+      {/* Step dots + connector lines */}
+      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         {STAGE_STEPS.map((step, i) => {
           const isPast    = i < stageIndex;
           const isCurrent = i === stageIndex;
           return (
-            <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            <div
+              key={step.key}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column' as const,
+                alignItems: 'center',
+                position: 'relative' as const,
+              }}
+            >
+              {/* Connector line — drawn from center of this dot to next */}
               {i < STAGE_STEPS.length - 1 && (
                 <div style={{
-                  position: 'absolute',
-                  top: 9,
-                  left: '60%',
-                  width: '80%',
+                  position: 'absolute' as const,
+                  top: 10,
+                  left: '55%',
+                  width: '90%',
                   height: 2,
-                  background: isPast ? ACCENT : 'rgba(11,16,24,0.1)',
+                  background: isPast
+                    ? ACCENT
+                    : 'rgba(11,16,24,0.1)',
                   zIndex: 0,
                 }} />
               )}
+              {/* Dot */}
               <div style={{
-                width: 20, height: 20, borderRadius: '50%',
-                background: isCurrent ? ACCENT : isPast ? 'rgba(194,65,12,0.25)' : 'rgba(11,16,24,0.08)',
-                border: isCurrent ? `2px solid ${ACCENT}` : '2px solid transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                zIndex: 1, position: 'relative',
-                fontSize: '0.5rem',
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: isCurrent
+                  ? ACCENT
+                  : isPast
+                  ? 'rgba(194,65,12,0.18)'
+                  : 'rgba(11,16,24,0.07)',
+                border: isCurrent
+                  ? `2px solid ${ACCENT}`
+                  : isPast
+                  ? `2px solid rgba(194,65,12,0.4)`
+                  : '2px solid rgba(11,16,24,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1,
+                position: 'relative' as const,
                 fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.48rem',
                 fontWeight: 600,
-                color: isCurrent ? '#faf7f0' : isPast ? ACCENT : 'rgba(11,16,24,0.25)',
+                color: isCurrent
+                  ? '#faf7f0'
+                  : isPast
+                  ? ACCENT
+                  : 'rgba(11,16,24,0.2)',
+                flexShrink: 0,
               }}>
                 {isPast ? '✓' : i + 1}
               </div>
+              {/* Label */}
               <div style={{
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: '0.38rem',
                 letterSpacing: '0.08em',
-                textTransform: 'uppercase',
+                textTransform: 'uppercase' as const,
                 color: isCurrent ? ACCENT : MUTED,
                 fontWeight: isCurrent ? 600 : 400,
-                marginTop: 4,
-                textAlign: 'center',
+                marginTop: 5,
+                textAlign: 'center' as const,
+                lineHeight: 1.2,
               }}>
                 {step.label}
+                {isCurrent && (
+                  <div style={{
+                    fontSize: '0.34rem',
+                    color: ACCENT,
+                    marginTop: 2,
+                    letterSpacing: '0.06em',
+                  }}>
+                    ← now
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
       </div>
-      {(stage === 'climate' || stage === 'outlook') && (
+      {/* Honest context note — only for far-out stages */}
+      {maturityNote && (
         <div style={{
-          marginTop: 8,
+          marginTop: 10,
           fontFamily: 'Inter, sans-serif',
           fontSize: '0.72rem',
           color: MUTED,
-          lineHeight: 1.4,
+          lineHeight: 1.5,
+          paddingTop: 10,
+          borderTop: '1px solid rgba(11,16,24,0.07)',
         }}>
-          {stage === 'climate'
-            ? 'No forecast exists yet for this date — showing historical patterns. A real forecast arrives closer to the event.'
-            : 'Early atmospheric signal available. Confidence is low — this will sharpen as the date approaches.'}
+          {maturityNote}
         </div>
       )}
     </div>
