@@ -19,6 +19,7 @@ import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
+const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -53,6 +54,14 @@ function HomePage() {
   const { user, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [questionText, setQuestionText] = useState('');
+  const [isFirstOpen, setIsFirstOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !localStorage.getItem(FIRST_OPEN_KEY);
+  });
+  const dismissFirstOpen = () => {
+    try { localStorage.setItem(FIRST_OPEN_KEY, 'true'); } catch {}
+    setIsFirstOpen(false);
+  };
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
@@ -909,7 +918,10 @@ function HomePage() {
           <input
             ref={questionInputRef}
             value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
+            onChange={(e) => {
+              if (isFirstOpen) dismissFirstOpen();
+              setQuestionText(e.target.value);
+            }}
             placeholder={
               micState === 'recording' ? t('home.mic_listening', { defaultValue: 'Listening…' }) :
               micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
@@ -929,7 +941,10 @@ function HomePage() {
           />
           <button
               type="button"
-              onClick={toggleMic}
+              onClick={() => {
+                if (isFirstOpen) dismissFirstOpen();
+                toggleMic();
+              }}
               disabled={micState === 'transcribing'}
               aria-label="Voice input"
               style={{
