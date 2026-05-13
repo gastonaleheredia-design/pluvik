@@ -161,7 +161,34 @@ export async function geocodeVenueNear(
     if (distMi > 150) return null;
   }
 
+  // Business-name guard. Mapbox is a geocoder, not a business directory:
+  // for an unknown venue like "Bumpy Pickle's" it falls back to the closest-
+  // sounding street ("Pickles Drive"). If the query clearly names a business
+  // (apostrophe-s possessive) and Mapbox only returned a street address,
+  // reject — the caller should fall back to the user's saved address.
+  const looksLikeBusinessName = /['']s\b/.test(query) || /\b(pickle|grill|cafe|bar|club|gym|park|center|centre|pub|brewery|restaurant|bakery|kitchen|lounge|studio|store|shop|market)\b/i.test(query);
+  if (looksLikeBusinessName && placeType === 'address') return null;
+
+  // Generic name-match guard for address fallbacks: reject if the result
+  // shares no meaningful word with the query.
+  if (placeType === 'address' && !skipProximityBias) {
+    const queryTokens = tokenize(query);
+    const labelTokens = tokenize(place.label);
+    const significantOverlap = queryTokens.some(
+      (t) => t.length >= 4 && labelTokens.some((lt) => lt === t),
+    );
+    if (!significantOverlap) return null;
+  }
+
   return place;
+}
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/['']s\b/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3);
 }
 
 function haversineMiles(
