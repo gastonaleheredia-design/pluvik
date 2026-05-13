@@ -96,7 +96,9 @@ export function QuestionChips({
     ? formatRange(time).toUpperCase()
     : t('chips.time_default', { defaultValue: 'RIGHT NOW' });
   const placeLabel = place
-    ? place.label.split(',').slice(0, 2).join(',').toUpperCase()
+    ? (placeDetected
+        ? `${place.label.split(',')[0].toUpperCase()} — FROM QUESTION`
+        : place.label.split(',').slice(0, 2).join(',').toUpperCase())
     : here
       ? `${t('chips.here', { defaultValue: 'HERE' })} · ${here.label.split(',')[0].toUpperCase()}`
       : t('chips.place_missing', { defaultValue: 'ADD A PLACE' });
