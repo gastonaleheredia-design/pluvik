@@ -257,11 +257,14 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     return { place: `${titleCase(city)}, ${abbr}`, confidence: 'high' };
   }
 
-  // 5. "City ST" — two-letter abbreviation, no comma
-  const abbrList = [...STATE_ABBR].join('|');
+  // 5. "City ST" — two-letter abbreviation, no comma.
+  // CASE-SENSITIVE: the abbreviation must be uppercase, otherwise common
+  // English words (in, or, me, hi, ok, la, pa, co, de) would be misread as
+  // state abbreviations — e.g. "rain tomorrow in Houston TX" would match
+  // "It Rain Tomorrow, IN" via the preposition "in".
+  const abbrListUpper = [...STATE_ABBR].map((a) => a.toUpperCase()).join('|');
   const cityAbbrRe = new RegExp(
-    `\\b([A-Za-z][A-Za-z ]{1,25}?)\\s+(${abbrList})\\b(?!\\w)`,
-    'i',
+    `\\b([A-Za-z][A-Za-z ]{1,25}?)\\s+(${abbrListUpper})\\b(?!\\w)`,
   );
   const cam = q.match(cityAbbrRe);
   if (cam) {
