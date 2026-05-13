@@ -81,7 +81,7 @@ const STOP_WORDS = new Set([
   'am','pm',
   // Filler verbs/words from voice transcripts
   'going','gonna','kinda','sorta','basically','actually',
-  'during','after','before','how','what','when','where','will','is','if',
+  'during','after','before','how','what','when','where','will','is','if','it',
   'be','to','of','and','a','an','or','not','do','i',
 ]);
 
@@ -224,7 +224,8 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
   const airport = q.match(/\b(?:near|at|around|by)\s+([A-Z]{3,4})\b/);
   if (airport) return { place: airport[1], confidence: 'high' };
 
-  // 3. "City, ST" — case-insensitive
+  // 3. "City, ST" — case-insensitive. Walk backward from the comma so we
+  // don't over-capture ("rain tomorrow in Houston, TX" → "Houston, TX").
   const cityStateRe = /\b([A-Za-z][A-Za-z.''\- ]{0,40}),\s*([A-Za-z]{2})\b/gi;
   let csm: RegExpExecArray | null;
   cityStateRe.lastIndex = 0;
@@ -232,10 +233,18 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     const abbr = csm[2].toLowerCase();
     if (!STATE_ABBR.has(abbr)) continue;
     const rawCity = csm[1];
-    const cleanCity = stripLeadingStopWords(rawCity);
+    const words = rawCity.trim().split(/\s+/);
+    const cityWords: string[] = [];
+    for (let i = words.length - 1; i >= 0; i--) {
+      const raw = words[i];
+      const clean = raw.toLowerCase().replace(/^[.,!?]+|[.,!?]+$/g, '');
+      if (!clean || clean.length < 2) break;
+      if (STOP_WORDS.has(clean) || /^\d/.test(clean)) break;
+      cityWords.unshift(raw.replace(/^[.,!?]+|[.,!?]+$/g, ''));
+      if (cityWords.length >= 4) break;
+    }
+    const cleanCity = cityWords.join(' ').trim();
     if (!cleanCity || cleanCity.length < 2) continue;
-    const firstWord = cleanCity.split(/\s+/)[0].toLowerCase();
-    if (STOP_WORDS.has(firstWord)) continue;
     return {
       place: `${titleCase(cleanCity)}, ${abbr.toUpperCase()}`,
       confidence: 'high',
@@ -257,11 +266,14 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     return { place: `${titleCase(city)}, ${abbr}`, confidence: 'high' };
   }
 
-  // 5. "City ST" — two-letter abbreviation, no comma
-  const abbrList = [...STATE_ABBR].join('|');
+  // 5. "City ST" — two-letter abbreviation, no comma.
+  // CASE-SENSITIVE: the abbreviation must be uppercase, otherwise common
+  // English words (in, or, me, hi, ok, la, pa, co, de) would be misread as
+  // state abbreviations — e.g. "rain tomorrow in Houston TX" would match
+  // "It Rain Tomorrow, IN" via the preposition "in".
+  const abbrListUpper = [...STATE_ABBR].map((a) => a.toUpperCase()).join('|');
   const cityAbbrRe = new RegExp(
-    `\\b([A-Za-z][A-Za-z ]{1,25}?)\\s+(${abbrList})\\b(?!\\w)`,
-    'i',
+    `\\b([A-Za-z][A-Za-z ]{1,25}?)\\s+(${abbrListUpper})\\b(?!\\w)`,
   );
   const cam = q.match(cityAbbrRe);
   if (cam) {
