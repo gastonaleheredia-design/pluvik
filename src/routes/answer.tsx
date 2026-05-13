@@ -107,7 +107,7 @@ function AnswerPage() {
   // active saved address.
   const detectedPlace = (() => {
     if (typeof searchLat === 'number' && typeof searchLon === 'number') return null;
-    return extractPlaceFromQuestion(question);
+    return extractPlaceFromQuestion(question)?.place ?? null;
   })();
 
   // Stage-aware loading copy. We classify the question on the client so the
@@ -181,7 +181,7 @@ function AnswerPage() {
         }
         // If the question mentions a different US place, geocode that
         // place and use it instead of the home address.
-        const placeOverride = !coords ? extractPlaceFromQuestion(question) : null;
+        const placeOverride = !coords ? extractPlaceFromQuestion(question)?.place ?? null : null;
         if (placeOverride) {
           const geo = await geocodeAddress(placeOverride);
           if (geo.ok) {
