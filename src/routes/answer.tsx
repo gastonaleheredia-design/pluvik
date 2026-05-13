@@ -353,7 +353,28 @@ function AnswerPage() {
     if (user) {
       saveAndTrack();
     } else {
-      setShowAuthModal(true);
+      // Guest path — persist to localStorage so the work isn't lost,
+      // then nudge with a non-blocking sheet (not the auth modal).
+      try {
+        const raw = localStorage.getItem('pluvik-guest-events') || '[]';
+        const guestEvents: unknown[] = JSON.parse(raw);
+        guestEvents.push({
+          id: crypto.randomUUID(),
+          question,
+          address: resolvedAddress,
+          lat: coords?.lat,
+          lon: coords?.lon,
+          savedAt: new Date().toISOString(),
+          eventAtIso: eventAtIso ?? null,
+        });
+        localStorage.setItem(
+          'pluvik-guest-events',
+          JSON.stringify(guestEvents.slice(-5)),
+        );
+      } catch (e) {
+        console.error('[answer] guest save failed', e);
+      }
+      setShowGuestSheet(true);
     }
   };
 
