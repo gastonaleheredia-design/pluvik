@@ -984,7 +984,9 @@ export const askWeather = createServerFn({ method: 'POST' })
       event_at: new Date(
         Date.now() + (typeof hoursAhead === 'number' ? hoursAhead : 24) * 3_600_000,
       ).toISOString(),
-      data_sources: stageGatedSources,
+      data_sources: briefing.usedTomorrowIoBackup
+        ? [...stageGatedSources, 'tomorrowIoBackup']
+        : stageGatedSources,
       scenario: scenarioProfile.scenario,
       horizon: scenarioProfile.horizon,
       // Hurricane: expose the deterministic profile + minimal storm GIS so
