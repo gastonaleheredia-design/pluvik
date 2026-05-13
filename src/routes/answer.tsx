@@ -1012,14 +1012,7 @@ function AnswerPage() {
           )}
 
           {/* sentence */}
-          <div
-            style={{
-              ...verdictSentenceStyle,
-              padding: 0,
-              maxWidth: '480px',
-              marginBottom: headlineForStage ? '40px' : '32px',
-            }}
-          >
+          <div style={verdictSentenceStyle}>
             {isClimate ? climateBody : verdictSentence}
           </div>
 
