@@ -214,6 +214,8 @@ export interface MetBriefing {
   shearProfile: string;
   radarTrend: string;
   rotationSignatures: string;
+  /** True when the hourly forecast came from the Tomorrow.io free-tier backup. */
+  usedTomorrowIoBackup?: boolean;
 }
 
 async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
