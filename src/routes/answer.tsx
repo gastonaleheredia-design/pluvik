@@ -184,9 +184,10 @@ function AnswerPage() {
           coords = { lat: searchLat, lon: searchLon };
           effectiveAddress = address;
         }
-        // If the question mentions a different US place, geocode that
-        // place and use it instead of the home address.
-        const placeOverride = !coords ? extractPlaceFromQuestion(question)?.place ?? null : null;
+        // ALWAYS check the question for an explicit place — it must
+        // override URL coords (which often come from "current location"
+        // even when the user typed "in Phoenix").
+        const placeOverride = extractPlaceFromQuestion(question)?.place ?? null;
         if (placeOverride) {
           const geo = await geocodeAddress(placeOverride);
           if (geo.ok) {
