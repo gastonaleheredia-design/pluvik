@@ -139,12 +139,8 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
       .replace(/[.,!?]+$/g, '')
       .trim();
     if (!cand) continue;
-    const firstWord = cand.split(/\s+/)[0].toLowerCase();
-    if (STOP_WORDS.has(firstWord)) continue;
-    if (cand.length < 3) continue;
-    if (/^\d/.test(cand) && !/^\d{5}$/.test(cand)) continue; // skip "5 PM in …" but keep ZIPs
-    // If candidate still contains a preposition mid-string (over-capture
-    // like "5 PM in Phoenix"), strip everything before the LAST preposition.
+    // If candidate contains an inner preposition (e.g. "5 PM in Phoenix"),
+    // strip everything before the LAST preposition first.
     const innerPrep = cand.match(/\b(?:in|near|around|at|by|for|over)\s+(.+)$/i);
     if (innerPrep) {
       const inner = innerPrep[1].trim();
@@ -153,6 +149,10 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
         cand = inner;
       }
     }
+    const firstWord = cand.split(/\s+/)[0].toLowerCase();
+    if (STOP_WORDS.has(firstWord)) continue;
+    if (cand.length < 3) continue;
+    if (/^\d/.test(cand) && !/^\d{5}$/.test(cand)) continue;
     cand = normalizePlace(cand);
     const conf = classifyConfidence(cand);
     const score = conf === 'high' ? 3 : conf === 'medium' ? 2 : 1;
