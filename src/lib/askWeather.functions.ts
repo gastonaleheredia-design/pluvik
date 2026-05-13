@@ -721,7 +721,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         : '') +
       `Detected scenario: ${scenarioProfile.scenario} (${scenarioProfile.horizon}, base confidence ${scenarioProfile.confidenceBase})\n` +
       `Computed forecast confidence: ${confidence}\n` +
-      `User question: ${question}\n\n` +
+      `User question: ${distilledQuestion}\n\n` +
       (hurricaneContextBlock ? `${hurricaneContextBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
