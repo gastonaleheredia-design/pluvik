@@ -44,7 +44,7 @@ const FILLER = [
   /\b(?:do you know|i was wondering|i think|you know)\b/gi,
 ];
 
-const PREP_RE = /\b(?:in|near|around|at|by|for|over)\s+([^,.!?]+?)(?=\s+(?:tomorrow|tonight|today|this|next|on|at|by|for|about|because|—|-|\?|$|,|\.|!)|$)/gi;
+const PREP_RE = /\b(?:in|near|around|at|by|for|over)\s+([^,.!?]+?)(?=\s+(?:tomorrow|tonight|today|this|next|on|at|by|for|about|because|—|-)|[,.!?]|$)/gi;
 
 function stripFiller(s: string): string {
   let out = s;
@@ -116,13 +116,17 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     return { place: `${cityState[1]}, ${cityState[2].toUpperCase()}`, confidence: 'high' };
   }
 
-  // "City Full-State" (no comma, voice transcripts)
+  // "City Full-State" (no comma, voice transcripts). Strip a leading
+  // preposition if the regex over-captured (e.g. "in Phoenix Arizona").
   const cityFullState = q.match(
     new RegExp(`\\b([A-Za-z][A-Za-z.'-]+(?:\\s+[A-Za-z.'-]+){0,3})\\s+(${STATE_NAMES.join('|')})\\b`, 'i'),
   );
   if (cityFullState) {
-    const full = `${cityFullState[1]} ${cityFullState[2]}`;
-    return { place: normalizePlace(full), confidence: 'high' };
+    let cityPart = cityFullState[1].replace(/^(?:in|near|around|at|by|for|over)\s+/i, '').trim();
+    if (cityPart && !STOP_WORDS.has(cityPart.split(/\s+/)[0].toLowerCase())) {
+      const full = `${cityPart} ${cityFullState[2]}`;
+      return { place: normalizePlace(full), confidence: 'high' };
+    }
   }
 
   // Walk every preposition match and pick the best candidate.
