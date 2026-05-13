@@ -69,6 +69,7 @@ dewpoint-temperature spread (closer = more fog risk). Always state
 expected burn-off or clearing time. Note impact on driving, aviation,
 or marine navigation as appropriate.`;
     case 'snow':
+    case 'snow_ice':
       return `## USER INTENT — SNOW / ICE / WINTER WEATHER
 The user asked about snow, ice, or winter weather impact. Your first
 sentence MUST state expected snow accumulation or ice accretion. Format:
