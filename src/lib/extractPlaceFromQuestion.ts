@@ -151,15 +151,28 @@ function stripLeadingStopWords(raw: string): string {
 
 function classifyConfidence(candidate: string): 'high' | 'medium' | 'low' {
   const lower = candidate.toLowerCase().trim();
+
+  // ZIP code
   if (/^\d{5}$/.test(candidate)) return 'high';
+
+  // Airport code
   if (/^[A-Za-z]{3,4}$/.test(candidate) && candidate === candidate.toUpperCase()) return 'high';
+
+  // City, ST pattern
   const cs = lower.match(/^(.+),\s*([a-z]{2})$/);
   if (cs && STATE_ABBR.has(cs[2])) return 'high';
+
+  // City + full state name
   for (const state of STATE_NAMES) {
     if (lower.endsWith(' ' + state) || lower.endsWith(', ' + state)) return 'high';
   }
+
+  // Single or multi-word proper noun (title-cased) with length >= 4.
+  // If the user typed "in Houston" or "in Sedona" — they meant a place.
+  // Mapbox will validate it. We should not second-guess them with proximity.
   const words = candidate.trim().split(/\s+/);
-  if (words.length >= 2 && words.every((w) => /^[A-Z]/.test(w))) return 'medium';
+  const allTitleCase = words.every((w) => /^[A-Z]/.test(w));
+  if (allTitleCase && candidate.length >= 4) return 'high';
   if (/^[A-Z]/.test(candidate)) return 'medium';
   return 'low';
 }
