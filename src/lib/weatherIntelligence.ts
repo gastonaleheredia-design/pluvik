@@ -1,5 +1,150 @@
 import { extractEventTimeFromQuestion } from './extractEventTimeFromQuestion';
 
+/**
+ * Strip filler/hedging language from a verbose question and reconstruct a
+ * short, intent-anchored version suitable for the LLM prompt and for
+ * parseQuestion. The original raw question stays in the UI; this is the
+ * engine-facing form. Already-clean short questions are returned unchanged.
+ */
+export function distillQuestion(raw: string): string {
+  if (!raw) return raw;
+  const original = raw.trim();
+
+  // Multi-word filler phrases — order matters (longest first) so prefixes
+  // do not eat partial matches.
+  const fillerPhrases: RegExp[] = [
+    /\bor something like that\b/gi,
+    /\banything like that\b/gi,
+    /\bgoing to have any\b/gi,
+    /\bany chance of\b/gi,
+    /\bis it going to\b/gi,
+    /\bare we going to\b/gi,
+    /\bdo you know if\b/gi,
+    /\bdo you think\b/gi,
+    /\bcan you tell me\b/gi,
+    /\bi was wondering\b/gi,
+    /\bi('| a)?m not sure but\b/gi,
+    /\bi('| wa)?s wondering if\b/gi,
+    /\bwe should be worried about\b/gi,
+    /\bor whatever\b/gi,
+    /\bblah blah\b/gi,
+    /\byou know\b/gi,
+    /\bi think\b/gi,
+    /\bi believe\b/gi,
+    /\baround like\b/gi,
+    /\baround\b(?=\s+\d)/gi, // "around 7" → "7"
+    /\bkind of\b/gi,
+    /\bsort of\b/gi,
+  ];
+
+  // Single-word fillers — only stripped when surrounded by word boundaries.
+  const fillerWords: RegExp[] = [
+    /\b(?:uh|um|uhh|umm|er|hmm)\b/gi,
+    /\blike\b(?!\s+(?:to|a|the))/gi, // keep "like to", "like a", "like the"
+    /\bhey\b/gi,
+    /\betc\.?\b/gi,
+    /\bmaybe\b/gi,
+  ];
+
+  let cleaned = original;
+  for (const re of fillerPhrases) cleaned = cleaned.replace(re, ' ');
+  for (const re of fillerWords) cleaned = cleaned.replace(re, ' ');
+
+  // Collapse whitespace and stray punctuation left behind.
+  cleaned = cleaned
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,.;:])\1+/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s*[,.;:]\s*/, '')
+    .trim();
+
+  // Short + clean already? Leave it.
+  const hadFiller = cleaned.length !== original.length;
+  if (!hadFiller && original.length < 80) return original;
+
+  // Reconstruct around the canonical intent: weather concern + time + activity.
+  const lower = cleaned.toLowerCase();
+
+  const concernMatches: string[] = [];
+  const concernRules: Array<[RegExp, string]> = [
+    [/\b(rain|raining|showers?)\b/, 'rain'],
+    [/\b(storm|storms|thunderstorm|thunderstorms|severe)\b/, 'storm'],
+    [/\b(snow|snowing|snowfall|sleet|wintry mix)\b/, 'snow'],
+    [/\b(fog|foggy|visibility|mist)\b/, 'fog'],
+    [/\b(wind|windy|gusts?)\b/, 'wind'],
+    [/\b(lightning|thunder)\b/, 'lightning'],
+    [/\b(hail)\b/, 'hail'],
+    [/\b(hot|heat|sweltering)\b/, 'heat'],
+    [/\b(cold|freezing|frost)\b/, 'cold'],
+  ];
+  for (const [re, label] of concernRules) {
+    if (re.test(lower) && !concernMatches.includes(label)) concernMatches.push(label);
+  }
+
+  const activityRules: Array<[RegExp, string]> = [
+    [/\b(concrete|pour(?:ing)?|slab|foundation)\b/, 'concrete pouring'],
+    [/\b(wedding|ceremony|reception)\b/, 'an outdoor wedding'],
+    [/\b(soccer|football|baseball|softball|game|match|tournament)\b/, 'the game'],
+    [/\b(motorcycle|moto|biker)\b/, 'a motorcycle ride'],
+    [/\b(bike|cycling|bicycle|biking)\b/, 'a bike ride'],
+    [/\b(fish(?:ing)?|boat(?:ing)?|offshore)\b/, 'fishing'],
+    [/\b(roofing|painting|scaffold|crane|construction)\b/, 'construction work'],
+    [/\b(festival|concert|party|bbq|cookout)\b/, 'an outdoor event'],
+    [/\b(hike|hiking|trail)\b/, 'a hike'],
+    [/\b(run|running|jog)\b/, 'a run'],
+  ];
+  let activity: string | null = null;
+  for (const [re, label] of activityRules) {
+    if (re.test(lower)) { activity = label; break; }
+  }
+
+  // Time phrase — capture a span like "Saturday afternoon 3-6 PM" / "tomorrow morning at 7 AM".
+  const timePatterns: RegExp[] = [
+    /\b(?:this|next|on)?\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend)(?:\s+(?:morning|afternoon|evening|night))?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*(?:to|–|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)?/i,
+    /\btomorrow(?:\s+(?:morning|afternoon|evening|night))?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/i,
+    /\btonight\b/i,
+    /\bthis (?:morning|afternoon|evening|weekend)\b/i,
+    /\b(?:in\s+\d+\s+(?:hours?|days?))\b/i,
+    /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\s*(?:to|–|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?/i,
+    /\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i,
+  ];
+  let timePhrase: string | null = null;
+  for (const re of timePatterns) {
+    const m = cleaned.match(re);
+    if (m) {
+      timePhrase = m[0]
+        .replace(/^\s*on\s+/i, '')
+        .replace(/^\s*at\s+/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      break;
+    }
+  }
+
+  // If we have nothing structured to rebuild from, just return the cleaned text.
+  if (!concernMatches.length && !activity && !timePhrase) {
+    return cleaned.length < original.length ? cleaned : original;
+  }
+
+  const concernPart = concernMatches.length
+    ? concernMatches.length === 1
+      ? concernMatches[0]
+      : concernMatches.slice(0, 2).join(' or ')
+    : 'be a problem';
+
+  const verb = concernMatches.length ? 'Will it' : 'Will the weather';
+  const timeBit = timePhrase ? ` ${timePhrase}` : '';
+  const activityBit = activity ? ` for ${activity}` : '';
+
+  const rebuilt = `${verb} ${concernPart}${timeBit}${activityBit}?`
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Safety: never return an empty string. Fall back to cleaned if rebuild
+  // somehow collapsed.
+  return rebuilt.length > 5 ? rebuilt : cleaned || original;
+}
+
 export type ActivityType =
   | 'concrete'
   | 'outdoor_event'
