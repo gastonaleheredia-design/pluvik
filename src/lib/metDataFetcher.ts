@@ -487,20 +487,26 @@ function computeModelSpread(values: number[]): {
 }
 
 async function fetchRadarCells(lat: number, lon: number): Promise<string> {
-  // Try IEM's current storm-attrs JSON first. If it (or the radar-stations
-  // probe) is unreachable / returns HTML / wrong shape, fall through to
-  // the clearly-labeled HRRR nowcast grid.
+  // Pull NEXRAD Level III storm-attribute table from IEM. This includes
+  // the fields the older `nexrad_storm_attrs.json` endpoint was missing:
+  // motion vector, hail size, VIL, TVS (tornado vortex sig), MESO
+  // (mesocyclone). Falls back to the legacy positions-only endpoint, then
+  // finally to the clearly-labeled HRRR nowcast grid.
   const cosLat = Math.cos(lat * Math.PI / 180) || 1;
   const HEADERS = { 'User-Agent': 'Pluvik-Weather/1.0' };
 
-  // Step 1: primary cell list
-  try {
-    const url =
-      `https://mesonet.agron.iastate.edu/api/1/nexrad_storm_attrs.json` +
-      `?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=150`;
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(4000) });
-    const ct = res.headers.get('content-type') ?? '';
-    if (res.ok && ct.includes('json')) {
+  const ENDPOINTS = [
+    // Level III storm-attribute table (motion, hail, VIL, TVS, MESO).
+    `https://mesonet.agron.iastate.edu/api/1/nexrad3_attr.json?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=150`,
+    // Legacy positions-only fallback in case the L3 endpoint is offline.
+    `https://mesonet.agron.iastate.edu/api/1/nexrad_storm_attrs.json?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=150`,
+  ];
+
+  for (const url of ENDPOINTS) {
+    try {
+      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(4000) });
+      const ct = res.headers.get('content-type') ?? '';
+      if (!res.ok || !ct.includes('json')) continue;
       const data = await res.json();
       const raw: any[] =
         (Array.isArray(data?.features) && data.features) ||
@@ -515,7 +521,13 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
         const dirDeg = props.drct ?? props.dir ?? props.motion_dir ?? null;
         const sknt = props.sknt ?? props.speed_kt ?? null;
         const mph = sknt != null ? Math.round(sknt * 1.15078) : (props.mph ?? null);
-        return { cLat, cLon, dbz, dirDeg, mph };
+        const vil = props.vil ?? props.VIL ?? null;
+        const hailSize = props.max_size ?? props.hail_size ?? props.poh ?? null;
+        const tvs = (props.tvs ?? props.TVS ?? '').toString().toUpperCase().startsWith('Y') ||
+                    props.tvs === true;
+        const meso = (props.meso ?? props.MESO ?? '').toString().toUpperCase().startsWith('Y') ||
+                     props.meso === true;
+        return { cLat, cLon, dbz, dirDeg, mph, vil, hailSize, tvs, meso };
       }).filter(c => c.cLat != null && c.cLon != null && c.dbz > 0);
 
       if (cells.length > 0) {
@@ -544,35 +556,49 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
           const motionTxt = c.dirDeg != null
             ? `${c.dirDeg}°(toward ${motionLabel}) at ${c.mph ?? '?'}mph`
             : '? mph';
+          const extras: string[] = [];
+          if (c.vil != null) extras.push(`VIL:${c.vil}`);
+          if (c.hailSize != null && c.hailSize > 0) extras.push(`Hail:${c.hailSize}"`);
+          if (c.tvs) extras.push('TVS:Y');
+          if (c.meso) extras.push('MESO:Y');
+          const extrasTxt = extras.length ? ` | ${extras.join(' | ')}` : '';
           return (
             `Cell ${compassDir} at ${distMi}mi | dBZ:${c.dbz} | Motion:${motionTxt}` +
+            extrasTxt +
             ` | TYPE:${cellTypeLabel(klass.type)} | INTENSITY:${klass.intensityWord}` +
             ` | THREAT:${klass.primaryThreat}${interceptLine}`
           );
         });
         putStructuredCells(`${lat.toFixed(3)},${lon.toFixed(3)}`, structured);
-        return `LIVE NEXRAD CELLS (IEM storm attrs, ~150 mi radius):\n${lines.join('\n')}`;
+        const sourceLabel = url.includes('nexrad3_attr')
+          ? 'LIVE NEXRAD LEVEL III STORM ATTRIBUTES (motion, VIL, hail, TVS, MESO; ~150 mi radius)'
+          : 'LIVE NEXRAD CELLS (IEM storm attrs, ~150 mi radius)';
+        return `${sourceLabel}:\n${lines.join('\n')}`;
       }
-
-      // Primary returned 200/JSON but no cells — confirm IEM radar service
-      // is up via the stations probe before declaring "empty radar".
-      try {
-        const probe = await fetch(
-          'https://mesonet.agron.iastate.edu/json/radar_stations.json',
-          { headers: HEADERS, signal: AbortSignal.timeout(3000) },
-        );
-        const probeCt = probe.headers.get('content-type') ?? '';
-        if (probe.ok && probeCt.includes('json')) {
-          radarFallbackInUse = false;
-          return 'LIVE NEXRAD: No active cells within 150 mi (IEM storm-attrs returned empty).';
-        }
-      } catch { /* fall through to HRRR fallback */ }
+      // Endpoint reachable but no cells — try the next endpoint, otherwise
+      // we'll confirm "empty" via the stations probe below.
+    } catch (e) {
+      console.warn('[radar] endpoint failed', url, (e as Error).message);
     }
-  } catch (e) {
-    console.warn('[radar] IEM storm-attrs probe failed', e);
   }
 
-  // Step 3: HRRR fallback — clearly labeled inside the function.
+  // All cell endpoints returned no cells (or failed). Probe the stations
+  // index — if IEM is up, declare "empty radar"; otherwise fall through.
+  try {
+    const probe = await fetch(
+      'https://mesonet.agron.iastate.edu/json/radar_stations.json',
+      { headers: HEADERS, signal: AbortSignal.timeout(3000) },
+    );
+    const probeCt = probe.headers.get('content-type') ?? '';
+    if (probe.ok && probeCt.includes('json')) {
+      radarFallbackInUse = false;
+      return 'LIVE NEXRAD: No active cells within 150 mi (IEM Level III storm-attrs returned empty).';
+    }
+  } catch (e) {
+    console.warn('[radar] IEM stations probe failed', e);
+  }
+
+  // Final fallback: HRRR nowcast grid — clearly labeled inside the function.
   radarFallbackInUse = true;
   return await fetchRadarCellsFromGrid(lat, lon);
 }
