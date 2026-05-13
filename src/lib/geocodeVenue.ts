@@ -99,37 +99,69 @@ export async function geocodeVenueNear(
   if (!query.trim()) return null;
   const { skipProximityGuard = false, skipProximityBias = false } = options;
 
-  try {
-    const params = new URLSearchParams({
-      access_token: MAPBOX_TOKEN,
-      country: 'US',
-      limit: '1',
-      types: 'poi,address,place,locality,neighborhood',
-      autocomplete: 'true',
-    });
-
-    if (proximity && !skipProximityBias) {
-      params.set('proximity', `${proximity.lon},${proximity.lat}`);
+  const attemptGeocode = async (withProximity: boolean): Promise<{
+    place: GeocodedPlace;
+    placeType: string;
+  } | null> => {
+    try {
+      const params = new URLSearchParams({
+        access_token: MAPBOX_TOKEN,
+        country: 'US',
+        limit: '1',
+        types: 'poi,address,place,locality,neighborhood',
+        autocomplete: 'true',
+      });
+      if (proximity && withProximity) {
+        params.set('proximity', `${proximity.lon},${proximity.lat}`);
+      }
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const f = data?.features?.[0];
+      if (!f?.center || f.center.length !== 2) return null;
+      const [lon, lat] = f.center as [number, number];
+      const placeType: string = (f.place_type?.[0] ?? 'unknown') as string;
+      return {
+        place: { label: f.place_name ?? f.text ?? query, lat, lon },
+        placeType,
+      };
+    } catch {
+      return null;
     }
+  };
 
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`,
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const f = data?.features?.[0];
-    if (!f?.center || f.center.length !== 2) return null;
-    const [lon, lat] = f.center as [number, number];
+  // First attempt — with proximity bias if available
+  const firstResult = await attemptGeocode(!skipProximityBias && proximity != null);
+  if (!firstResult) return null;
+  const { place, placeType } = firstResult;
+  const { lat, lon } = place;
 
-    if (proximity && !skipProximityGuard) {
-      const distMi = haversineMiles(proximity.lat, proximity.lon, lat, lon);
-      if (distMi > 150) return null;
+  // If the result is a street address or POI (not a city/locality) AND
+  // the query looks like a standalone city name, retry without proximity bias.
+  // Catches "Houston" resolving to "Rain Street, La Crosse" near the user.
+  const looksLikeCityQuery = /^[A-Z][a-zA-Z\s]{1,30}$/.test(query.trim())
+    && !/\b(street|st|ave|avenue|blvd|road|rd|drive|dr|lane|ln|way|court|ct|place|pl)\b/i.test(query);
+  const isStreetResult = placeType === 'address' || placeType === 'poi';
+
+  if (looksLikeCityQuery && isStreetResult && proximity && !skipProximityBias) {
+    const canonicalResult = await attemptGeocode(false);
+    if (canonicalResult && (
+      canonicalResult.placeType === 'place' ||
+      canonicalResult.placeType === 'locality' ||
+      canonicalResult.placeType === 'region'
+    )) {
+      return canonicalResult.place;
     }
-
-    return { label: f.place_name ?? f.text ?? query, lat, lon };
-  } catch {
-    return null;
   }
+
+  if (proximity && !skipProximityGuard && !skipProximityBias) {
+    const distMi = haversineMiles(proximity.lat, proximity.lon, lat, lon);
+    if (distMi > 150) return null;
+  }
+
+  return place;
 }
 
 function haversineMiles(
