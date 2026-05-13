@@ -161,14 +161,14 @@ function severeTypeLabel(t: SevereType, lang: string): string {
     tornadic: 'TORNADIC',
     damaging_wind: 'DAMAGING WIND',
     large_hail: 'LARGE HAIL',
-    flooding: 'FLOODING',
+    flood: 'FLOODING',
     non_severe: 'NON-SEVERE',
   };
   const es: Record<SevereType, string> = {
     tornadic: 'TORNÁDICO',
     damaging_wind: 'VIENTOS DAÑINOS',
     large_hail: 'GRANIZO GRANDE',
-    flooding: 'INUNDACIÓN',
+    flood: 'INUNDACIÓN',
     non_severe: 'NO SEVERO',
   };
   return (isEs(lang) ? es : en)[t];
