@@ -8,25 +8,25 @@ export type ForecastIntent =
   | 'temperature'
   | 'rain_chance'
   | 'storm_risk'
-  | 'tornado_risk'
-  | 'snow'
-  | 'wind'
-  | 'heat_index'
-  | 'humidity'
-  | 'air_quality'
-  | 'uv_index'
-  | 'visibility'
-  | 'fog'
-  | 'lightning'
-  | 'flooding'
   | 'severe_weather'
-  | 'marine'
-  | 'aviation'
-  | 'outdoor_comfort'
+  | 'tornado_risk'
+  | 'lightning'
+  | 'wind'
+  | 'humidity'
+  | 'heat_index'
+  | 'fog'
+  | 'visibility'
+  | 'snow'
+  | 'snow_ice'
+  | 'flood'
   | 'plan_impact'
   | 'nowcast'
+  | 'air_quality'
+  | 'uv_index'
+  | 'marine'
   | 'fire_weather'
   | 'altitude'
+  | 'aviation'
   | 'drought'
   | 'general';
 
@@ -72,6 +72,7 @@ export function variablesForIntent(intent: ForecastIntent): string[] {
     case 'visibility':
       return ['visibility', 'humidity', 'dewpoint'];
     case 'snow':
+    case 'snow_ice':
       return ['snowfall', 'temperature', 'precipitation_probability'];
     case 'plan_impact':
       return ['precipitation_probability', 'precipitation', 'temperature',

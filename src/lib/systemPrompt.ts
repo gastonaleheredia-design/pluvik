@@ -69,6 +69,7 @@ dewpoint-temperature spread (closer = more fog risk). Always state
 expected burn-off or clearing time. Note impact on driving, aviation,
 or marine navigation as appropriate.`;
     case 'snow':
+    case 'snow_ice':
       return `## USER INTENT — SNOW / ICE / WINTER WEATHER
 The user asked about snow, ice, or winter weather impact. Your first
 sentence MUST state expected snow accumulation or ice accretion. Format:
@@ -124,7 +125,7 @@ location. Format: "[Location] is currently in [D0 Abnormally Dry / D1
 Moderate / D2 Severe / D3 Extreme / D4 Exceptional] drought." Then note
 fire risk, any water restriction context, and when meaningful rainfall
 is next expected.`;
-    case 'flooding':
+    case 'flood':
       return `## USER INTENT — FLOODING / FLASH FLOOD RISK
 The user asked about flood or flash flood risk. Lead with whether a Flash
 Flood Watch or Warning is active. Then state the WPC Excessive Rainfall
