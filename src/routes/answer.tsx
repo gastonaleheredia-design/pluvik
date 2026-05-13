@@ -187,11 +187,13 @@ function AnswerPage() {
           if (geo.ok) {
             coords = { lat: geo.lat, lon: geo.lon };
             effectiveAddress = placeOverride;
-          } else if (geo.reason === 'out_of_coverage') {
-            setStatus('out_of_coverage');
-            return;
+          } else {
+            // Detected place failed (timeout, not_found, network, or
+            // out-of-coverage). Silently fall back to the active address
+            // rather than showing a generic error — the user still gets
+            // a useful answer for where they are.
+            console.warn('[location] geocode failed for detected place, falling back to active address', { placeOverride, reason: geo.reason });
           }
-          // If not_found / network, silently fall back to the home address.
         }
         if (!coords) {
           if (selectedAddress.lat && selectedAddress.lon) {
