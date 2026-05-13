@@ -788,7 +788,7 @@ function AnswerPage() {
   // Stage drives the visual weight of the answer sentence.
   // Climate and outlook answers should look tentative — smaller, more muted.
   // Short range and live answers should look confident — full size, full ink.
-  const verdictSentenceStyle: React.CSSProperties = {
+  const verdictSentenceStyle: CSSProperties = {
     fontFamily: 'Fraunces, serif',
     fontStyle: 'italic',
     fontWeight: 300,
