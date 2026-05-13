@@ -161,16 +161,21 @@ export async function geocodeVenueNear(
     if (distMi > 150) return null;
   }
 
-  // Name-match guard for venue/POI queries.
-  // Mapbox is a geocoder, not a business directory — for an unknown business
-  // like "Bumpy Pickle's" it will fall back to the closest-sounding street
-  // name ("Pickles Drive"). Reject results whose label shares no meaningful
-  // word with the query so we don't silently substitute a wrong location.
+  // Business-name guard. Mapbox is a geocoder, not a business directory:
+  // for an unknown venue like "Bumpy Pickle's" it falls back to the closest-
+  // sounding street ("Pickles Drive"). If the query clearly names a business
+  // (apostrophe-s possessive) and Mapbox only returned a street address,
+  // reject — the caller should fall back to the user's saved address.
+  const looksLikeBusinessName = /['']s\b/.test(query) || /\b(pickle|grill|cafe|bar|club|gym|park|center|centre|pub|brewery|restaurant|bakery|kitchen|lounge|studio|store|shop|market)\b/i.test(query);
+  if (looksLikeBusinessName && placeType === 'address') return null;
+
+  // Generic name-match guard for address fallbacks: reject if the result
+  // shares no meaningful word with the query.
   if (placeType === 'address' && !skipProximityBias) {
     const queryTokens = tokenize(query);
     const labelTokens = tokenize(place.label);
     const significantOverlap = queryTokens.some(
-      (t) => t.length >= 4 && labelTokens.some((lt) => lt === t || lt.startsWith(t) || t.startsWith(lt)),
+      (t) => t.length >= 4 && labelTokens.some((lt) => lt === t),
     );
     if (!significantOverlap) return null;
   }
