@@ -373,12 +373,14 @@ export function parseQuestion(question: string): ParsedQuestion {
       'Always cite the advisory number and storm category.',
     hiking:
       'HIGH sensitivity to lightning and afternoon storms above treeline. ' +
-      'Temperature drops ~3.5°F per 1,000 ft elevation gain — state summit temp. ' +
-      'Wind chill at summit can be extreme even on warm days. ' +
-      'CRITICAL: afternoon thunderstorms are the primary danger — give hard turnaround time. ' +
-      'Rain makes trails muddy and slippery — moderate sensitivity. ' +
+      'Temperature drops ~3.5°F per 1,000 ft elevation gain from the trailhead. ' +
+      'CRITICAL rule: give a hard turnaround time of 11 AM or earlier for peaks above 12,000 ft. ' +
+      'Afternoon thunderstorms are the primary danger — state clearly if storms build after noon. ' +
+      'Do NOT attempt to calculate summit temperature from sea-level data. ' +
+      'Instead state: trailhead conditions + the general alpine rule of thumb. ' +
       'Lightning within any distance above treeline = descend immediately. ' +
-      'Ideal: clear AM, summit by 10-11 AM, off exposed ridges by noon.',
+      'If afternoon storm risk exists at any level, verdict is CAUTION at minimum. ' +
+      'Keep the JSON response under 400 tokens — be concise.',
     running:
       'MODERATE weather sensitivity. ' +
       'Heat index above 90°F = caution, above 103°F = dangerous — high exertion accelerates heat illness. ' +
