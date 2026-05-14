@@ -250,21 +250,20 @@ export function parseQuestion(question: string): ParsedQuestion {
 
   const activityType: ActivityType =
     /concrete|pour|pouring|slab|foundation/.test(q) ? 'concrete' :
-    /\bmarathon\b|\bhalf marathon\b|\b10k\b|\b5k\b|race day/.test(q) ? 'marathon' :
-    /\bpropos(e|al|ing)\b|\bengagement\b|pop the question|ring/.test(q) ? 'proposal' :
     /wedding|ceremony|reception|bride|groom/.test(q) ? 'wedding' :
-    /\bgolf|tee time|round of golf|18 holes\b/.test(q) ? 'golf' :
-    /\bmarathon\b/.test(q) ? 'marathon' :
-    /\brun|running|jog|jogging\b/.test(q) ? 'running' :
-    /\bhike|hiking|trail|summit|trek|backpack/.test(q) ? 'hiking' :
-    /\byoga|meditation|stretch session\b/.test(q) ? 'yoga' :
-    /\bbeach|shore|surf|swim|ocean swim|sunbath/.test(q) ? 'beach' :
-    /\bdog walk|walk(?:ing)? the dog|walk my dog|puppy walk\b/.test(q) ? 'dog_walking' :
-    /soccer|football|baseball|softball|game|match|tournament|sport/.test(q) ? 'sports' :
+    /proposal|propose|engagement|will you marry/.test(q) ? 'proposal' :
+    /marathon|race|5k|10k|half marathon|full marathon/.test(q) ? 'marathon' :
+    /soccer|football|baseball|softball|game|match|tournament|sport|volleyball|tennis|pickleball/.test(q) ? 'sports' :
+    /golf|tee time|round of golf|golf course/.test(q) ? 'golf' :
     /motorcycle|moto|ride|biker/.test(q) ? 'motorcycle' :
     /bike|cycling|bicycle|biking/.test(q) ? 'cycling' :
     /fish|fishing|boat|boating|offshore|bay/.test(q) ? 'fishing' :
     /construction|roofing|painting|scaffold|crane/.test(q) ? 'construction' :
+    /hike|hiking|trail|summit|mountain|peak|fourteener|treeline/.test(q) ? 'hiking' :
+    /run|running|jog|jogging/.test(q) ? 'running' :
+    /dog walk|walk.*dog|dog.*walk|walk.*puppy/.test(q) ? 'dog_walking' :
+    /beach|swimming|surf|ocean|lake swim|pool/.test(q) ? 'beach' :
+    /yoga|meditation|outdoor class|fitness class/.test(q) ? 'yoga' :
     /fog|foggy|visibility|mist|haze/.test(q) ? 'fog_visibility' :
     /lightning|thunder/.test(q) ? 'lightning_risk' :
     /hurricane|tropical|storm surge|cyclone/.test(q) ? 'hurricane' :
