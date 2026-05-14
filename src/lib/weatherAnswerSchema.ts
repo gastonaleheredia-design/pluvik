@@ -167,25 +167,26 @@ function normalizeRawAnswer(raw: unknown): unknown {
     return 'watch';
   };
 
-  const hz = r.hazards as Record<string, Record<string, unknown>> | null | undefined;
+  const hz = r.hazards as Record<string, unknown> | null | undefined;
   if (hz && typeof hz === 'object') {
     for (const key of Object.keys(hz)) {
       const h = hz[key];
       if (typeof h === 'string') {
         const s = h.trim().toLowerCase();
         if (['none', 'low', 'medium', 'high'].includes(s)) {
-          (hz as Record<string, unknown>)[key] = s;
+          hz[key] = s;
         } else if (s === 'med' || s === 'moderate') {
-          (hz as Record<string, unknown>)[key] = 'medium';
+          hz[key] = 'medium';
         } else if (!s) {
-          (hz as Record<string, unknown>)[key] = 'none';
+          hz[key] = 'none';
         }
         continue;
       }
       if (h && typeof h === 'object' && 'severity' in h) {
-        const coerced = sev(h.severity);
-        if (coerced) h.severity = coerced;
-        else delete h.severity;
+        const ho = h as Record<string, unknown>;
+        const coerced = sev(ho.severity);
+        if (coerced) ho.severity = coerced;
+        else delete ho.severity;
       }
     }
   }
