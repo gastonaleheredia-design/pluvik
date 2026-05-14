@@ -310,7 +310,7 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
       : '';
 
     return [
-      `CURRENT OBS (${stationId} · ${distMiles} mi from user · obs age: ${ageMin ?? '?'} min):`,
+      `CURRENT OBS (${stationId} · ${distMiles} mi from user · obs age: ${ageMin ?? '?'} min${distMiles > 15 ? ' · ⚠ STATION MAY BE AT LOWER ELEVATION THAN FORECAST LOCATION' : ''}):`,
       stalenessWarning,
       elevationWarning,
       tempF != null ? `Temp: ${tempF}°F` : '',
