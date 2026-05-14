@@ -220,6 +220,9 @@ export type Database = {
           current_verdict_word: string | null
           event_at: string | null
           event_phrase: string | null
+          final_forecast_sentence: string | null
+          final_forecast_stage: string | null
+          final_forecast_verdict: string | null
           id: string
           is_active: boolean | null
           last_checked_at: string | null
@@ -227,6 +230,7 @@ export type Database = {
           last_significant_change_at: string | null
           lat: number | null
           lon: number | null
+          outcome_recorded: boolean
           question: string
           resolved_address: string | null
           resolved_lat: number | null
@@ -251,6 +255,9 @@ export type Database = {
           current_verdict_word?: string | null
           event_at?: string | null
           event_phrase?: string | null
+          final_forecast_sentence?: string | null
+          final_forecast_stage?: string | null
+          final_forecast_verdict?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
@@ -258,6 +265,7 @@ export type Database = {
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
+          outcome_recorded?: boolean
           question: string
           resolved_address?: string | null
           resolved_lat?: number | null
@@ -282,6 +290,9 @@ export type Database = {
           current_verdict_word?: string | null
           event_at?: string | null
           event_phrase?: string | null
+          final_forecast_sentence?: string | null
+          final_forecast_stage?: string | null
+          final_forecast_verdict?: string | null
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
@@ -289,6 +300,7 @@ export type Database = {
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
+          outcome_recorded?: boolean
           question?: string
           resolved_address?: string | null
           resolved_lat?: number | null
