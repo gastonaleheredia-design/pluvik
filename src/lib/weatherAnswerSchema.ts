@@ -319,6 +319,10 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
     if (!d.why_this_risk && typeof d.mechanism === 'string') {
       d.why_this_risk = d.mechanism;
     }
+    // Alias event_window → before_during_after for the answer screen UI.
+    if (!d.before_during_after && d.event_window) {
+      d.before_during_after = d.event_window;
+    }
     // Derive minimal-view fields if the model didn't return them.
     if (!d.verdict_word) {
       const v = d.verdict;

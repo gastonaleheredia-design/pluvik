@@ -349,24 +349,18 @@ Return ONLY valid JSON matching this schema:
     "model_reconciliation": "how HRRR/ECMWF/NDFD timing compares",
     "why_uncertain": "one sentence on the specific source of uncertainty"
   } | null,
-  "before_during_after": {
-    "before": "One sentence about conditions BEFORE the event window starts",
+  "event_window": {
+    "before": "One sentence about conditions BEFORE the event window",
     "during": "One sentence about conditions DURING the event window — most important",
     "after": "One sentence about conditions AFTER the event window ends"
   } | null,
   "hazards": {
-    "rain": "none" | "low" | "medium" | "high",
-    "rain_note": "brief phrase or null",
-    "lightning": "none" | "low" | "medium" | "high",
-    "lightning_note": "brief phrase or null",
-    "wind": "none" | "low" | "medium" | "high",
-    "wind_note": "brief phrase or null",
-    "heat": "none" | "low" | "medium" | "high",
-    "heat_note": "brief phrase or null",
-    "cold": "none" | "low" | "medium" | "high",
-    "cold_note": "brief phrase or null",
-    "flood": "none" | "low" | "medium" | "high",
-    "flood_note": "brief phrase or null"
+    "rain":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
+    "lightning":  { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
+    "wind":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
+    "heat":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
+    "cold_front": { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
+    "fog":        { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" }
   } | null
 }
 
