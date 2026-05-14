@@ -812,13 +812,59 @@ function AnswerPage() {
       }))
     : undefined;
 
-  // 3-up vitals row. We always show CHANCE (the headline number), then up to
-  // two scenario-relevant facts pulled from the validated answer.
-  const chanceValue = typeof answer.percentage === 'number' ? `${answer.percentage}%` : '—';
+  // 3-up vitals row. The leading metric adapts to what the user actually
+  // asked about — never show rain chance as the headline for a heat,
+  // wind, or marine question.
+  const primaryMetric = (() => {
+    switch (intent) {
+      case 'heat_index':
+      case 'temperature':
+        return {
+          label: 'HEAT INDEX',
+          value: headlineNumber?.label === 'HEAT INDEX'
+            ? headlineNumber.value
+            : answer.main_concern ?? '—',
+        };
+      case 'wind':
+        return {
+          label: 'WIND GUSTS',
+          value: headlineNumber?.value ?? `${answer.percentage ?? 0}%`,
+        };
+      case 'marine':
+        return {
+          label: 'SEA CONDITIONS',
+          value: headlineNumber?.value ?? answer.main_concern ?? '—',
+        };
+      case 'air_quality':
+        return {
+          label: 'AQI',
+          value: headlineNumber?.value ?? answer.main_concern ?? '—',
+        };
+      case 'uv_index':
+        return {
+          label: 'UV INDEX',
+          value: headlineNumber?.value ?? '—',
+        };
+      case 'snow':
+      case 'snow_ice':
+        return {
+          label: 'SNOW EXPECTED',
+          value: headlineNumber?.value ?? `${answer.percentage ?? 0}%`,
+        };
+      default:
+        // Rain chance is correct for rain, storm, plan_impact, general
+        return {
+          label: 'CHANCE OF RAIN',
+          value: `${answer.percentage ?? 0}%`,
+        };
+    }
+  })();
   const vitals: Array<{ label: string; value: string }> = [
-    { label: 'CHANCE OF RAIN', value: chanceValue },
+    primaryMetric,
     ...(answer.time_context ? [{ label: 'WINDOW', value: answer.time_context }] : []),
-    ...(answer.main_concern ? [{ label: 'MAIN CONCERN', value: answer.main_concern }] : []),
+    ...(answer.main_concern && answer.main_concern !== primaryMetric.value
+      ? [{ label: 'MAIN CONCERN', value: answer.main_concern }]
+      : []),
   ].slice(0, 3);
 
   // "What you'll feel" — sensory sentence. Use current_conditions, falling
