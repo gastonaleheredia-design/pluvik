@@ -836,6 +836,34 @@ export const askWeather = createServerFn({ method: 'POST' })
     if (!validated.ok || modelError) {
       if (modelError) console.warn('[askWeather] using HRRR fallback due to model error');
       else console.warn('[askWeather] schema validation failed:', validated.issues);
+      // Alpine fallback — for hiking/altitude questions that fail LLM validation,
+      // return the best available temperature and wind data directly.
+      if (!rawAnswer && (intent === 'altitude' || parsed.activityType === 'hiking')) {
+        const hourlyLines = (briefing.hourlyForecast ?? '').split('\n').filter((l) => l.trim());
+        const targetLine = hourlyLines[Math.min(
+          Math.round(typeof hoursAhead === 'number' ? hoursAhead : 12),
+          hourlyLines.length - 1,
+        )];
+        const tempMatch = targetLine?.match(/(\d+)°F/);
+        const windMatch = targetLine?.match(/Wind:(\d+)mph/);
+        const temp = tempMatch ? parseInt(tempMatch[1]) : null;
+        const wind = windMatch ? parseInt(windMatch[1]) : null;
+        const alpineSummary = temp != null
+          ? `Temperature at this location: ${temp}°F${wind != null ? `, winds ${wind} mph` : ''}. Check NWS point forecast for summit-specific conditions and afternoon lightning risk.`
+          : 'Unable to retrieve mountain forecast. Check weather.gov for summit conditions and plan for afternoon lightning risk above treeline.';
+        return {
+          verdict: 'CAUTION',
+          verdict_word: 'MAYBE',
+          verdict_sentence: alpineSummary,
+          summary: alpineSummary,
+          main_concern: 'Check summit forecast — alpine conditions require NWS point forecast',
+          confidence: 'LOW',
+          percentage: 50,
+          forecast_stage: stageInfo.stage,
+          mode,
+          activity_type: 'hiking',
+        } as unknown as ExtendedWeatherAnswer;
+      }
       // Try a deterministic fallback derived from HRRR hourly data so the
       // user still gets a meaningful rain answer.
       // Never use the rain fallback for hiking/altitude questions.
