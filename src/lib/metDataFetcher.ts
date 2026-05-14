@@ -389,7 +389,6 @@ async function fetchHRRRForecast(lat: number, lon: number, hoursAhead: number): 
         `DP:${Math.round(h.dewpoint_2m?.[i] ?? 0)}°F ` +
         `POP:${pop ?? 0}% ` +
         `Precip:${(precip ?? 0).toFixed(2)}" ` +
-        (snowfall != null && snowfall > 0 ? `Snow:${snowfall.toFixed(1)}cm ` : '') +
         `Wind:${Math.round(wind ?? 0)}mph ` +
         (flags.length ? `[${flags.join(' ')}]` : '')
       );
