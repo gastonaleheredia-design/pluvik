@@ -104,12 +104,22 @@ Then AQI if available. Then note wind direction relative to any active fires
 and visibility impact. If no active fire threat, say so clearly first.`;
     case 'altitude':
       return `## USER INTENT — HIGH ALTITUDE / MOUNTAIN / HIKING
-The user asked about mountain or high-altitude conditions. Your first
-sentence MUST state the temperature and wind at the target elevation.
-Format: "At [X] ft, expect [Y]°F with winds [Z] mph." Then state the
-temperature drop rate (~3.5°F per 1,000 ft gain). Always note afternoon
-lightning risk explicitly — this is the primary safety concern above
-treeline. Give a hard turnaround time if afternoon storms are forecast.`;
+The user is asking about hiking or mountain conditions.
+
+CRITICAL INSTRUCTIONS:
+- Use the temperature and wind data from the HRRR hourly forecast AS-IS.
+  Do NOT attempt to calculate or adjust for elevation — you don't have
+  the actual elevation of the specific point.
+- The primary concerns for above-treeline hiking are:
+  1. Afternoon thunderstorm/lightning risk (check CAPE and storm data)
+  2. Wind speed (above 35mph = dangerous on exposed ridges)
+  3. Temperature (below 40°F with wind = hypothermia risk)
+  4. Precipitation type (snow vs rain matters at altitude)
+- Always give a HARD TURNAROUND TIME of no later than 11 AM if any
+  afternoon storm signal exists.
+- If lightning risk is present at any level, verdict is CAUTION minimum.
+- Keep your JSON response concise — under 300 tokens total.
+- verdict_sentence must be 12 words or fewer. No exceptions.`;
     case 'aviation':
       return `## USER INTENT — AVIATION / FLYING
 The user asked about flying conditions. Your first sentence MUST state
