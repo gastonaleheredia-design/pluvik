@@ -104,11 +104,17 @@ export async function geocodeVenueNear(
     placeType: string;
   } | null> => {
     try {
+      const landmarkPrefixes = /^(mount|mt\.?|lake|river|park|trail|peak|summit|canyon|falls|beach|bay|harbor|island|forest|national|state)\b/i;
+      const isLandmarkQuery = landmarkPrefixes.test(query.trim());
       const params = new URLSearchParams({
         access_token: MAPBOX_TOKEN,
         country: 'US',
         limit: '1',
-        types: 'poi,address,place,locality,neighborhood',
+        // For landmark queries, exclude address and street results entirely.
+        // "Mount Elbert" should return the mountain POI, not "Mount Elbert Road".
+        types: isLandmarkQuery
+          ? 'poi,place,locality,neighborhood,region'
+          : 'poi,address,place,locality,neighborhood',
         autocomplete: 'true',
       });
       if (proximity && withProximity) {
