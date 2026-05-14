@@ -643,6 +643,19 @@ function AnswerPage() {
      hoursAhead != null && hoursAhead <= 24 ? 'TOMORROW' :
      'UPCOMING');
 
+  // When the LLM fails but we have a rain fallback, show it clearly
+  // rather than saying "try again" — that erodes trust.
+  const fallback = answer.main_concern ? answer : null;
+  const fallbackAction = fallback
+    ? `Based on forecast data: ${fallback.main_concern}. ${
+        fallback.verdict === 'GO'
+          ? 'Conditions look manageable.'
+          : fallback.verdict === 'NO-GO'
+          ? 'Conditions look problematic.'
+          : 'Conditions are uncertain — check back closer to your event.'
+      }`
+    : 'Check back in a few minutes — weather data is updating.';
+
   // ── FORECAST MATURITY LADDER ─────────────────────────────────────────
   // Always visible. Always honest about where the data is in the pipeline.
   // Completed steps filled, current step accented, future steps empty.
@@ -1489,7 +1502,7 @@ function AnswerPage() {
           facts={facts}
           story={answer.summary}
           verdict={verdict}
-          action={answer.action ?? t('answer.error_message')}
+          action={answer.action ?? fallbackAction}
           confidence={answer.confidence}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
