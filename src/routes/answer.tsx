@@ -1355,7 +1355,7 @@ function AnswerPage() {
                             fontFamily: 'Inter, sans-serif',
                             fontSize: '0.68rem', lineHeight: 1.3, color: INK,
                           }}>
-                            {isActive ? (hazards as Record<string, string | undefined>)[`${cell.key}_note`] ?? level : 'None'}
+                            {isActive ? h?.note ?? level : 'None'}
                           </span>
                         </div>
                       );
