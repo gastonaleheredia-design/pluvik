@@ -1120,187 +1120,336 @@ function AnswerPage() {
 
           {/* ── Briefing block: rain strip + vitals + feel + verdict pill ── */}
           {showBriefingBlock && (
-            <div style={{ marginBottom: '32px', maxWidth: '520px' }}>
-              {/* 12-hour rain strip */}
-              <div style={{ marginBottom: '24px' }}>
-                <div
-                  style={{
-                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                    fontSize: '0.55rem',
-                    letterSpacing: '0.18em',
-                    color: MUTED,
-                    marginBottom: '8px',
-                  }}
-                >
-                  NEXT 12 HOURS FROM NOW
-                </div>
-                <RainRateBar hours={rainHours} />
+            <div style={{ maxWidth: '520px' }}>
+              {/* ── KEY NUMBER PILLS ─────────────────────────────────────────── */}
+              <div style={{
+                display: 'flex',
+                gap: '7px',
+                flexWrap: 'wrap' as const,
+                padding: '14px 0 16px',
+              }}>
+                {(() => {
+                  const activityType = (answer as { activity_type?: string | null }).activity_type ?? null;
+                  const heatActivities = ['running', 'dog_walking', 'golf', 'beach', 'yoga', 'marathon'];
+                  const isHeatActivity = activityType ? heatActivities.includes(activityType) : false;
+                  const isAlpine = activityType === 'hiking' || activityType === 'altitude';
+
+                  let primaryLabel = 'CHANCE OF RAIN';
+                  let primaryValue: string = `${answer.percentage ?? 0}%`;
+                  let primaryTone: 'go' | 'warn' | 'no' | 'neutral' =
+                    (answer.percentage ?? 0) >= 60 ? 'no' :
+                    (answer.percentage ?? 0) >= 30 ? 'warn' : 'go';
+
+                  if (isHeatActivity || intent === 'heat_index' || intent === 'temperature') {
+                    primaryLabel = 'HEAT INDEX';
+                    primaryValue = headlineNumber?.value ?? answer.main_concern ?? '—';
+                    primaryTone = 'no';
+                  } else if (isAlpine) {
+                    primaryLabel = 'CONDITIONS';
+                    primaryValue = answer.main_concern ?? headlineNumber?.value ?? '—';
+                    primaryTone = 'warn';
+                  } else if (intent === 'wind') {
+                    primaryLabel = 'WIND GUSTS';
+                    primaryValue = headlineNumber?.value ?? `${answer.percentage ?? 0}%`;
+                    primaryTone = 'warn';
+                  } else if (intent === 'marine') {
+                    primaryLabel = 'SEA STATE';
+                    primaryValue = headlineNumber?.value ?? answer.main_concern ?? '—';
+                    primaryTone = 'warn';
+                  } else if (intent === 'air_quality') {
+                    primaryLabel = 'AQI';
+                    primaryValue = headlineNumber?.value ?? '—';
+                    primaryTone = (answer.percentage ?? 0) >= 100 ? 'no' : 'warn';
+                  } else if (intent === 'snow' || intent === 'snow_ice') {
+                    primaryLabel = 'SNOW EXPECTED';
+                    primaryValue = headlineNumber?.value ?? `${answer.percentage ?? 0}%`;
+                    primaryTone = 'warn';
+                  }
+
+                  const pillColors = {
+                    go:      { bg: 'rgba(21,128,61,0.08)',  border: 'rgba(21,128,61,0.2)',  val: '#15803d', lbl: 'rgba(21,128,61,0.6)' },
+                    warn:    { bg: 'rgba(180,83,9,0.08)',   border: 'rgba(180,83,9,0.2)',   val: '#b45309', lbl: 'rgba(180,83,9,0.6)' },
+                    no:      { bg: 'rgba(185,28,28,0.07)',  border: 'rgba(185,28,28,0.2)',  val: '#b91c1c', lbl: 'rgba(185,28,28,0.5)' },
+                    neutral: { bg: 'rgba(11,16,24,0.04)',   border: 'rgba(11,16,24,0.1)',   val: INK,        lbl: MUTED },
+                  };
+                  const c = pillColors[primaryTone];
+                  return (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'baseline', gap: '6px',
+                      background: c.bg, border: `1px solid ${c.border}`,
+                      borderRadius: '12px', padding: '9px 14px',
+                    }}>
+                      <span style={{
+                        fontFamily: 'Fraunces, serif', fontWeight: 400,
+                        fontSize: 'clamp(1.3rem, 5vw, 1.6rem)', lineHeight: 1, color: c.val,
+                      }}>{primaryValue}</span>
+                      <span style={{
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontSize: '0.44rem', letterSpacing: '0.14em',
+                        textTransform: 'uppercase' as const, color: c.lbl,
+                      }}>{primaryLabel}</span>
+                    </div>
+                  );
+                })()}
+
+                {headlineNumber && headlineNumber.label !== 'CHANCE OF RAIN' && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'baseline', gap: '6px',
+                    background: 'rgba(11,16,24,0.04)', border: '1px solid rgba(11,16,24,0.1)',
+                    borderRadius: '12px', padding: '9px 14px',
+                  }}>
+                    <span style={{
+                      fontFamily: 'Fraunces, serif', fontWeight: 400,
+                      fontSize: 'clamp(1.1rem, 4vw, 1.4rem)', lineHeight: 1, color: INK,
+                    }}>{headlineNumber.value}</span>
+                    <span style={{
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: '0.44rem', letterSpacing: '0.14em',
+                      textTransform: 'uppercase' as const, color: MUTED,
+                    }}>{headlineNumber.label}</span>
+                  </div>
+                )}
+
+                {answer.time_context && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'baseline', gap: '6px',
+                    background: 'rgba(11,16,24,0.04)', border: '1px solid rgba(11,16,24,0.1)',
+                    borderRadius: '12px', padding: '9px 14px',
+                  }}>
+                    <span style={{
+                      fontFamily: 'Fraunces, serif', fontWeight: 400,
+                      fontSize: 'clamp(1.1rem, 4vw, 1.4rem)', lineHeight: 1, color: INK,
+                    }}>{answer.time_context}</span>
+                    <span style={{
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: '0.44rem', letterSpacing: '0.14em',
+                      textTransform: 'uppercase' as const, color: MUTED,
+                    }}>WINDOW</span>
+                  </div>
+                )}
               </div>
 
-              {/* 3-up vitals row */}
-              {vitals.length > 0 && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${vitals.length}, 1fr)`,
-                    gap: '14px',
-                    paddingTop: '16px',
-                    paddingBottom: '16px',
-                    borderTop: `1px solid ${INK}14`,
-                    borderBottom: `1px solid ${INK}14`,
-                    marginBottom: feelSentence ? '20px' : '24px',
-                  }}
-                >
-                  {vitals.map((v) => (
-                    <div key={v.label} style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                          fontSize: '0.52rem',
-                          letterSpacing: '0.16em',
-                          color: MUTED,
-                          marginBottom: '6px',
-                        }}
-                      >
-                        {v.label}
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: 'Fraunces, serif',
-                          fontSize: '1.05rem',
-                          lineHeight: 1.2,
-                          color: INK,
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {v.value}
-                      </div>
-                    </div>
-                  ))}
+              {/* ── HOUR-BY-HOUR TIMELINE ────────────────────────────────────── */}
+              {timelineRaw && timelineRaw.length > 0 && (
+                <div style={{ marginBottom: '18px' }}>
+                  <div style={{
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '0.46rem', letterSpacing: '0.14em',
+                    textTransform: 'uppercase' as const,
+                    color: MUTED, marginBottom: '8px',
+                  }}>
+                    {windowLabel ? `${windowLabel.short} — hour by hour` : 'Hour by hour'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '3px' }}>
+                    {timelineRaw.slice(0, 8).map((h, i) => {
+                      const isActive = h.severity === 'bad';
+                      const isWatch  = h.severity === 'watch';
+                      return (
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '4px' }}>
+                          <div style={{
+                            width: '100%', height: '40px', borderRadius: '7px',
+                            background: isActive ? 'rgba(185,28,28,0.16)'
+                              : isWatch ? 'rgba(180,83,9,0.13)'
+                              : 'rgba(21,128,61,0.1)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.85rem',
+                          }}>
+                            {isActive ? '⛈' : isWatch ? '🌦' : '☀️'}
+                          </div>
+                          <div style={{
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: '0.38rem', letterSpacing: '0.06em',
+                            color: MUTED, textAlign: 'center' as const,
+                          }}>{h.hour_label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {/* "What you'll feel" sentence */}
+              {/* ── BEFORE / DURING / AFTER ──────────────────────────────────── */}
+              {(() => {
+                const bda = (answer as { before_during_after?: { before?: string; during?: string; after?: string } | null }).before_during_after ?? null;
+                if (!bda) return null;
+                const rows = [
+                  { tag: 'Before', text: bda.before, tagStyle: { bg: 'rgba(21,128,61,0.1)', color: '#15803d' } },
+                  { tag: 'During', text: bda.during, tagStyle: { bg: 'rgba(194,65,12,0.1)', color: ACCENT } },
+                  { tag: 'After',  text: bda.after,  tagStyle: { bg: 'rgba(11,16,24,0.06)', color: MUTED  } },
+                ].filter(r => r.text);
+                if (!rows.length) return null;
+                return (
+                  <div style={{
+                    border: `1px solid rgba(11,16,24,0.08)`,
+                    borderRadius: '14px', overflow: 'hidden',
+                    marginBottom: '14px',
+                  }}>
+                    {rows.map((row, i) => (
+                      <div key={row.tag} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '10px',
+                        padding: '11px 13px',
+                        borderBottom: i < rows.length - 1 ? `1px solid rgba(11,16,24,0.08)` : 'none',
+                      }}>
+                        <span style={{
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: '0.44rem', letterSpacing: '0.12em',
+                          fontWeight: 600, textTransform: 'uppercase' as const,
+                          padding: '3px 8px', borderRadius: '100px',
+                          background: row.tagStyle.bg, color: row.tagStyle.color,
+                          flexShrink: 0, marginTop: '2px',
+                        }}>{row.tag}</span>
+                        <span style={{
+                          fontFamily: 'Inter, sans-serif',
+                          fontSize: '0.82rem', lineHeight: 1.5, color: INK,
+                        }}>{row.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── HAZARD GRID ──────────────────────────────────────────────── */}
+              {(() => {
+                const hazards = (answer as { hazards?: Record<string, string> | null }).hazards ?? null;
+                if (!hazards) return null;
+                const cells = [
+                  { icon: '🌧', name: 'Rain',      key: 'rain' },
+                  { icon: '⚡', name: 'Lightning', key: 'lightning' },
+                  { icon: '💨', name: 'Wind',      key: 'wind' },
+                  { icon: '🌡', name: 'Heat',      key: 'heat' },
+                  { icon: '❄️', name: 'Cold',      key: 'cold' },
+                  { icon: '🌊', name: 'Flood',     key: 'flood' },
+                ];
+                const anyActive = cells.some(c => hazards[c.key] && hazards[c.key] !== 'none');
+                if (!anyActive) return null;
+                return (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '5px', marginBottom: '14px',
+                  }}>
+                    {cells.map(cell => {
+                      const level = hazards[cell.key] ?? 'none';
+                      const isActive = level !== 'none';
+                      const bg = level === 'high'   ? 'rgba(185,28,28,0.1)' :
+                                 level === 'medium' ? 'rgba(180,83,9,0.1)'  :
+                                 level === 'low'    ? 'rgba(180,83,9,0.06)' :
+                                 'rgba(11,16,24,0.03)';
+                      return (
+                        <div key={cell.key} style={{
+                          background: bg, borderRadius: '10px',
+                          padding: '10px 9px 8px',
+                          display: 'flex', flexDirection: 'column' as const, gap: '3px',
+                          opacity: isActive ? 1 : 0.35,
+                        }}>
+                          <span style={{ fontSize: '1rem' }}>{cell.icon}</span>
+                          <span style={{
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: '0.42rem', letterSpacing: '0.1em',
+                            textTransform: 'uppercase' as const, color: MUTED,
+                          }}>{cell.name}</span>
+                          <span style={{
+                            fontFamily: 'Inter, sans-serif',
+                            fontSize: '0.68rem', lineHeight: 1.3, color: INK,
+                          }}>
+                            {isActive ? hazards[`${cell.key}_note`] ?? level : 'None'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* ── FEEL SENTENCE ────────────────────────────────────────────── */}
               {feelSentence && (
-                <div
-                  style={{
-                    fontFamily: 'Fraunces, serif',
-                    fontSize: '0.98rem',
-                    lineHeight: 1.5,
-                    color: INK,
-                    opacity: 0.85,
-                    marginBottom: '24px',
-                    maxWidth: '480px',
-                  }}
-                >
+                <div style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: '0.95rem', lineHeight: 1.5,
+                  color: INK, opacity: 0.85,
+                  marginBottom: '14px', maxWidth: '480px',
+                }}>
                   {feelSentence}
                 </div>
               )}
 
-              {/* Verdict pill — recommendation + check-back */}
+              {/* ── DECISION CARD ────────────────────────────────────────────── */}
               {(answer.action || checkBackMin != null) && (
-                <div
-                  style={{
-                    backgroundColor: INK,
-                    color: PAGE_BG,
-                    borderRadius: '16px',
-                    padding: '16px 18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: answer.action ? '10px' : 0 }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        backgroundColor:
-                          softWord === 'YES' || softWord === 'LIKELY' ? '#15803d'
-                          : softWord === 'NO' || softWord === 'UNLIKELY' ? ACCENT
-                          : '#f59e0b',
-                        color: '#faf7f0',
-                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        fontSize: '0.55rem',
-                        letterSpacing: '0.18em',
-                        fontWeight: 700,
-                      }}
-                    >
+                <div style={{
+                  background: INK, borderRadius: '16px',
+                  padding: '16px 18px', marginBottom: '14px',
+                }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: '10px', marginBottom: answer.action ? '10px' : 0,
+                  }}>
+                    <span style={{
+                      display: 'inline-block', padding: '4px 12px',
+                      borderRadius: '999px', fontWeight: 700,
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: '0.52rem', letterSpacing: '0.16em',
+                      backgroundColor:
+                        softWord === 'YES' || softWord === 'LIKELY'   ? '#15803d' :
+                        softWord === 'NO'  || softWord === 'UNLIKELY' ? ACCENT    : '#f59e0b',
+                      color: '#faf7f0',
+                    }}>
                       {displayVerdictWord ?? verdictWord}
                     </span>
                     {answer.confidence && (
-                      <span
-                        style={{
-                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                          fontSize: '0.5rem',
-                          letterSpacing: '0.18em',
-                          color: 'rgba(250,247,240,0.55)',
-                        }}
-                      >
-                        CONF · <span style={{ color: '#f59e0b', fontWeight: 700 }}>{answer.confidence}</span>
+                      <span style={{
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontSize: '0.5rem', letterSpacing: '0.16em',
+                        color: 'rgba(250,247,240,0.5)',
+                      }}>
+                        CONF · <span style={{ color: '#f59e0b', fontWeight: 700 }}>
+                          {answer.confidence}
+                        </span>
                       </span>
                     )}
                   </div>
                   {answer.action && (
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '0.95rem',
-                        lineHeight: 1.45,
-                        color: 'rgba(250,247,240,0.95)',
-                        marginBottom: checkBackMin != null ? '10px' : 0,
-                      }}
-                    >
+                    <div style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: '0.9rem', lineHeight: 1.55,
+                      color: 'rgba(250,247,240,0.95)',
+                      marginBottom: checkBackMin != null ? '10px' : 0,
+                    }}>
                       {answer.action}
                     </div>
                   )}
                   {checkBackMin != null && (
-                    <div
-                      style={{
-                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        fontSize: '0.5rem',
-                        letterSpacing: '0.18em',
-                        color: 'rgba(250,247,240,0.55)',
-                      }}
-                    >
+                    <div style={{
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: '0.46rem', letterSpacing: '0.16em',
+                      color: 'rgba(250,247,240,0.35)',
+                    }}>
                       CHECK BACK IN {checkBackMin} MIN
                     </div>
                   )}
                 </div>
               )}
 
-              {/* "Also" callout — severe items outside the asked window */}
+              {/* ── ALSO WORTH KNOWING ───────────────────────────────────────── */}
               {alsoItems.length > 0 && (
-                <div
-                  style={{
-                    marginTop: '16px',
-                    border: `1px solid ${ACCENT}33`,
-                    borderLeft: `3px solid ${ACCENT}`,
-                    borderRadius: '12px',
-                    padding: '14px 16px',
-                    backgroundColor: `${ACCENT}08`,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.55rem',
-                      letterSpacing: '0.18em',
-                      color: ACCENT,
-                      marginBottom: '8px',
-                    }}
-                  >
-                    {t('answer.also_label', { defaultValue: 'ALSO WORTH KNOWING' })}
+                <div style={{
+                  border: `1px solid ${ACCENT}33`,
+                  borderLeft: `3px solid ${ACCENT}`,
+                  borderRadius: '12px', padding: '14px 16px',
+                  background: `${ACCENT}08`, marginBottom: '14px',
+                }}>
+                  <div style={{
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '0.52rem', letterSpacing: '0.16em',
+                    color: ACCENT, marginBottom: '8px',
+                    textTransform: 'uppercase' as const,
+                  }}>
+                    {t('answer.also_label', { defaultValue: 'Also worth knowing' })}
                   </div>
                   {alsoItems.map((item, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '0.92rem',
-                        lineHeight: 1.4,
-                        color: INK,
-                        marginBottom: i < alsoItems.length - 1 ? '6px' : 0,
-                      }}
-                    >
+                    <div key={i} style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: '0.9rem', lineHeight: 1.45, color: INK,
+                      marginBottom: i < alsoItems.length - 1 ? '6px' : 0,
+                    }}>
                       {item}
                     </div>
                   ))}
