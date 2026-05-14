@@ -282,6 +282,12 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
     const ageMin = chosen.ageMin;
     const p = chosen.obs.properties;
 
+    // For mountain locations the nearest ASOS may be thousands of feet lower.
+    // Flag this so the LLM doesn't treat valley conditions as summit conditions.
+    const elevationWarning = distMiles > 15
+      ? `⚠ NEAREST STATION IS ${distMiles} MILES AWAY — may be significantly lower elevation than the user's location. Do not treat these as summit conditions.`
+      : '';
+
     const tempF = p.temperature?.value != null
       ? Math.round(p.temperature.value * 9 / 5 + 32) : null;
     const dewF = p.dewpoint?.value != null
@@ -306,6 +312,7 @@ async function fetchSurfaceObs(lat: number, lon: number): Promise<string> {
     return [
       `CURRENT OBS (${stationId} · ${distMiles} mi from user · obs age: ${ageMin ?? '?'} min):`,
       stalenessWarning,
+      elevationWarning,
       tempF != null ? `Temp: ${tempF}°F` : '',
       dewF != null ? `Dewpoint: ${dewF}°F` : '',
       spread != null ? `Temp-Dewpoint spread: ${spread}°F${spread <= 3 ? ' ⚠ FOG RISK' : ''}` : '',
