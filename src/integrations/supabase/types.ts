@@ -306,6 +306,42 @@ export type Database = {
           },
         ]
       }
+      user_notifications: {
+        Row: {
+          body: string
+          change_tag: string
+          created_at: string
+          event_id: string
+          id: string
+          read: boolean
+          stage: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          change_tag: string
+          created_at?: string
+          event_id: string
+          id?: string
+          read?: boolean
+          stage: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          change_tag?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          read?: boolean
+          stage?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
