@@ -622,6 +622,27 @@ function AnswerPage() {
     return buildWindowLabel(start, end);
   })();
 
+  // Window label: use the extracted event window if available,
+  // otherwise show a meaningful fallback based on hoursAhead.
+  const hoursAhead: number | null = (() => {
+    let startMs: number | null = null;
+    if (eventAtIso) {
+      const t = new Date(eventAtIso).getTime();
+      if (Number.isFinite(t)) startMs = t;
+    }
+    if (startMs == null) {
+      const ev = extractEventTimeFromQuestion(question);
+      if (ev) startMs = ev.eventAt.getTime();
+    }
+    if (startMs == null) return null;
+    return Math.max(0, (startMs - Date.now()) / 3_600_000);
+  })();
+  const windowDisplayLabel = windowLabel?.short ||
+    (hoursAhead != null && hoursAhead <= 1 ? 'RIGHT NOW' :
+     hoursAhead != null && hoursAhead <= 12 ? 'NEXT 12 HOURS' :
+     hoursAhead != null && hoursAhead <= 24 ? 'TOMORROW' :
+     'UPCOMING');
+
   // ── FORECAST MATURITY LADDER ─────────────────────────────────────────
   // Always visible. Always honest about where the data is in the pipeline.
   // Completed steps filled, current step accented, future steps empty.
@@ -961,11 +982,9 @@ function AnswerPage() {
             }}
           >
             {contextLine}
-            {windowLabel && (
-              <span style={{ marginLeft: 10, color: ACCENT }}>
-                · {windowLabel.short}
-              </span>
-            )}
+            <span style={{ marginLeft: 10, color: ACCENT }}>
+              · {windowDisplayLabel}
+            </span>
           </div>
 
           <MaturityLadder />
