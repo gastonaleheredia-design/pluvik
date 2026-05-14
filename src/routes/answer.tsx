@@ -982,11 +982,9 @@ function AnswerPage() {
             }}
           >
             {contextLine}
-            {windowLabel && (
-              <span style={{ marginLeft: 10, color: ACCENT }}>
-                · {windowLabel.short}
-              </span>
-            )}
+            <span style={{ marginLeft: 10, color: ACCENT }}>
+              · {windowDisplayLabel}
+            </span>
           </div>
 
           <MaturityLadder />
