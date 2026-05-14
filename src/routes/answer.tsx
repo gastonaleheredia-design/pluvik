@@ -807,11 +807,17 @@ function AnswerPage() {
 
   // Confidence-matched headline word — overrides the raw YES/NO/MAYBE so a
   // LOW-confidence answer never wears a confident verdict.
+  const hasRoofedVenue = /retractable roof|indoor|domed|covered stadium/i.test(
+    (answer.action ?? '') + (answer.summary ?? '')
+  );
+  const effectiveConfidence = hasRoofedVenue && answer.confidence === 'LOW'
+    ? 'MEDIUM'
+    : answer.confidence as 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW' | undefined;
   const softWord =
     (answer as { display_word?: string }).display_word ??
     pickConfidenceAwareWord({
       rawWord: verdictWord,
-      confidence: answer.confidence as 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW' | undefined,
+      confidence: effectiveConfidence,
       percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
     });
 
