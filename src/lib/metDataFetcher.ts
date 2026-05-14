@@ -362,6 +362,7 @@ async function fetchHRRRForecast(lat: number, lon: number, hoursAhead: number): 
       const wind = h.windspeed_10m?.[i];
       const gust = h.windgusts_10m?.[i];
       const vis = h.visibility?.[i];
+      const snowfall = h.snowfall?.[i];  // snowfall in cm from Open-Meteo
 
       const flags: string[] = [];
       if (cape > 1000) flags.push(`CAPE:${Math.round(cape)}`);
@@ -370,6 +371,10 @@ async function fetchHRRRForecast(lat: number, lon: number, hoursAhead: number): 
       if (pop > 50) flags.push(`⚠ POP:${pop}%`);
       if (gust > 35) flags.push(`GUST:${Math.round(gust)}mph`);
       if (vis != null && vis < 1600) flags.push('LOW VIS');
+      // Add snowfall to flags if meaningful (> 0.1 cm)
+      if (snowfall != null && snowfall > 0.1) {
+        flags.push(`SNOW:${snowfall.toFixed(1)}cm`);
+      }
 
       lines.push(
         `${t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} ` +
@@ -377,6 +382,7 @@ async function fetchHRRRForecast(lat: number, lon: number, hoursAhead: number): 
         `DP:${Math.round(h.dewpoint_2m?.[i] ?? 0)}°F ` +
         `POP:${pop ?? 0}% ` +
         `Precip:${(precip ?? 0).toFixed(2)}" ` +
+        (snowfall != null && snowfall > 0 ? `Snow:${snowfall.toFixed(1)}cm ` : '') +
         `Wind:${Math.round(wind ?? 0)}mph ` +
         (flags.length ? `[${flags.join(' ')}]` : '')
       );
