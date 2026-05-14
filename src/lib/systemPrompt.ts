@@ -348,6 +348,25 @@ Return ONLY valid JSON matching this schema:
     "afd_quote": "paraphrase of the AFD mechanism, plain English",
     "model_reconciliation": "how HRRR/ECMWF/NDFD timing compares",
     "why_uncertain": "one sentence on the specific source of uncertainty"
+  } | null,
+  "before_during_after": {
+    "before": "One sentence about conditions before the event window",
+    "during": "One sentence about conditions during the event window — the most important",
+    "after": "One sentence about conditions after the event window"
+  } | null,
+  "hazards": {
+    "rain": "none" | "low" | "medium" | "high",
+    "rain_note": "brief note if active",
+    "lightning": "none" | "low" | "medium" | "high",
+    "lightning_note": "brief note if active",
+    "wind": "none" | "low" | "medium" | "high",
+    "wind_note": "brief note if active",
+    "heat": "none" | "low" | "medium" | "high",
+    "heat_note": "brief note if active",
+    "cold": "none" | "low" | "medium" | "high",
+    "cold_note": "brief note if active",
+    "flood": "none" | "low" | "medium" | "high",
+    "flood_note": "brief note if active"
   } | null
 }
 
