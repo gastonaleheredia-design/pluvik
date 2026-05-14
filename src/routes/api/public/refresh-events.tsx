@@ -19,6 +19,7 @@ import {
   type SnapshotInput,
 } from '@/lib/snapshots';
 import type { ForecastStage } from '@/lib/forecastStage';
+import { sendEventNotification } from '@/lib/pushNotifications.server';
 
 // Cap per run to keep the worker responsive.
 const MAX_EVENTS_PER_RUN = 50;
@@ -227,6 +228,31 @@ async function refreshOne(
       .from('tracked_events')
       .update({ last_significant_change_at: nowIso })
       .eq('id', event.id);
+  }
+
+  if (
+    tag === 'SIGNIFICANT_CHANGE' ||
+    tag === 'STAGE_PROMOTED' ||
+    tag === 'NEW_DATA_SOURCE'
+  ) {
+    const { data: evtRow } = await supabaseAdmin
+      .from('tracked_events')
+      .select('user_id, question, address')
+      .eq('id', event.id)
+      .maybeSingle();
+
+    if (evtRow?.user_id) {
+      await sendEventNotification({
+        eventId: event.id,
+        userId: evtRow.user_id,
+        changeTag: tag,
+        stage: next.stage,
+        verdictWord: a.verdict_word ?? null,
+        verdictSentence: a.verdict_sentence ?? null,
+        eventQuestion: evtRow.question,
+        eventAddress: evtRow.address,
+      });
+    }
   }
 
   return { id: event.id, ok: true, tag };
