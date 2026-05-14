@@ -321,38 +321,46 @@ export type Database = {
       user_notifications: {
         Row: {
           body: string
-          change_tag: string
+          change_tag: string | null
           created_at: string
-          event_id: string
+          event_id: string | null
           id: string
           read: boolean
-          stage: string
+          stage: string | null
           title: string
           user_id: string
         }
         Insert: {
           body: string
-          change_tag: string
+          change_tag?: string | null
           created_at?: string
-          event_id: string
+          event_id?: string | null
           id?: string
           read?: boolean
-          stage: string
+          stage?: string | null
           title: string
           user_id: string
         }
         Update: {
           body?: string
-          change_tag?: string
+          change_tag?: string | null
           created_at?: string
-          event_id?: string
+          event_id?: string | null
           id?: string
           read?: boolean
-          stage?: string
+          stage?: string | null
           title?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_notifications_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tracked_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
