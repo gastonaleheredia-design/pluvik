@@ -33,10 +33,22 @@ export const WeatherAnswerSchema = z.object({
   cpc_narrative: z.string().nullable().optional(),
 
   /**
-   * Flat hazard map: each hazard key holds a severity string, with an
-   * optional sibling `<hazard>_note` carrying a brief plain-language note.
+   * Nested hazard map: each hazard key holds an object with
+   * { active, severity, note }. Legacy string values are also accepted
+   * and coerced by the normalizer.
    */
-  hazards: z.record(z.string(), z.string().nullable()).nullable().optional(),
+  hazards: z.record(
+    z.string(),
+    z.union([
+      z.object({
+        active: z.boolean().optional(),
+        severity: z.string().nullable().optional(),
+        note: z.string().nullable().optional(),
+      }).passthrough(),
+      z.string(),
+      z.null(),
+    ]),
+  ).nullable().optional(),
 
   /** Hour-by-hour mini-timeline around the event time. */
   timeline: z.array(z.object({
@@ -172,31 +184,24 @@ function normalizeRawAnswer(raw: unknown): unknown {
     for (const key of Object.keys(hz)) {
       const h = hz[key];
       if (typeof h === 'string') {
-        const s = h.trim().toLowerCase();
-        if (['none', 'low', 'medium', 'high'].includes(s)) {
-          hz[key] = s;
-        } else if (s === 'med' || s === 'moderate') {
-          hz[key] = 'medium';
-        } else if (!s) {
-          hz[key] = 'none';
-        }
+        // Legacy flat string → nested { active, severity, note }.
+        const coerced = sev(h);
+        hz[key] = {
+          active: !!coerced,
+          severity: coerced ?? null,
+          note: null,
+        };
         continue;
       }
       if (h && typeof h === 'object' && 'severity' in h) {
-        // Legacy nested shape { active, severity, note } → flat string + _note.
         const ho = h as Record<string, unknown>;
-        const active = ho.active !== false;
         const coerced = sev(ho.severity);
-        const flat = !active
-          ? 'none'
-          : coerced === 'low' ? 'low'
-          : coerced === 'med' ? 'medium'
-          : coerced === 'high' ? 'high'
-          : 'low';
-        hz[key] = flat;
-        if (typeof ho.note === 'string' && ho.note.trim()) {
-          hz[`${key}_note`] = ho.note.trim();
-        }
+        const active = ho.active === true;
+        hz[key] = {
+          active,
+          severity: active ? (coerced ?? null) : null,
+          note: typeof ho.note === 'string' && ho.note.trim() ? ho.note.trim() : null,
+        };
       }
     }
   }
