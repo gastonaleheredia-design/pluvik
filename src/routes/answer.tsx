@@ -850,6 +850,28 @@ function AnswerPage() {
   // asked about — never show rain chance as the headline for a heat,
   // wind, or marine question.
   const primaryMetric = (() => {
+    // Activity type takes precedence over intent for plan_impact questions
+    // because plan_impact covers many activities with different primary variables.
+    const activityType = (answer as any).activity_type ?? null;
+
+    // Heat-dominant activities — show heat index not rain
+    const heatActivities = ['running', 'dog_walking', 'golf', 'beach', 'yoga', 'marathon'];
+    if (heatActivities.includes(activityType)) {
+      return {
+        label: 'HEAT INDEX',
+        value: headlineNumber?.value ?? answer.main_concern ?? '—',
+      };
+    }
+
+    // Altitude/mountain — show wind and temperature
+    if (activityType === 'hiking' || activityType === 'altitude') {
+      return {
+        label: 'CONDITIONS',
+        value: answer.main_concern ?? headlineNumber?.value ?? '—',
+      };
+    }
+
+    // Explicit intent overrides
     switch (intent) {
       case 'heat_index':
       case 'temperature':
