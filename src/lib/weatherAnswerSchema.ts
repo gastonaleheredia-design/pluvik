@@ -36,7 +36,7 @@ export const WeatherAnswerSchema = z.object({
    * Flat hazard map: each hazard key holds a severity string, with an
    * optional sibling `<hazard>_note` carrying a brief plain-language note.
    */
-  hazards: z.record(z.string(), z.string()).nullable().optional(),
+  hazards: z.record(z.string(), z.string().nullable()).nullable().optional(),
 
   /** Hour-by-hour mini-timeline around the event time. */
   timeline: z.array(z.object({

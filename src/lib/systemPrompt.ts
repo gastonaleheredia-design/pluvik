@@ -350,23 +350,23 @@ Return ONLY valid JSON matching this schema:
     "why_uncertain": "one sentence on the specific source of uncertainty"
   } | null,
   "before_during_after": {
-    "before": "One sentence about conditions before the event window",
-    "during": "One sentence about conditions during the event window — the most important",
-    "after": "One sentence about conditions after the event window"
+    "before": "One sentence about conditions BEFORE the event window starts",
+    "during": "One sentence about conditions DURING the event window — most important",
+    "after": "One sentence about conditions AFTER the event window ends"
   } | null,
   "hazards": {
     "rain": "none" | "low" | "medium" | "high",
-    "rain_note": "brief note if active",
+    "rain_note": "brief phrase or null",
     "lightning": "none" | "low" | "medium" | "high",
-    "lightning_note": "brief note if active",
+    "lightning_note": "brief phrase or null",
     "wind": "none" | "low" | "medium" | "high",
-    "wind_note": "brief note if active",
+    "wind_note": "brief phrase or null",
     "heat": "none" | "low" | "medium" | "high",
-    "heat_note": "brief note if active",
+    "heat_note": "brief phrase or null",
     "cold": "none" | "low" | "medium" | "high",
-    "cold_note": "brief note if active",
+    "cold_note": "brief phrase or null",
     "flood": "none" | "low" | "medium" | "high",
-    "flood_note": "brief note if active"
+    "flood_note": "brief phrase or null"
   } | null
 }
 
