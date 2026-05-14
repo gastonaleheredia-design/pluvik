@@ -1027,6 +1027,7 @@ export const askWeather = createServerFn({ method: 'POST' })
       ...validated.data,
       mode,
       forecast_stage: stageInfo.stage,
+      activity_type: parsed.activityType,
       stage_outro: validated.data.stage_outro ?? undefined,
       next_check_at: (validated.data as Record<string, unknown>).next_check_at ?? undefined,
       cpc_narrative:
