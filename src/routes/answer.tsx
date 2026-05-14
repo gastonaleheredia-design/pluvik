@@ -594,7 +594,13 @@ function AnswerPage() {
   const headlineNumber = (answer as { headline_number?: { value: string; label: string } | null }).headline_number;
   const timingState = (answer as { timing_state?: 'UPCOMING' | 'ACTIVE' | 'PASSED' }).timing_state;
   const topicTag = stageBadgeLabel[stage];
-  const contextLine = `${resolvedAddress.split(',').slice(0, 2).join(',').trim()}`.toUpperCase();
+  const contextLine = (() => {
+    const parts = resolvedAddress.split(',').map(p => p.trim());
+    const deduped = parts.filter((p, i) =>
+      i === 0 || p.toLowerCase() !== parts[i-1].toLowerCase()
+    );
+    return deduped.slice(0, 2).join(', ').toUpperCase();
+  })();
   const stageOutro = (answer as { stage_outro?: string }).stage_outro ?? null;
   const decisionLabel = (answer as { decision_label?: string }).decision_label ?? null;
 
