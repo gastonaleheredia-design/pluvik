@@ -19,7 +19,7 @@ import {
   type SnapshotInput,
 } from '@/lib/snapshots';
 import type { ForecastStage } from '@/lib/forecastStage';
-import { sendEventNotification } from '@/lib/pushNotifications.server';
+import { sendEventNotification } from '@/lib/pushNotifications';
 
 // Cap per run to keep the worker responsive.
 const MAX_EVENTS_PER_RUN = 50;
