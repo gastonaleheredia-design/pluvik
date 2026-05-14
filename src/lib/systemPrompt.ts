@@ -350,17 +350,17 @@ Return ONLY valid JSON matching this schema:
     "why_uncertain": "one sentence on the specific source of uncertainty"
   } | null,
   "event_window": {
-    "before": "One sentence about conditions BEFORE the event window",
-    "during": "One sentence about conditions DURING the event window — most important",
-    "after": "One sentence about conditions AFTER the event window ends"
+    "before": "One sentence before the event window",
+    "during": "One sentence during — most important",
+    "after": "One sentence after the event window"
   } | null,
   "hazards": {
-    "rain":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
-    "lightning":  { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
-    "wind":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
-    "heat":       { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
-    "cold_front": { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" },
-    "fog":        { "active": true|false, "severity": "low"|"med"|"high"|null, "note": "brief phrase or null" }
+    "rain":       { "active": true,  "severity": "low"|"med"|"high"|null, "note": "phrase or null" },
+    "lightning":  { "active": true,  "severity": "low"|"med"|"high"|null, "note": "phrase or null" },
+    "wind":       { "active": true,  "severity": "low"|"med"|"high"|null, "note": "phrase or null" },
+    "heat":       { "active": true,  "severity": "low"|"med"|"high"|null, "note": "phrase or null" },
+    "cold_front": { "active": false, "severity": null, "note": null },
+    "fog":        { "active": false, "severity": null, "note": null }
   } | null
 }
 
