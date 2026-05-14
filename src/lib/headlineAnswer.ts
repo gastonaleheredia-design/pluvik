@@ -56,7 +56,16 @@ export function pickConfidenceAwareWord(args: {
   rawWord?: 'YES' | 'NO' | 'MAYBE' | null;
   confidence?: ConfidenceLevel | null;
   percentage?: number | null;
+  summary?: string | null;
 }): SoftHeadline {
+  // SAFETY RULE: never soften a NO verdict when the answer contains
+  // explicit danger language. Heat, lightning, shelter, unsafe,
+  // dangerous — these should never become LIKELY or MAYBE.
+  const dangerLanguage = /\b(dangerous|unsafe|scorch|deadly|fatal|shelter|lightning|tornado)\b/i;
+  if (args.rawWord === 'NO' && args.summary && dangerLanguage.test(args.summary)) {
+    return 'NO';
+  }
+
   const conf = args.confidence ?? 'MEDIUM';
   const pct = typeof args.percentage === 'number' && Number.isFinite(args.percentage)
     ? Math.max(0, Math.min(100, args.percentage))
