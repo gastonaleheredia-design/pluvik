@@ -220,6 +220,14 @@ export type ActivityType =
   | 'lightning_risk'
   | 'storm_general'
   | 'hurricane'
+  | 'hiking'
+  | 'running'
+  | 'golf'
+  | 'dog_walking'
+  | 'beach'
+  | 'yoga'
+  | 'proposal'
+  | 'marathon'
   | 'general';
 
 export interface ParsedQuestion {
@@ -242,7 +250,16 @@ export function parseQuestion(question: string): ParsedQuestion {
 
   const activityType: ActivityType =
     /concrete|pour|pouring|slab|foundation/.test(q) ? 'concrete' :
+    /\bmarathon\b|\bhalf marathon\b|\b10k\b|\b5k\b|race day/.test(q) ? 'marathon' :
+    /\bpropos(e|al|ing)\b|\bengagement\b|pop the question|ring/.test(q) ? 'proposal' :
     /wedding|ceremony|reception|bride|groom/.test(q) ? 'wedding' :
+    /\bgolf|tee time|round of golf|18 holes\b/.test(q) ? 'golf' :
+    /\bmarathon\b/.test(q) ? 'marathon' :
+    /\brun|running|jog|jogging\b/.test(q) ? 'running' :
+    /\bhike|hiking|trail|summit|trek|backpack/.test(q) ? 'hiking' :
+    /\byoga|meditation|stretch session\b/.test(q) ? 'yoga' :
+    /\bbeach|shore|surf|swim|ocean swim|sunbath/.test(q) ? 'beach' :
+    /\bdog walk|walk(?:ing)? the dog|walk my dog|puppy walk\b/.test(q) ? 'dog_walking' :
     /soccer|football|baseball|softball|game|match|tournament|sport/.test(q) ? 'sports' :
     /motorcycle|moto|ride|biker/.test(q) ? 'motorcycle' :
     /bike|cycling|bicycle|biking/.test(q) ? 'cycling' :
@@ -277,19 +294,150 @@ export function parseQuestion(question: string): ParsedQuestion {
     'extended outlook';
 
   const sensitivityProfiles: Record<ActivityType, string> = {
-    concrete: 'EXTREME rain sensitivity. Any rain during or 4 hours after pour ruins the slab. Wind over 20mph also problematic. Temperature below 40°F or above 95°F affects cure. A 20% PoP is a NO-GO for concrete.',
-    wedding: 'HIGH rain sensitivity but decisions must be made 24-48 hours in advance for venue changes. Even 30% risk warrants a backup plan discussion. Wind, lightning, and extreme heat also matter.',
-    sports: 'MODERATE rain tolerance. Lightning is absolute NO-GO (1 strike within 10 miles = stop play). Heavy rain stops most sports. Light rain acceptable for many. Field flooding matters.',
-    motorcycle: 'HIGH rain and wind sensitivity. Any rain on roads creates hazard. Wind over 30mph dangerous. Fog reduces visibility critically. 30% rain chance warrants caution.',
-    cycling: 'HIGH fog and rain sensitivity. Wet roads dangerous. Morning fog often burns off — timing matters. Wind direction and speed affects effort and safety.',
-    fishing: 'MODERATE weather sensitivity. Lightning is NO-GO. Offshore fishing highly wind and wave sensitive (Gulf wave height critical). Bay fishing more tolerant.',
-    construction: 'VARIES by task. Roofing: no rain. Painting: no humidity above 85%, no rain. Crane ops: wind over 25mph = stop. Foundation work: heavy rain causes washout.',
-    outdoor_event: 'MODERATE sensitivity. Lightning NO-GO. Heavy rain ruins events. Light rain tolerable with tents. Extreme heat (>100°F heat index) also a risk.',
-    fog_visibility: 'Fog forms when dewpoint-temperature spread drops below 3°F. Marine layer, radiation fog, advection fog have different burn-off times. Mixing height determines clearing time.',
-    lightning_risk: 'STRICT threshold. Any lightning within 10 miles = seek shelter. 30-30 rule: 30 seconds flash-to-thunder = under 6 miles. Wait 30 minutes after last strike.',
-    storm_general: 'Evaluate wind, hail, tornado, and flash flood threats separately. SPC outlook level is primary guidance. Timing and motion vector critical.',
-    hurricane: 'Multi-day planning window. Storm surge is primary killer. Wind zones: TS force (39mph+), hurricane force (74mph+). Evacuation decisions 48-72 hours out.',
-    general: 'Standard rain and wind sensitivity. Evaluate PoP, wind speed, and any severe weather potential.',
+    concrete:
+      'EXTREME sensitivity. Any rain during or 4h after pour ruins the slab. ' +
+      'Wind >20mph roughens surface. Temp below 40°F slows cure dangerously, ' +
+      'above 95°F causes rapid drying cracks. Humidity <40% also risky. ' +
+      'A 20% PoP is NO-GO. Wind gusts above 20mph = CAUTION. ' +
+      'Ideal: dry, 55-85°F, wind <10mph, humidity 50-80%.',
+    wedding:
+      'HIGH sensitivity. Decisions made 24-48h out for venue changes. ' +
+      '30% rain risk warrants backup plan discussion. ' +
+      'Lightning = absolute NO-GO for outdoor ceremony. ' +
+      'Heat index above 95°F = uncomfortable, above 105°F = dangerous for guests. ' +
+      'Wind above 25mph damages decorations and tents. ' +
+      'Light rain (under 0.1"/hr) with tent = manageable. ' +
+      'Answer must address ceremony window AND reception window separately.',
+    sports:
+      'MODERATE rain tolerance — depends on sport. ' +
+      'Lightning within 10 miles = stop play immediately, no exceptions. ' +
+      'Heavy rain (>0.3"/hr) stops most sports. Light rain acceptable for many. ' +
+      'Field flooding from prior rain matters even if current sky is clear. ' +
+      'Wind above 35mph affects ball sports significantly. ' +
+      'Heat index above 100°F = mandatory water breaks, above 110°F = cancel.',
+    motorcycle:
+      'HIGH rain and wind sensitivity. Any wet roads create hazard. ' +
+      'Wind sustained above 30mph dangerous, gusts above 40mph = NO-GO. ' +
+      'Fog reduces visibility critically — even patchy fog is CAUTION. ' +
+      'Temperature below 45°F with wind chill = dangerous exposure risk. ' +
+      '30% rain chance = CAUTION, 50%+ = NO-GO. ' +
+      'Thunderstorms = absolute NO-GO.',
+    cycling:
+      'HIGH fog and rain sensitivity. Wet roads dangerous for braking. ' +
+      'Morning fog often burns off — clearing time is critical. ' +
+      'Wind direction and speed affects effort: headwind above 20mph = hard ride. ' +
+      'Lightning = NO-GO. Rain chance above 40% = CAUTION. ' +
+      'Temperature below 40°F requires gear assessment.',
+    fishing:
+      'MODERATE weather sensitivity varies by location. ' +
+      'Lightning = immediate NO-GO — get off water. ' +
+      'Offshore/bay: waves above 3ft = uncomfortable, above 5ft = dangerous for most vessels. ' +
+      'Wind above 20 knots = CAUTION offshore. ' +
+      'Barometric pressure falling rapidly often improves fishing but signals incoming storm. ' +
+      'Cold fronts: fishing often excellent just before, poor just after. ' +
+      'Rain alone is usually fine — it is the lightning and seas that matter.',
+    construction:
+      'VARIES by task — always specify the work type in your answer. ' +
+      'Roofing: any rain = NO-GO. Wind above 25mph = NO-GO. ' +
+      'Concrete: see concrete profile. ' +
+      'Painting/coating: humidity above 85% or rain = NO-GO. ' +
+      'Crane operations: wind above 25mph = stop, gusts above 35mph = emergency shutdown. ' +
+      'Excavation/earthwork: heavy rain (>0.5") causes washout and instability. ' +
+      'Lightning within 10 miles = stop all outdoor work.',
+    outdoor_event:
+      'MODERATE sensitivity. Lightning NO-GO. ' +
+      'Heavy rain ruins uncovered events. Light rain tolerable with tents. ' +
+      'Heat index above 100°F = mandatory shade and water stations. ' +
+      'Wind above 35mph damages tents and stage equipment. ' +
+      'Always address whether the event has covered areas available.',
+    fog_visibility:
+      'Fog forms when dewpoint-temperature spread drops below 3°F. ' +
+      'Dense fog advisory = visibility below 0.25 miles. ' +
+      'Marine layer burns off later than radiation fog. ' +
+      'Mixing height and wind speed determine clearing time. ' +
+      'Always give estimated burn-off time if clearing is expected.',
+    lightning_risk:
+      'STRICT threshold. Any lightning within 10 miles = seek shelter immediately. ' +
+      '30-30 rule: if flash-to-thunder is under 30 seconds, you are in range. ' +
+      'Wait 30 minutes after last strike before resuming outdoor activity. ' +
+      'Open fields, hilltops, and water dramatically increase risk. ' +
+      'CAPE above 1000 J/kg with moisture = thunderstorm development likely.',
+    storm_general:
+      'Evaluate wind, hail, tornado, and flash flood threats separately. ' +
+      'SPC outlook level is primary guidance. ' +
+      'Timing and storm motion vector are critical — give ETA if cells approaching. ' +
+      'Never combine threats into one vague statement.',
+    hurricane:
+      'Multi-day planning window. Storm surge is the primary killer — address first. ' +
+      'Wind zones: TS force 39mph+, hurricane force 74mph+. ' +
+      'Evacuation decisions should be made 48-72 hours before landfall. ' +
+      'Always cite the advisory number and storm category.',
+    hiking:
+      'HIGH sensitivity to lightning and afternoon storms above treeline. ' +
+      'Temperature drops ~3.5°F per 1,000 ft elevation gain — state summit temp. ' +
+      'Wind chill at summit can be extreme even on warm days. ' +
+      'CRITICAL: afternoon thunderstorms are the primary danger — give hard turnaround time. ' +
+      'Rain makes trails muddy and slippery — moderate sensitivity. ' +
+      'Lightning within any distance above treeline = descend immediately. ' +
+      'Ideal: clear AM, summit by 10-11 AM, off exposed ridges by noon.',
+    running:
+      'MODERATE weather sensitivity. ' +
+      'Heat index above 90°F = caution, above 103°F = dangerous — high exertion accelerates heat illness. ' +
+      'Best running temps: 45-65°F. ' +
+      'Humidity above 80% significantly worsens effective temperature. ' +
+      'Lightning = NO-GO. Heavy rain = CAUTION (slippery, visibility). ' +
+      'Morning runs avoid peak heat — always suggest timing if heat is a factor. ' +
+      'Air quality AQI above 100 = caution for runners, above 150 = NO-GO.',
+    golf:
+      'HIGH lightning sensitivity — courses close at first strike within 10 miles. ' +
+      'Rain above 0.2"/hr makes course unplayable. ' +
+      'Wind above 20mph significantly affects play and comfort. ' +
+      'Heat index above 100°F = serious risk for 4-5 hour round. ' +
+      'Morning tee times generally safer in summer (afternoon storm season). ' +
+      'Always give the 18-hole window verdict, not just current conditions.',
+    dog_walking:
+      'LOW-MODERATE sensitivity — dogs handle most weather but owners need guidance. ' +
+      'Pavement temp above 130°F (ambient above 87°F in direct sun) = paw burn risk. ' +
+      'Lightning = shelter immediately. ' +
+      'Heat index above 90°F = shorten walk, stick to shade. ' +
+      'Heavy rain = manageable with gear but most owners prefer to wait. ' +
+      'Key question: is it safe for both dog and owner.',
+    beach:
+      'MODERATE sensitivity — depends on whether swimming, sunbathing, or surfing. ' +
+      'Lightning = NO-GO, get off beach immediately. ' +
+      'Rip current risk increases with onshore wind above 15mph and rough surf. ' +
+      'UV index above 8 = high burn risk, emphasize sunscreen and shade. ' +
+      'Wind above 25mph = unpleasant sand conditions. ' +
+      'Water temperature matters for swimming comfort. ' +
+      'Always address whether conditions are safe for water entry.',
+    yoga:
+      'LOW weather sensitivity for indoor yoga. ' +
+      'Outdoor yoga: heat index above 90°F = hot yoga conditions (some practitioners prefer this, others find it dangerous). ' +
+      'Rain = session likely cancelled or moved indoors. ' +
+      'Wind above 15mph makes outdoor practice difficult. ' +
+      'Morning sessions preferable in summer heat. ' +
+      'Lightning = absolute cancel for any outdoor session.',
+    proposal:
+      'VERY HIGH sensitivity — this is a one-time irreplaceable moment. ' +
+      'Primary concern is whether the sky will be clear and conditions comfortable. ' +
+      'Sunset timing is often critical — note exact sunset time if relevant. ' +
+      'Wind should be light (under 15mph) for outdoor rooftop/beach proposals. ' +
+      'Rain = rethink the plan unless indoor backup exists. ' +
+      'Focus on the specific window (e.g. 6:30-7:30 PM) not the whole day. ' +
+      'Tone should be warm and helpful — this matters deeply to the person asking.',
+    marathon:
+      'HIGH sensitivity to heat and humidity. ' +
+      'Ideal marathon conditions: 40-55°F, low humidity, overcast. ' +
+      'Heat index above 65°F = slower times and increased medical risk. ' +
+      'Above 80°F heat index = serious medical risk for runners. ' +
+      'Wind can help (tailwind) or hurt (headwind on course). ' +
+      'Rain at race temp is usually manageable — chafing and blisters are concerns. ' +
+      'Lightning = race cancellation. ' +
+      'Always state the race start time conditions vs expected finish time conditions.',
+    general:
+      'Standard rain and wind sensitivity. ' +
+      'Evaluate PoP, wind speed, and any severe weather potential. ' +
+      'Lead with the variable the user asked about.',
   };
 
   return {
@@ -298,10 +446,10 @@ export function parseQuestion(question: string): ParsedQuestion {
     hoursAhead,
     timeKnown,
     needsHRRR: hoursAhead <= 48,
-    needsSounding: ['concrete', 'storm_general', 'lightning_risk', 'outdoor_event', 'wedding'].includes(activityType),
+    needsSounding: ['concrete', 'storm_general', 'lightning_risk', 'outdoor_event', 'wedding', 'hiking', 'golf', 'marathon', 'proposal'].includes(activityType),
     needsRadar: hoursAhead <= 12 || ['storm_general', 'lightning_risk', 'concrete'].includes(activityType),
-    needsLightning: ['sports', 'outdoor_event', 'wedding', 'lightning_risk', 'fishing'].includes(activityType),
-    needsGulf: ['fishing', 'hurricane', 'fog_visibility'].includes(activityType),
+    needsLightning: ['sports', 'outdoor_event', 'wedding', 'lightning_risk', 'fishing', 'hiking', 'golf', 'running', 'marathon', 'beach', 'yoga', 'dog_walking'].includes(activityType),
+    needsGulf: ['fishing', 'hurricane', 'fog_visibility', 'beach'].includes(activityType),
     needsEnsemble: hoursAhead >= 48,
     sensitivityProfile: sensitivityProfiles[activityType],
   };
