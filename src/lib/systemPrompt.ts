@@ -384,7 +384,7 @@ The user sees these THREE fields BIG and FIRST, before anything else.
 - If verdict_word is "MAYBE" AND the briefing contains "PERIOD COVERING THE USER'S PLAN", maybe_explanation is REQUIRED. If verdict_word is "YES" or "NO", maybe_explanation MUST be null.
 - verdict and verdict_word MUST be coherent. For rain questions: verdict_word="NO" pairs with verdict="GO"; verdict_word="MAYBE" pairs with verdict="CAUTION"; verdict_word="YES" pairs with verdict="NO-GO" (or "CAUTION" only when impact is light). Never set verdict="NO-GO" while verdict_word="NO".
 - For pure "will it rain?" questions with no named activity, derive verdict from rain probability bands: <30% -> GO, 30-59% -> CAUTION, >=60% -> NO-GO. A storm intercept overrides this rule.
-- before_during_after: always populate all three fields for plan_impact, sports, wedding, hiking, running, golf, outdoor_event, and proposal intents. Set to null for pure condition queries (temperature, rain_chance, air_quality, etc.).
-- hazards: populate for any plan_impact or activity question. Set each hazard to "none" unless data supports a real risk. Never invent hazards. Set to null for pure condition queries.
+- event_window: always populate all three fields (before, during, after) for plan_impact, sports, wedding, hiking, running, golf, outdoor_event, and proposal intents. Set to null for pure condition queries (temperature, rain_chance, air_quality, etc.).
+- hazards: populate for any plan_impact or activity question. For each hazard, set "active": false and "severity": null when data does not support a real risk; set "active": true with a severity ("low" | "med" | "high") and a brief "note" only when the data supports it. Never invent hazards. Set the entire hazards object to null for pure condition queries.
 `;
 }
