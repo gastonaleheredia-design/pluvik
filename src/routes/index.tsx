@@ -471,12 +471,14 @@ function HomePage() {
           ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
           : null;
         let cancelled = false;
-        // High-confidence city/state extractions (e.g. "Phoenix, AZ") don't
-        // need the proximity guard — they're explicit, not venue
-        // disambiguation.
+        // High confidence = explicit city/state → skip proximity entirely
+        // Medium confidence = landmark/mountain/park → also skip proximity
+        // (famous places are not near the user by definition)
+        // Low confidence = ambiguous venue → use proximity
+        const skipProximity = isHighConfidence || extracted?.confidence === 'medium';
         geocodeVenueNear(venue, proximity, {
-          skipProximityGuard: isHighConfidence,
-          skipProximityBias: isHighConfidence,
+          skipProximityGuard: skipProximity,
+          skipProximityBias: skipProximity,
         }).then((p) => {
           if (cancelled) return;
           setPlaceResolving(false);
