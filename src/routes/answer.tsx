@@ -1270,7 +1270,7 @@ function AnswerPage() {
 
               {/* ── BEFORE / DURING / AFTER ──────────────────────────────────── */}
               {(() => {
-                const bda = (answer as any).before_during_after ?? null;
+                const bda = (answer as any).event_window ?? null;
                 if (!bda) return null;
                 const rows = [
                   { tag: 'Before', text: bda.before, tagStyle: { bg: 'rgba(21,128,61,0.1)', color: '#15803d' } },
