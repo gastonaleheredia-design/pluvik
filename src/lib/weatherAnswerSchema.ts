@@ -183,10 +183,20 @@ function normalizeRawAnswer(raw: unknown): unknown {
         continue;
       }
       if (h && typeof h === 'object' && 'severity' in h) {
+        // Legacy nested shape { active, severity, note } → flat string + _note.
         const ho = h as Record<string, unknown>;
+        const active = ho.active !== false;
         const coerced = sev(ho.severity);
-        if (coerced) ho.severity = coerced;
-        else delete ho.severity;
+        const flat = !active
+          ? 'none'
+          : coerced === 'low' ? 'low'
+          : coerced === 'med' ? 'medium'
+          : coerced === 'high' ? 'high'
+          : 'low';
+        hz[key] = flat;
+        if (typeof ho.note === 'string' && ho.note.trim()) {
+          hz[`${key}_note`] = ho.note.trim();
+        }
       }
     }
   }
