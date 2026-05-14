@@ -83,21 +83,23 @@ export function BottomNav() {
                 }`}
               />
               {showDot && (
-                unreadCount > 0 ? (
-                  <span
-                    aria-label={`${unreadCount} unread notifications`}
-                    title={`${unreadCount} unread notifications`}
-                    className="absolute -top-2 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#dc2626] ring-2 ring-paper text-[10px] leading-4 text-white text-center font-semibold"
-                  >
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                ) : (
-                  <span
-                    aria-label="New update on a tracked storm"
-                    title="New update on a tracked storm"
-                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#dc2626] ring-2 ring-paper"
-                  />
-                )
+                <span
+                  aria-label={
+                    unreadCount > 0
+                      ? `${unreadCount} unread notifications`
+                      : 'New update on a tracked storm'
+                  }
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#c2410c',
+                    border: '2px solid #faf7f0',
+                  }}
+                />
               )}
             </span>
             <span className="relative">
