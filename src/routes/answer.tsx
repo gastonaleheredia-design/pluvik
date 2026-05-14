@@ -1310,7 +1310,7 @@ function AnswerPage() {
 
               {/* ── HAZARD GRID ──────────────────────────────────────────────── */}
               {(() => {
-                const hazards = (answer as { hazards?: Record<string, string> | null }).hazards ?? null;
+                const hazards = (answer as { hazards?: Record<string, { active?: boolean; severity?: string; note?: string } | string | null> | null }).hazards ?? null;
                 if (!hazards) return null;
                 const cells = [
                   { icon: '🌧', name: 'Rain',      key: 'rain' },
@@ -1320,7 +1320,10 @@ function AnswerPage() {
                   { icon: '❄️', name: 'Cold',      key: 'cold' },
                   { icon: '🌊', name: 'Flood',     key: 'flood' },
                 ];
-                const anyActive = cells.some(c => hazards[c.key] && hazards[c.key] !== 'none');
+                const anyActive = cells.some(c => {
+                  const v = hazards[c.key];
+                  return !!v && typeof v === 'object' && (v as { active?: boolean }).active === true;
+                });
                 if (!anyActive) return null;
                 return (
                   <div style={{
@@ -1328,11 +1331,12 @@ function AnswerPage() {
                     gap: '5px', marginBottom: '14px',
                   }}>
                     {cells.map(cell => {
-                      const level = hazards[cell.key] ?? 'none';
-                      const isActive = level !== 'none';
-                      const bg = level === 'high'   ? 'rgba(185,28,28,0.1)' :
-                                 level === 'medium' ? 'rgba(180,83,9,0.1)'  :
-                                 level === 'low'    ? 'rgba(180,83,9,0.06)' :
+                      const h = hazards[cell.key] as { active?: boolean; severity?: string; note?: string } | null | undefined;
+                      const isActive = h?.active === true;
+                      const level = h?.severity ?? 'none';
+                      const bg = level === 'high' ? 'rgba(185,28,28,0.1)' :
+                                 level === 'med'  ? 'rgba(180,83,9,0.1)'  :
+                                 level === 'low'  ? 'rgba(180,83,9,0.06)' :
                                  'rgba(11,16,24,0.03)';
                       return (
                         <div key={cell.key} style={{
@@ -1351,7 +1355,7 @@ function AnswerPage() {
                             fontFamily: 'Inter, sans-serif',
                             fontSize: '0.68rem', lineHeight: 1.3, color: INK,
                           }}>
-                            {isActive ? hazards[`${cell.key}_note`] ?? level : 'None'}
+                            {isActive ? h?.note ?? level : 'None'}
                           </span>
                         </div>
                       );
