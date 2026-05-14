@@ -17,6 +17,7 @@ import { transcribeVoice } from '../lib/transcribeVoice.functions';
 import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
+import { extractSportsVenue } from '../lib/sportsVenues';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
@@ -461,6 +462,22 @@ function HomePage() {
       }
       // Place — try the lightweight extractor first, then venue + geocode.
       if (!pickedPlaceManual) {
+        // Sports team/venue check — highest priority.
+        // "Astros game" → Minute Maid Park; "Cowboys game" → AT&T Stadium.
+        const sportsVenue = extractSportsVenue(text);
+        if (sportsVenue) {
+          setPlaceResolving(true);
+          let cancelledSports = false;
+          geocodeVenueNear(sportsVenue, null, {
+            skipProximityGuard: true,
+            skipProximityBias: true,
+          }).then((p) => {
+            if (cancelledSports) return;
+            setPlaceResolving(false);
+            if (p) setPickedPlace(p);
+          });
+          return () => { cancelledSports = true; };
+        }
         const extracted = extractPlaceFromQuestion(text);
         const direct = extracted?.place ?? null;
         const isHighConfidence = extracted?.confidence === 'high';
