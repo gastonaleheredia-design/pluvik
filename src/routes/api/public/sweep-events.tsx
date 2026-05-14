@@ -30,13 +30,15 @@ interface LastSnapshotRow {
   stage: ForecastStage;
   data_sources: string[] | null;
   main_threat: string | null;
+  decision_label: string | null;
+  summary: string | null;
 }
 
 async function concludeOne(event: TrackedEventRow): Promise<{ id: string; ok: boolean; error?: string }> {
   // Pull the latest snapshot, if any, for stage + previous_snapshot_id linkage.
   const { data: prev, error: prevErr } = await supabaseAdmin
     .from('event_forecast_snapshots')
-    .select('id, stage, data_sources, main_threat')
+    .select('id, stage, data_sources, main_threat, decision_label, summary')
     .eq('event_id', event.id)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -75,7 +77,14 @@ async function concludeOne(event: TrackedEventRow): Promise<{ id: string; ok: bo
 
   const { error: updErr } = await supabaseAdmin
     .from('tracked_events')
-    .update({ archived_at: new Date().toISOString(), is_active: false })
+    .update({
+      archived_at: new Date().toISOString(),
+      is_active: false,
+      outcome_recorded: false,
+      final_forecast_verdict: prevRow?.decision_label ?? event.current_verdict ?? null,
+      final_forecast_stage: prevRow?.stage ?? null,
+      final_forecast_sentence: prevRow?.summary ?? null,
+    })
     .eq('id', event.id);
   if (updErr) return { id: event.id, ok: false, error: updErr.message };
 
