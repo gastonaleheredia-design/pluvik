@@ -58,11 +58,10 @@ export function pickConfidenceAwareWord(args: {
   percentage?: number | null;
   summary?: string | null;
 }): SoftHeadline {
-  // SAFETY RULE: never soften a NO verdict when the answer contains
-  // explicit danger language. Heat, lightning, shelter, unsafe,
-  // dangerous — these should never become LIKELY or MAYBE.
-  const dangerLanguage = /\b(dangerous|unsafe|scorch|deadly|fatal|shelter|lightning|tornado)\b/i;
-  if (args.rawWord === 'NO' && args.summary && dangerLanguage.test(args.summary)) {
+  // Never soften a NO verdict when the LLM explicitly flagged danger.
+  // "dangerously hot", "unsafe", "scorch", "shelter now" — these must stay NO.
+  const explicitDanger = /\b(dangerous|dangerously|unsafe|scorch|deadly|fatal|do not|shelter|evacuate|lightning|tornado)\b/i;
+  if (args.rawWord === 'NO' && args.summary && explicitDanger.test(args.summary)) {
     return 'NO';
   }
 
@@ -70,6 +69,14 @@ export function pickConfidenceAwareWord(args: {
   const pct = typeof args.percentage === 'number' && Number.isFinite(args.percentage)
     ? Math.max(0, Math.min(100, args.percentage))
     : null;
+
+  // Never soften a NO verdict when the impact percentage is high.
+  // The "percentage" field for heat/wind/etc questions represents impact
+  // risk, not rain chance — a 70%+ impact NO must stay NO.
+  if (args.rawWord === 'NO' && pct != null && pct >= 70) {
+    return 'NO';
+  }
+
   // Derive a leaning if the raw word is missing.
   let lean: 'pos' | 'neg' | 'mid' =
     args.rawWord === 'YES' ? 'pos'
