@@ -10,6 +10,20 @@ export function BottomNav() {
   const currentPath = location.pathname;
   const { user } = useAuth();
   const [hasUnseen, setHasUnseen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+    supabase
+      .from('user_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false)
+      .then(({ count }) => setUnreadCount(count ?? 0));
+  }, [user, currentPath]);
 
   useEffect(() => {
     if (!user) {
@@ -55,7 +69,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 bg-paper border-t border-[rgba(11,16,24,0.08)] flex justify-around items-center py-3 px-4 z-50">
       {items.map((item) => {
         const isActive = currentPath === item.to;
-        const showDot = item.key === 'tracking' && hasUnseen;
+        const showDot = item.key === 'tracking' && (hasUnseen || unreadCount > 0);
         return (
           <Link
             key={item.key}
@@ -69,11 +83,21 @@ export function BottomNav() {
                 }`}
               />
               {showDot && (
-                <span
-                  aria-label="New update on a tracked storm"
-                  title="New update on a tracked storm"
-                  className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#dc2626] ring-2 ring-paper"
-                />
+                unreadCount > 0 ? (
+                  <span
+                    aria-label={`${unreadCount} unread notifications`}
+                    title={`${unreadCount} unread notifications`}
+                    className="absolute -top-2 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#dc2626] ring-2 ring-paper text-[10px] leading-4 text-white text-center font-semibold"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                ) : (
+                  <span
+                    aria-label="New update on a tracked storm"
+                    title="New update on a tracked storm"
+                    className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#dc2626] ring-2 ring-paper"
+                  />
+                )
               )}
             </span>
             <span className="relative">
