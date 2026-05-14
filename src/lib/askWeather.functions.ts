@@ -838,8 +838,14 @@ export const askWeather = createServerFn({ method: 'POST' })
       else console.warn('[askWeather] schema validation failed:', validated.issues);
       // Try a deterministic fallback derived from HRRR hourly data so the
       // user still gets a meaningful rain answer.
+      // Never use the rain fallback for hiking/altitude questions.
+      // A mountain hiking answer that fails should return a clear error
+      // rather than a meaningless rain report.
+      const canUseRainFallback =
+        intent !== 'altitude' && parsed.activityType !== 'hiking';
       const fb =
-        stageInfo.stage === 'short_range' || stageInfo.stage === 'model_trend'
+        canUseRainFallback &&
+        (stageInfo.stage === 'short_range' || stageInfo.stage === 'model_trend')
           ? deriveRainFallback(
               briefing.hourlyForecast,
               typeof hoursAhead === 'number' ? hoursAhead : 24,
