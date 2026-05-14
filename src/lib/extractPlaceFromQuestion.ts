@@ -290,6 +290,21 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     }
   }
 
+  // ── 5b. Named landmark / mountain / park / venue ─────────────────────
+  // Catches: "Mount Elbert", "Central Park", "Yellowstone", "Hermann Park",
+  // "Bumpy Pickle's", "AT&T Stadium" — any multi-word proper noun phrase
+  // that follows a preposition or appears standalone as a destination.
+  // We treat these as medium confidence — Mapbox validates them.
+  const landmarkRe = /\b(?:mount|mt\.?|lake|river|park|stadium|arena|museum|airport|trail|peak|summit|canyon|falls|beach|bay|harbor|island|resort|hotel|restaurant|bar|grill|cafe)\s+([A-Z][A-Za-z\s'&]{2,30})/i;
+  const landmarkMatch = q.match(landmarkRe);
+  if (landmarkMatch) {
+    const fullName = landmarkMatch[0].trim();
+    const firstWord = fullName.split(/\s+/)[0].toLowerCase();
+    if (!STOP_WORDS.has(firstWord)) {
+      return { place: titleCase(fullName), confidence: 'medium' };
+    }
+  }
+
   // 6. Preposition scan
   let best: ExtractedPlace | null = null;
 
