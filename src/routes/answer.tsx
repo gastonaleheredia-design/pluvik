@@ -1502,7 +1502,7 @@ function AnswerPage() {
           facts={facts}
           story={answer.summary}
           verdict={verdict}
-          action={answer.action ?? t('answer.error_message')}
+          action={answer.action ?? fallbackAction}
           confidence={answer.confidence}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
