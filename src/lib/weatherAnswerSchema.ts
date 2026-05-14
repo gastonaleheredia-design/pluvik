@@ -32,18 +32,11 @@ export const WeatherAnswerSchema = z.object({
   /** Paraphrased CPC discussion sentences (long-range outlook narrative). */
   cpc_narrative: z.string().nullable().optional(),
 
-  /** Multi-hazard breakdown. Each entry inactive ⇒ active=false. */
-  hazards: z.object({
-    rain:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    snow:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    ice:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    wind:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    cold_front: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    heat:       z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    lightning:  z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    fog:        z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-    visibility: z.object({ active: z.boolean(), severity: z.enum(['low','med','high']).nullable().optional(), note: z.string().nullable().optional() }).partial({ severity: true, note: true }).optional(),
-  }).partial().nullable().optional(),
+  /**
+   * Flat hazard map: each hazard key holds a severity string, with an
+   * optional sibling `<hazard>_note` carrying a brief plain-language note.
+   */
+  hazards: z.record(z.string(), z.string()).nullable().optional(),
 
   /** Hour-by-hour mini-timeline around the event time. */
   timeline: z.array(z.object({
@@ -54,6 +47,13 @@ export const WeatherAnswerSchema = z.object({
 
   /** "Before / during / after" sentences around the event window. */
   event_window: z.object({
+    before: z.string().nullable().optional(),
+    during: z.string().nullable().optional(),
+    after:  z.string().nullable().optional(),
+  }).nullable().optional(),
+
+  /** Same shape as event_window — the field name the UI now reads. */
+  before_during_after: z.object({
     before: z.string().nullable().optional(),
     during: z.string().nullable().optional(),
     after:  z.string().nullable().optional(),
@@ -167,14 +167,26 @@ function normalizeRawAnswer(raw: unknown): unknown {
     return 'watch';
   };
 
-  const hz = r.hazards as Record<string, Record<string, unknown>> | null | undefined;
+  const hz = r.hazards as Record<string, unknown> | null | undefined;
   if (hz && typeof hz === 'object') {
     for (const key of Object.keys(hz)) {
       const h = hz[key];
+      if (typeof h === 'string') {
+        const s = h.trim().toLowerCase();
+        if (['none', 'low', 'medium', 'high'].includes(s)) {
+          hz[key] = s;
+        } else if (s === 'med' || s === 'moderate') {
+          hz[key] = 'medium';
+        } else if (!s) {
+          hz[key] = 'none';
+        }
+        continue;
+      }
       if (h && typeof h === 'object' && 'severity' in h) {
-        const coerced = sev(h.severity);
-        if (coerced) h.severity = coerced;
-        else delete h.severity;
+        const ho = h as Record<string, unknown>;
+        const coerced = sev(ho.severity);
+        if (coerced) ho.severity = coerced;
+        else delete ho.severity;
       }
     }
   }
