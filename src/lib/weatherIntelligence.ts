@@ -220,6 +220,14 @@ export type ActivityType =
   | 'lightning_risk'
   | 'storm_general'
   | 'hurricane'
+  | 'hiking'
+  | 'running'
+  | 'golf'
+  | 'dog_walking'
+  | 'beach'
+  | 'yoga'
+  | 'proposal'
+  | 'marathon'
   | 'general';
 
 export interface ParsedQuestion {
