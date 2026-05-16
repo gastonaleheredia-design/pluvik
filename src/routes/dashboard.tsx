@@ -919,6 +919,9 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
+                    {!isArchived && event.next_refresh_at && (
+                      <> · Updates in {untilShort(event.next_refresh_at)}</>
+                    )}
                   </div>
                 )}
 
