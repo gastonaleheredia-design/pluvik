@@ -1300,6 +1300,12 @@ function HomePage() {
         />
       )}
       {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
+      {showCountdown && (
+        <DailyLimitCountdown
+          onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
+          onClose={() => setShowCountdown(false)}
+        />
+      )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
         <AlertSheet
           key={`${selectedAddress.lat.toFixed(4)}|${selectedAddress.lon.toFixed(4)}`}
