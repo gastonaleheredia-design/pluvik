@@ -23,6 +23,8 @@ import { UpgradeSheet } from '../components/UpgradeSheet';
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
+const HOME_SESSIONS_KEY = 'pluvik-home-sessions';
+const HOME_SESSIONS_CHIP_LIMIT = 5;
 
 // Free tier DAILY question limit. After the 1st question they get the full
 // answer; questions 2 and 3 get the limited answer; the 4th is blocked
@@ -114,6 +116,7 @@ function HomePage() {
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
   const [placeResolving, setPlaceResolving] = useState(false);
   const [rainSheetOpen, setRainSheetOpen] = useState(false);
+  const [showSuggestionChips, setShowSuggestionChips] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -126,6 +129,20 @@ function HomePage() {
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Increment home-session counter once on mount; show suggestion chips
+  // only while the counter is at or below the limit.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let n = 0;
+    try {
+      const raw = localStorage.getItem(HOME_SESSIONS_KEY);
+      n = raw ? parseInt(raw, 10) || 0 : 0;
+    } catch {}
+    n += 1;
+    try { localStorage.setItem(HOME_SESSIONS_KEY, String(n)); } catch {}
+    setShowSuggestionChips(n <= HOME_SESSIONS_CHIP_LIMIT);
+  }, []);
 
   // Load daily question count for the signed-in user from user_profiles.
   // Reset to 0 if last_question_date is not today.
