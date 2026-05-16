@@ -1429,8 +1429,6 @@ function AnswerPage() {
             </span>
           </div>
 
-          <MaturityLadder />
-
           {/* big verdict word — sized by stage */}
           {displayVerdictWord && (
             <div
@@ -1499,34 +1497,57 @@ function AnswerPage() {
             </div>
           )}
 
-          {/* outlook tendency chip */}
-          {isOutlook && decisionLabel && (
-            <div
-              style={{
-                display: 'inline-block',
-                alignSelf: 'flex-start',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                border: `1.5px solid ${ACCENT}`,
-                color: ACCENT,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.72rem',
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                marginBottom: '20px',
-              }}
-            >
-              {decisionLabel}
-            </div>
-          )}
-
           {/* sentence */}
           <div style={verdictSentenceStyle}>
             {isClimate ? climateBody : verdictSentence}
           </div>
 
-          {/* ── Briefing block: rain strip + vitals + feel + verdict pill ── */}
-          {showBriefingBlock && (
+          {/* ── Per-day breakdown for multi-day events ─────────────────── */}
+          {(() => {
+            const start = (() => {
+              if (eventAtIso) { const t = new Date(eventAtIso); if (Number.isFinite(t.getTime())) return t; }
+              const ev = extractEventTimeFromQuestion(question);
+              return ev?.eventAt ?? null;
+            })();
+            const end = (() => {
+              if (eventEndIso) { const t = new Date(eventEndIso); if (Number.isFinite(t.getTime())) return t; }
+              const ev = extractEventTimeFromQuestion(question);
+              return ev?.endAt ?? null;
+            })();
+            if (!start || !end) return null;
+            const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+            const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            const dayMs = 24 * 3600 * 1000;
+            const nDays = Math.round((endDay.getTime() - startDay.getTime()) / dayMs) + 1;
+            if (nDays < 2 || nDays > 7) return null;
+            const pct = typeof answer.percentage === 'number' ? answer.percentage : null;
+            const verdictLabel = (displayVerdictWord ?? verdictWord ?? '').toString().toUpperCase();
+            return (
+              <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '420px' }}>
+                {Array.from({ length: nDays }, (_, i) => {
+                  const d = new Date(startDay.getTime() + i * dayMs);
+                  const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 0', borderBottom: `1px solid rgba(11,16,24,0.06)`,
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.7rem', letterSpacing: '0.12em', color: INK,
+                    }}>
+                      <span style={{ color: MUTED }}>{label}</span>
+                      <span>{verdictLabel}</span>
+                      <span style={{ color: ACCENT }}>{pct != null ? `${pct}%` : '—'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* All threat grid / atmosphere / confidence card / hour grid /
+              percentage range / climate facts moved behind the "Why?" button.
+              Layer 1 stays intentionally bare. */}
+          {false && showBriefingBlock && (
             <div style={{ maxWidth: '520px' }}>
               {/* ── KEY NUMBER PILLS ─────────────────────────────────────────── */}
               <div style={{
