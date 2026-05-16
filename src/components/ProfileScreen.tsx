@@ -484,6 +484,7 @@ function EditProfileSheet({
 const page: CSSProperties = {
   minHeight: '100vh', background: PAPER, padding: '80px 24px 112px',
   color: INK, fontFamily: '"Inter", system-ui, sans-serif',
+  position: 'relative',
 };
 const title: CSSProperties = {
   fontFamily: SERIF, fontWeight: 400, fontSize: '2rem',
@@ -501,7 +502,7 @@ const btnSecondary: CSSProperties = {
 };
 const statBtn: CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
 };
 const statNum: CSSProperties = {
   fontFamily: SERIF, fontSize: '1.5rem', color: INK, lineHeight: 1,
