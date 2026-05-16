@@ -2,10 +2,13 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
+export type SubscriptionTier = 'free' | 'pro';
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  tier: SubscriptionTier;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -17,6 +20,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tier, setTier] = useState<SubscriptionTier>('free');
+
+  async function loadTier(userId: string): Promise<void> {
+    try {
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('tier')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('current_period_end', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (sub?.tier === 'pro') {
+        setTier('pro');
+        return;
+      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_tier')
+        .eq('id', userId)
+        .maybeSingle();
+      setTier((profile?.subscription_tier as SubscriptionTier) ?? 'free');
+    } catch {
+      setTier('free');
+    }
+  }
 
   useEffect(() => {
     const {
@@ -27,6 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      if (session?.user) {
+        void loadTier(session.user.id);
+      } else {
+        setTier('free');
+      }
 
       // Migrate any guest events captured before sign-in into the new
       // user's tracked_events. Runs once per sign-in; clears localStorage
@@ -40,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      if (session?.user) {
+        void loadTier(session.user.id);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -68,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, signUp, signIn, signOut }}
+      value={{ user, session, loading, tier, signUp, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

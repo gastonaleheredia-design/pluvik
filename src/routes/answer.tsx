@@ -23,6 +23,87 @@ import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
+function UpgradeSheet({
+  accent, ink, muted, onClose,
+}: { accent: string; ink: string; muted: string; onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(11,16,24,0.55)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 480,
+          background: '#faf7f0',
+          borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          padding: '28px 22px 32px',
+          boxShadow: '0 -8px 28px rgba(0,0,0,0.18)',
+        }}
+      >
+        <div style={{
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '0.6rem', letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: accent, marginBottom: 10,
+        }}>
+          Pluvik Pro
+        </div>
+        <div style={{
+          fontFamily: 'Inter, sans-serif', fontSize: '1.15rem',
+          fontWeight: 600, color: ink, lineHeight: 1.3, marginBottom: 18,
+        }}>
+          Track this forecast and get notified the moment it changes.
+        </div>
+        <ul style={{
+          listStyle: 'none', padding: 0, margin: '0 0 24px',
+          fontFamily: 'Inter, sans-serif', fontSize: '0.92rem',
+          color: ink, lineHeight: 1.55,
+        }}>
+          <li style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <span style={{ color: accent }}>✓</span>
+            Unlimited event tracking
+          </li>
+          <li style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <span style={{ color: accent }}>✓</span>
+            Forecast change alerts
+          </li>
+          <li style={{ display: 'flex', gap: 10 }}>
+            <span style={{ color: accent }}>✓</span>
+            Saved places sync across devices
+          </li>
+        </ul>
+        <button
+          onClick={() => { /* payment hookup TBD */ }}
+          style={{
+            width: '100%', padding: '14px 16px', borderRadius: 12,
+            background: accent, color: '#faf7f0', border: 'none',
+            fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.98rem',
+            cursor: 'pointer', marginBottom: 10,
+          }}
+        >
+          Get Pro — $4.99/mo
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%', padding: '12px 16px', borderRadius: 12,
+            background: 'transparent', color: muted,
+            border: '1px solid rgba(11,16,24,0.15)',
+            fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
+            cursor: 'pointer',
+          }}
+        >
+          Maybe later
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createFileRoute('/answer')({
   validateSearch: (search: Record<string, unknown>) => ({
     q: String(search.q ?? ''),
@@ -97,12 +178,13 @@ function AnswerPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(0);
-  const { user } = useAuth();
+  const { user, tier } = useAuth();
   const { address: selectedAddress } = useAddress();
   const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showGuestSheet, setShowGuestSheet] = useState(false);
+  const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
@@ -350,6 +432,10 @@ function AnswerPage() {
 
   const handleSaveTrack = () => {
     if (!answer) return;
+    if (tier === 'free') {
+      setShowUpgradeSheet(true);
+      return;
+    }
     if (user) {
       saveAndTrack();
     } else {
@@ -981,7 +1067,9 @@ function AnswerPage() {
   const climateOutro =
     stageOutro || 'We will start giving you a real forecast about 10 days before your date.';
   const saveCtaLabel =
-    isClimate || isOutlook
+    tier === 'free'
+      ? 'TRACK — UPGRADE TO PRO'
+      : isClimate || isOutlook
       ? 'TRACK THIS DATE'
       : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
@@ -1656,6 +1744,14 @@ function AnswerPage() {
             onClose={() => setShowAuthModal(false)}
           />
         )}
+        {showUpgradeSheet && (
+          <UpgradeSheet
+            accent={ACCENT}
+            ink={INK}
+            muted={MUTED}
+            onClose={() => setShowUpgradeSheet(false)}
+          />
+        )}
       </>
     );
   }
@@ -1772,6 +1868,14 @@ function AnswerPage() {
             </div>
           </div>
         </div>
+      )}
+      {showUpgradeSheet && (
+        <UpgradeSheet
+          accent={ACCENT}
+          ink={INK}
+          muted={MUTED}
+          onClose={() => setShowUpgradeSheet(false)}
+        />
       )}
     </>
   );
