@@ -768,6 +768,19 @@ function AnswerPage() {
   };
 
   // ── LOADING STATE ──────────────────────────────
+  // Severe-weather intercept: simplified red screen, no confidence ladder,
+  // no tracking prompt. Renders as soon as the interpreter has a result.
+  if (severe && (severeAnswer || severeLoading)) {
+    return (
+      <SevereInterceptScreen
+        loading={severeLoading && !severeAnswer}
+        answer={severeAnswer}
+        question={question}
+        onBack={() => navigate({ to: '/' })}
+      />
+    );
+  }
+
   if (status === 'loading') {
     return (
       <div
