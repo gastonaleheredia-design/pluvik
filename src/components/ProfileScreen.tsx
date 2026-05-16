@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link } from '@tanstack/react-router';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +11,7 @@ const ACCENT = '#c2410c';
 const MUTED = '#6b6357';
 const SURFACE = '#f0ebde';
 const BORDER = 'rgba(11,16,24,0.08)';
+const DIVIDER = 'rgba(194,65,12,0.18)';
 const SERIF = '"Fraunces", Georgia, serif';
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
 
@@ -84,6 +85,8 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
   const [joining, setJoining] = useState<WeatherEvent[]>([]);
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [editOpen, setEditOpen] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isSelf = useMemo(() => {
     if (!user) return false;
@@ -226,26 +229,113 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
 
   const list = tab === 'events' ? events : joining;
 
+  async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user || !profile || !isSelf) return;
+    if (!file.type.startsWith('image/')) return;
+    setUploadingAvatar(true);
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+      const url = pub.publicUrl;
+      const { data, error: dbErr } = await supabase
+        .from('user_profiles').update({ avatar_url: url })
+        .eq('id', user.id)
+        .select('id, username, display_name, bio, avatar_url').single();
+      if (dbErr || !data) throw dbErr ?? new Error('Update failed');
+      setProfile(data as UserProfile);
+    } catch (err) {
+      console.error('avatar upload failed', err);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
   return (
     <div style={page}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={title}>{profile.display_name || profile.username}</h1>
-          <p style={{ fontFamily: MONO, color: MUTED, fontSize: '0.75rem', margin: '4px 0 0' }}>
-            @{profile.username}
-          </p>
-        </div>
-        {isSelf ? (
-          <button onClick={() => setEditOpen(true)} style={btnSecondary}>Edit Profile</button>
-        ) : user ? (
+      {/* Pencil edit icon — top right */}
+      {isSelf && (
+        <button
+          onClick={() => setEditOpen(true)}
+          aria-label="Edit profile"
+          style={{
+            position: 'absolute', top: 28, right: 24,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '1.1rem', padding: 6, color: MUTED, lineHeight: 1,
+          }}
+        >
+          ✏️
+        </button>
+      )}
+
+      {/* Avatar */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <button
+          onClick={() => { if (isSelf) fileInputRef.current?.click(); }}
+          disabled={!isSelf || uploadingAvatar}
+          aria-label={isSelf ? 'Change profile photo' : 'Profile photo'}
+          style={{
+            width: 80, height: 80, borderRadius: '50%',
+            background: SURFACE, border: `1px solid ${BORDER}`,
+            cursor: isSelf ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden', padding: 0, position: 'relative',
+          }}
+        >
+          {profile.avatar_url ? (
+            <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="8.5" r="3.8" stroke={MUTED} strokeWidth="1.6" />
+              <path d="M4.5 20c.8-3.7 3.9-6 7.5-6s6.7 2.3 7.5 6" stroke={MUTED} strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          )}
+          {uploadingAvatar && (
+            <div style={{
+              position: 'absolute', inset: 0, background: 'rgba(11,16,24,0.45)',
+              color: '#fff', fontFamily: MONO, fontSize: '0.55rem', letterSpacing: '0.1em',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>…</div>
+          )}
+        </button>
+        {isSelf && (
+          <input ref={fileInputRef} type="file" accept="image/*"
+            onChange={handleAvatarPick} style={{ display: 'none' }} />
+        )}
+      </div>
+
+      {/* Name + handle */}
+      <div style={{ textAlign: 'center', marginTop: 14 }}>
+        <h1 style={{ ...title, fontSize: '1.7rem' }}>{profile.display_name || profile.username}</h1>
+        <p style={{ fontFamily: MONO, color: MUTED, fontSize: '0.7rem', margin: '4px 0 0', letterSpacing: '0.04em' }}>
+          @{profile.username}
+        </p>
+      </div>
+
+      {/* Follow CTA — for other users */}
+      {!isSelf && user && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
           <button onClick={toggleFollow} disabled={followBusy}
             style={isFollowing ? btnSecondary : btnPrimary}>
             {isFollowing ? 'Unfollow' : 'Follow'}
           </button>
-        ) : null}
-      </div>
+        </div>
+      )}
 
-      <div style={{ display: 'flex', gap: 24, marginTop: 20 }}>
+      {/* 3-column stats */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 8, marginTop: 22, textAlign: 'center',
+      }}>
+        <button style={statBtn}>
+          <span style={statNum}>{events.length}</span>
+          <span style={statLabel}>Events</span>
+        </button>
         <button style={statBtn}>
           <span style={statNum}>{followers}</span>
           <span style={statLabel}>Followers</span>
@@ -257,12 +347,22 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
       </div>
 
       {profile.bio && (
-        <p style={{ fontFamily: '"Inter", system-ui, sans-serif', color: INK, marginTop: 16, lineHeight: 1.5 }}>
+        <p style={{
+          fontFamily: '"Inter", system-ui, sans-serif', color: INK,
+          marginTop: 18, lineHeight: 1.5, textAlign: 'center',
+          maxWidth: 420, marginLeft: 'auto', marginRight: 'auto',
+        }}>
           {profile.bio}
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 28, borderBottom: `1px solid ${BORDER}` }}>
+      {/* Warm divider */}
+      <div style={{
+        marginTop: 26, height: 1,
+        background: `linear-gradient(to right, transparent, ${DIVIDER}, transparent)`,
+      }} />
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, borderBottom: `1px solid ${BORDER}`, justifyContent: 'center' }}>
         {(['events', 'joining'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} style={{
             background: 'none', border: 'none', cursor: 'pointer', padding: '12px 4px',
@@ -270,14 +370,20 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
             color: tab === t ? ACCENT : MUTED,
             borderBottom: tab === t ? `2px solid ${ACCENT}` : '2px solid transparent',
             marginBottom: -1,
+            minWidth: 110,
           }}>{t.toUpperCase()}</button>
         ))}
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {list.length === 0 ? (
-          <p style={{ fontFamily: MONO, color: MUTED, fontSize: '0.75rem', marginTop: 12 }}>
-            {tab === 'events' ? 'No events yet.' : 'Not joining any events.'}
+          <p style={{
+            fontFamily: SERIF, fontStyle: 'italic', color: MUTED,
+            fontSize: '0.95rem', marginTop: 18, textAlign: 'center', lineHeight: 1.5,
+          }}>
+            {tab === 'events'
+              ? 'No group events yet. Ask a question and invite friends.'
+              : 'Not joining any events yet.'}
           </p>
         ) : list.map((e) => (
           <Link key={e.id} to="/event/$id" params={{ id: e.id }} style={cardLink}>
@@ -378,6 +484,7 @@ function EditProfileSheet({
 const page: CSSProperties = {
   minHeight: '100vh', background: PAPER, padding: '80px 24px 112px',
   color: INK, fontFamily: '"Inter", system-ui, sans-serif',
+  position: 'relative',
 };
 const title: CSSProperties = {
   fontFamily: SERIF, fontWeight: 400, fontSize: '2rem',
@@ -395,7 +502,7 @@ const btnSecondary: CSSProperties = {
 };
 const statBtn: CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
 };
 const statNum: CSSProperties = {
   fontFamily: SERIF, fontSize: '1.5rem', color: INK, lineHeight: 1,
