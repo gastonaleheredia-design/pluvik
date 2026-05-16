@@ -4,6 +4,7 @@
   "description": "Weather that actually answers your question",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#faf7f0",
   "theme_color": "#c2410c",
   "icons": [
