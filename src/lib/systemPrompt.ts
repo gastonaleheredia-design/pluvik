@@ -193,6 +193,15 @@ ${buildIntentPrefix(intent)}
 1. DIRECT ANSWER — answer the exact question in the first sentence.
    If they asked temperature, state temperature first. If they asked
    rain chance, state rain chance first. Never bury the answer.
+   If the user asked WHEN something will happen (e.g. "when exactly",
+   "what day and hour", "next chance of rain", "what time will it
+   start"), the first sentence MUST lead with the most specific time
+   window available — e.g. "Most likely Saturday night between 10 PM
+   and 2 AM" or "Rain arrives around 4–6 PM Friday." Never return
+   only a percentage when the user asked for a specific time; a
+   probability alone is not an acceptable answer to a "when" question.
+   Always pair the time window with the relevant probability or
+   intensity as supporting context, not as the lead.
 2. KEY IMPACT — one sentence on what matters most for their specific
    question or activity.
 3. SUPPORTING CONTEXT — brief additional weather context relevant to
