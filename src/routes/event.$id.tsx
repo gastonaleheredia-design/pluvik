@@ -697,6 +697,79 @@ function EventPage() {
           </div>
         )}
 
+        {/* ALSO WORTH KNOWING — secondary factors from the latest answer */}
+        {(() => {
+          const factorSource = [
+            event.current_summary ?? '',
+            snapshots[0]?.summary ?? '',
+            snapshots[0]?.main_threat ?? '',
+            event.question ?? '',
+          ].join(' ');
+          const factors = deriveSecondaryFactors(factorSource);
+          if (factors.length === 0) return null;
+          return (
+            <div style={{ marginTop: '20px', marginBottom: '24px' }}>
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: MUTED,
+                  marginBottom: '10px',
+                }}
+              >
+                Also worth knowing
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {factors.map((f) => (
+                  <div
+                    key={f.factor}
+                    style={{
+                      backgroundColor: '#f5f0e8',
+                      border: `1px solid ${INK}14`,
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.2rem', lineHeight: 1.1, flexShrink: 0 }}>
+                      {pickFactorIcon(f.factor)}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.6rem',
+                          letterSpacing: '0.14em',
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                          color: INK,
+                        }}
+                      >
+                        {f.factor}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: 'Fraunces, serif',
+                          fontStyle: 'italic',
+                          fontSize: '0.95rem',
+                          lineHeight: 1.4,
+                          color: INK,
+                        }}
+                      >
+                        {f.note}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Climate facts (climate / outlook stage only) */}
         {Array.isArray(event.current_climate_facts) &&
           event.current_climate_facts.length > 0 &&
