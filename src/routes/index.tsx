@@ -1324,3 +1324,116 @@ function HomePage() {
     </div>
   );
 }
+
+function DailyLimitCountdown({
+  onUpgrade,
+  onClose,
+}: {
+  onUpgrade: () => void;
+  onClose: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const [notifyOn, setNotifyOn] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('pluvik-notify-daily-unlock') === 'true';
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const midnight = (() => {
+    const d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  })();
+  const msLeft = Math.max(0, midnight - now);
+  const hours = Math.floor(msLeft / 3_600_000);
+  const mins = Math.floor((msLeft % 3_600_000) / 60_000);
+
+  const handleNotify = () => {
+    try { localStorage.setItem('pluvik-notify-daily-unlock', 'true'); } catch {}
+    setNotifyOn(true);
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: PAGE_BG, color: INK,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '40px 28px',
+        fontFamily: 'Inter, sans-serif',
+        textAlign: 'center',
+      }}
+    >
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        style={{
+          position: 'absolute', top: 20, right: 20,
+          background: 'transparent', border: 'none', color: MUTED,
+          fontSize: 24, cursor: 'pointer',
+        }}
+      >
+        ×
+      </button>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif', fontSize: 32,
+        fontWeight: 500, letterSpacing: '-0.02em', marginBottom: 64,
+      }}>
+        pluvik
+      </div>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif',
+        fontSize: 88, lineHeight: 1, color: ACCENT,
+        letterSpacing: '-0.03em', fontWeight: 500,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {String(hours).padStart(2, '0')}<span style={{ color: INK, opacity: 0.35 }}>:</span>{String(mins).padStart(2, '0')}
+      </div>
+      <div style={{
+        fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+        letterSpacing: '0.18em', color: MUTED, marginTop: 12,
+        textTransform: 'uppercase',
+      }}>
+        Hours · Minutes
+      </div>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif', fontSize: 19,
+        lineHeight: 1.45, color: INK, marginTop: 48, maxWidth: 340,
+      }}>
+        You've asked your questions for now. Next question unlocks at midnight.
+      </div>
+      <div style={{ marginTop: 56, width: '100%', maxWidth: 340 }}>
+        <button
+          onClick={onUpgrade}
+          style={{
+            width: '100%', background: ACCENT, color: PAGE_BG,
+            border: 'none', padding: '16px 24px',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            cursor: 'pointer', fontWeight: 600, borderRadius: 0,
+          }}
+        >
+          Get Pro — Ask Anytime
+        </button>
+        <button
+          onClick={handleNotify}
+          disabled={notifyOn}
+          style={{
+            width: '100%', background: 'transparent', color: MUTED,
+            border: 'none', padding: '18px 24px', marginTop: 8,
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            cursor: notifyOn ? 'default' : 'pointer',
+          }}
+        >
+          {notifyOn ? '✓ We\u2019ll notify you' : 'Notify me when it unlocks'}
+        </button>
+      </div>
+    </div>
+  );
+}
