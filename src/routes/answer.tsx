@@ -1544,6 +1544,64 @@ function AnswerPage() {
             );
           })()}
 
+          {/* ── ALSO WORTH KNOWING — secondary risk factors ─────────── */}
+          {(() => {
+            const factors = (answer as { secondary_factors?: Array<{ factor: string; note: string }> }).secondary_factors;
+            if (!Array.isArray(factors) || factors.length === 0) return null;
+            const pickIcon = (f: string): string => {
+              const s = f.toLowerCase();
+              if (/lightning|storm|thunder/.test(s)) return '🌩';
+              if (/uv|sun|sunburn/.test(s)) return '☀️';
+              if (/fog|visib/.test(s)) return '🌫';
+              if (/wind|gust/.test(s)) return '🌬';
+              if (/humid|dew|moist/.test(s)) return '💧';
+              if (/heat|temp|cold|chill/.test(s)) return '🌡';
+              return '•';
+            };
+            return (
+              <div style={{ marginTop: '32px', marginBottom: '24px', maxWidth: '520px' }}>
+                <div style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+                  marginBottom: '14px',
+                }}>
+                  ALSO WORTH KNOWING
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {factors.slice(0, 4).map((f, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '12px',
+                        padding: '12px 14px',
+                        backgroundColor: 'rgba(11,16,24,0.03)',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      <span style={{ fontSize: '1.1rem', lineHeight: 1.2, flexShrink: 0 }}>
+                        {pickIcon(f.factor)}
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                        <span style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.6rem', letterSpacing: '0.14em',
+                          color: MUTED, textTransform: 'uppercase',
+                        }}>
+                          {f.factor}
+                        </span>
+                        <span style={{
+                          fontFamily: 'Fraunces, serif',
+                          fontSize: '0.95rem', lineHeight: 1.4, color: INK,
+                        }}>
+                          {f.note}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{ flex: 1 }} />
 
