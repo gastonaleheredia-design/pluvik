@@ -10,7 +10,6 @@ interface UpgradeSheetProps {
 const ACCENT = '#c2410c';
 const INK = '#0b1018';
 const MUTED = 'rgba(11,16,24,0.55)';
-const CONTACT_EMAIL = 'gaston.ale.heredia@gmail.com';
 
 const BENEFITS: ReadonlyArray<{ icon: string; label: string }> = [
   { icon: '📍', label: 'Track unlimited forecasts' },
