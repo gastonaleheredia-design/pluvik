@@ -19,6 +19,7 @@ import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
 import { UpgradeSheet } from '../components/UpgradeSheet';
+import { AuthModal } from '../components/AuthModal';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const PREFILL_KEY = 'pluvik-prefill-question';
@@ -87,9 +88,33 @@ function HomePage() {
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
   const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
+
+  // Load the signed-in user's avatar + display name for the top-right circle.
+  useEffect(() => {
+    if (!user) {
+      setAvatarUrl(null);
+      setDisplayName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('display_name, avatar_url')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setAvatarUrl((data?.avatar_url as string | null) ?? null);
+      setDisplayName((data?.display_name as string | null) ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
@@ -668,6 +693,7 @@ function HomePage() {
       key={i18n.language}
       style={{
         minHeight: '100vh',
+        position: 'relative',
         backgroundColor: PAGE_BG,
         color: INK,
         display: 'flex',
@@ -675,6 +701,49 @@ function HomePage() {
         paddingBottom: '96px',
       }}
     >
+      {/* Avatar — top right entry point to account */}
+      <button
+        type="button"
+        onClick={() => {
+          if (user) navigate({ to: '/profile' });
+          else setShowAuthModal(true);
+        }}
+        aria-label={user ? 'Open profile' : 'Sign in'}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          overflow: 'hidden',
+          background: user ? ACCENT : '#e8e0d5',
+          color: user ? '#fff' : MUTED,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          zIndex: 10,
+          boxShadow: '0 1px 3px rgba(11,16,24,0.08)',
+        }}
+      >
+        {user && avatarUrl ? (
+          <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : user ? (
+          (displayName || user.email || '?').trim().charAt(0).toUpperCase()
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        )}
+      </button>
       {/* Tiny address tag, top */}
       {/* HERO — verdict word + sentence + next-rain caption */}
       <div
@@ -1311,6 +1380,12 @@ function HomePage() {
         />
       )}
       {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
+      {showAuthModal && (
+        <AuthModal
+          onSuccess={() => setShowAuthModal(false)}
+          onClose={() => setShowAuthModal(false)}
+        />
+      )}
       {showCountdown && (
         <DailyLimitCountdown
           onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
