@@ -212,10 +212,7 @@ function EventPage() {
       // Compute next refresh time so the dashboard "Updates in …" countdown
       // and the cron throttle agree with what the manual refresh just wrote.
       const cadenceMode: WeatherMode = a.mode ?? 'regular';
-      const hoursAhead = event.event_at
-        ? Math.max(0, (new Date(event.event_at).getTime() - Date.now()) / 3_600_000)
-        : 24;
-      const cadence = getRefreshCadence(hoursAhead, cadenceMode);
+      const cadence = getRefreshCadence(hoursAhead ?? 24, cadenceMode);
       const nextRefreshIso = new Date(
         Date.now() + cadence.intervalMinutes * 60_000,
       ).toISOString();
