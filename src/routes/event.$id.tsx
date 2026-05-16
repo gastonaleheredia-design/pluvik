@@ -587,69 +587,7 @@ function EventPage() {
           if (showRadar) {
             return <LiveRadarMap lat={event.lat as number} lon={event.lon as number} />;
           }
-          const factorSource = [
-            event.current_summary ?? '',
-            snapshots[0]?.summary ?? '',
-            snapshots[0]?.main_threat ?? '',
-            event.question ?? '',
-          ].join(' ');
-          const factors = deriveSecondaryFactors(factorSource);
-          if (factors.length === 0) return null;
-          return (
-            <div style={{ marginBottom: '20px' }}>
-              <div
-                style={{
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.62rem',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: MUTED,
-                  marginBottom: '10px',
-                }}
-              >
-                Also worth knowing
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                  gap: '8px',
-                }}
-              >
-                {factors.map((f) => (
-                  <div
-                    key={f.factor}
-                    style={{
-                      backgroundColor: 'rgba(11,16,24,0.04)',
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      display: 'flex',
-                      gap: '10px',
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{pickFactorIcon(f.factor)}</span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                          fontSize: '0.58rem',
-                          letterSpacing: '0.12em',
-                          textTransform: 'uppercase',
-                          color: MUTED,
-                        }}
-                      >
-                        {f.factor}
-                      </div>
-                      <div style={{ fontSize: '0.82rem', lineHeight: 1.35, color: INK }}>
-                        {f.note}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
+          return null;
         })()}
 
         {/* Current forecast card */}
