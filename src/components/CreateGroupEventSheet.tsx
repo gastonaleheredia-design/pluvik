@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { synthesizeEventTitle } from '@/lib/synthesizeEventTitle';
 
 const PAPER = '#faf7f0';
 const INK = '#0b1018';
@@ -57,7 +58,7 @@ export function CreateGroupEventSheet({
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [title, setTitle] = useState(question.slice(0, 120));
+  const [title, setTitle] = useState(() => synthesizeEventTitle(question).slice(0, 120));
   const [activity, setActivity] = useState('other');
   const [eventAt, setEventAt] = useState(toLocalInputValue(eventAtIso));
   const [inviteText, setInviteText] = useState('');
@@ -75,7 +76,7 @@ export function CreateGroupEventSheet({
   // reset state every time we open with a fresh question
   useEffect(() => {
     if (!open) return;
-    setTitle(question.slice(0, 120));
+    setTitle(synthesizeEventTitle(question).slice(0, 120));
     setEventAt(toLocalInputValue(eventAtIso));
     setInviteText('');
     setSelectedInvitees([]);
