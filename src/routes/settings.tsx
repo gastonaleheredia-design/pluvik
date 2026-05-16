@@ -36,6 +36,7 @@ type Industry = typeof INDUSTRIES[number]['value'];
 
 type Business = { id: string; business_name: string; industry: string };
 type TeamMember = { id: string; invited_email: string | null; role: string; accepted_at: string | null };
+type CompanyRow = { id: string; company_name: string; industry: string | null };
 
 const styles = {
   page: {
@@ -265,7 +266,16 @@ function SettingsPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  // Company state (Pro only)
+  const [company, setCompany] = useState<CompanyRow | null>(null);
+  const [showCompanySheet, setShowCompanySheet] = useState(false);
+  const [coName, setCoName] = useState('');
+  const [coIndustry, setCoIndustry] = useState<Industry>('construction');
+  const [coCreating, setCoCreating] = useState(false);
+  const [coError, setCoError] = useState<string | null>(null);
+
   const isPro = tier === 'pro';
+  const isBusiness = tier === 'business';
 
   useEffect(() => {
     if (!user || !isPro) {
@@ -299,6 +309,49 @@ function SettingsPage() {
       cancelled = true;
     };
   }, [user, isPro]);
+
+  useEffect(() => {
+    if (!user) { setCompany(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('company_profiles')
+        .select('id, company_name, industry')
+        .eq('owner_user_id', user.id)
+        .maybeSingle();
+      if (!cancelled) setCompany((data as CompanyRow) ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [user, tier]);
+
+  const handleCreateCompany = async () => {
+    if (!user) return;
+    const name = coName.trim();
+    if (!name) { setCoError('Company name is required.'); return; }
+    setCoCreating(true);
+    setCoError(null);
+    const { data, error } = await supabase
+      .from('company_profiles')
+      .insert({ owner_user_id: user.id, company_name: name, industry: coIndustry })
+      .select('id, company_name, industry')
+      .single();
+    if (error || !data) {
+      setCoError(error?.message ?? 'Could not create company.');
+      setCoCreating(false);
+      return;
+    }
+    await supabase
+      .from('profiles')
+      .update({ subscription_tier: 'business' })
+      .eq('id', user.id);
+    setCompany(data as CompanyRow);
+    setShowCompanySheet(false);
+    setCoName('');
+    setCoIndustry('construction');
+    setCoCreating(false);
+    // Reload page so auth tier picks up the change and COMPANY tab appears.
+    if (typeof window !== 'undefined') window.location.reload();
+  };
 
   const handleCreateBusiness = async () => {
     if (!user) return;
@@ -476,7 +529,7 @@ function SettingsPage() {
       </section>
 
       {/* BUSINESS (Pro only) */}
-      {user && isPro && (
+      {user && (isPro || isBusiness) && (
         <section style={styles.section}>
           <p style={styles.sectionLabel}>Business</p>
           <div style={styles.card}>
@@ -604,6 +657,44 @@ function SettingsPage() {
         </section>
       )}
 
+      {/* COMPANY (Pro only, no company yet) */}
+      {user && isPro && !company && (
+        <section style={styles.section}>
+          <p style={styles.sectionLabel}>Company</p>
+          <div style={styles.card}>
+            <div style={styles.rowLabelMono}>No company profile</div>
+            <div style={{ ...styles.emailText, marginBottom: 14, fontStyle: 'italic', color: MUTED }}>
+              Companies have teams, members, and shared events. Upgrades you to Business tier.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCompanySheet(true)}
+              style={{ ...styles.signInBtn, background: ACCENT }}
+            >
+              Create Company Profile
+            </button>
+          </div>
+        </section>
+      )}
+
+      {user && isBusiness && company && (
+        <section style={styles.section}>
+          <p style={styles.sectionLabel}>Company</p>
+          <div style={styles.card}>
+            <div style={styles.rowLabelMono}>Company</div>
+            <div style={styles.emailText}>{company.company_name}</div>
+            {company.industry && (
+              <div style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, marginTop: 4 }}>
+                {company.industry}
+              </div>
+            )}
+            <Link to="/company" style={{ ...styles.signInBtn, background: ACCENT, display: 'block', textAlign: 'center', marginTop: 14, textDecoration: 'none' }}>
+              Open company
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* ABOUT */}
       <section style={styles.section}>
         <p style={styles.sectionLabel}>About</p>
@@ -659,6 +750,22 @@ function SettingsPage() {
           error={bizError}
         />
       )}
+      {showCompanySheet && (
+        <BusinessSheet
+          name={coName}
+          industry={coIndustry}
+          onName={setCoName}
+          onIndustry={setCoIndustry}
+          onClose={() => { setShowCompanySheet(false); setCoError(null); }}
+          onSubmit={handleCreateCompany}
+          submitting={coCreating}
+          error={coError}
+          titleOverride="Create company profile"
+          labelOverride="New Company"
+          nameLabel="Company name"
+          namePlaceholder="Acme Inc."
+        />
+      )}
     </div>
   );
 }
@@ -672,6 +779,10 @@ function BusinessSheet(props: {
   onSubmit: () => void;
   submitting: boolean;
   error: string | null;
+  titleOverride?: string;
+  labelOverride?: string;
+  nameLabel?: string;
+  namePlaceholder?: string;
 }) {
   return (
     <div
@@ -699,20 +810,20 @@ function BusinessSheet(props: {
         }}
       >
         <p style={{ fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, margin: 0 }}>
-          New Business
+          {props.labelOverride ?? 'New Business'}
         </p>
         <h2 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: '1.5rem', margin: '8px 0 20px', color: INK }}>
-          Create business account
+          {props.titleOverride ?? 'Create business account'}
         </h2>
 
         <label style={{ display: 'block', marginBottom: 16 }}>
           <span style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, display: 'block', marginBottom: 6 }}>
-            Business name
+            {props.nameLabel ?? 'Business name'}
           </span>
           <input
             value={props.name}
             onChange={(e) => props.onName(e.target.value)}
-            placeholder="Acme Co."
+            placeholder={props.namePlaceholder ?? 'Acme Co.'}
             style={{
               width: '100%',
               padding: '12px 14px',

@@ -12,6 +12,7 @@ export function BottomNav() {
   const [hasUnseen, setHasUnseen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasBusiness, setHasBusiness] = useState(false);
+  const [hasCompany, setHasCompany] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -22,6 +23,22 @@ export function BottomNav() {
       .from('business_profiles')
       .select('id', { count: 'exact', head: true })
       .then(({ count }) => setHasBusiness((count ?? 0) > 0));
+    (async () => {
+      const { count: owned } = await supabase
+        .from('company_profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_user_id', user.id);
+      if ((owned ?? 0) > 0) {
+        setHasCompany(true);
+        return;
+      }
+      const { count: member } = await supabase
+        .from('company_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .not('accepted_at', 'is', null);
+      setHasCompany((member ?? 0) > 0);
+    })();
   }, [user, currentPath]);
 
   useEffect(() => {
@@ -75,6 +92,7 @@ export function BottomNav() {
     { to: '/', label: t('nav.home'), key: 'home' },
     { to: '/dashboard', label: t('nav.tracking'), key: 'tracking' },
     ...(hasBusiness ? [{ to: '/business', label: 'TEAM', key: 'business' }] : []),
+    ...(hasCompany ? [{ to: '/company', label: 'COMPANY', key: 'company' }] : []),
     { to: '/profile', label: 'PROFILE', key: 'profile' },
   ] as const;
 
