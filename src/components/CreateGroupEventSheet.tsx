@@ -289,12 +289,73 @@ export function CreateGroupEventSheet({
         </div>
 
         <label style={{ ...fieldLabel, marginTop: 16 }}>WHEN</label>
-        <input
-          type="datetime-local"
-          value={eventAt}
-          onChange={(e) => setEventAt(e.target.value)}
-          style={input}
-        />
+        <div style={{
+          display: 'inline-flex', padding: 3, background: SURFACE,
+          borderRadius: 999, border: `1px solid ${BORDER}`, marginBottom: 10,
+          fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.1em',
+        }}>
+          {(['moment', 'range'] as const).map((m) => {
+            const active = dateMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setDateMode(m)}
+                style={{
+                  padding: '6px 14px', borderRadius: 999, border: 'none',
+                  cursor: 'pointer',
+                  background: active ? '#fff' : 'transparent',
+                  color: active ? INK : MUTED,
+                  fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {m === 'moment' ? 'Single moment' : 'Date range'}
+              </button>
+            );
+          })}
+        </div>
+        {dateMode === 'moment' ? (
+          <input
+            type="datetime-local"
+            value={eventAt}
+            onChange={(e) => setEventAt(e.target.value)}
+            style={input}
+          />
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: MONO, fontSize: '0.55rem', letterSpacing: '0.16em',
+                color: MUTED, marginBottom: 4,
+              }}>FROM</div>
+              <input
+                type="datetime-local"
+                value={eventAt}
+                onChange={(e) => {
+                  setEventAt(e.target.value);
+                  if (eventEnd && new Date(e.target.value) > new Date(eventEnd)) {
+                    setEventEnd(e.target.value);
+                  }
+                }}
+                style={{ ...input, width: '100%' }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: MONO, fontSize: '0.55rem', letterSpacing: '0.16em',
+                color: MUTED, marginBottom: 4,
+              }}>TO</div>
+              <input
+                type="datetime-local"
+                value={eventEnd}
+                min={eventAt}
+                onChange={(e) => setEventEnd(e.target.value)}
+                style={{ ...input, width: '100%' }}
+              />
+            </div>
+          </div>
+        )}
 
         <label style={{ ...fieldLabel, marginTop: 16 }}>INVITE (usernames or emails, comma separated)</label>
         {selectedInvitees.length > 0 && (
