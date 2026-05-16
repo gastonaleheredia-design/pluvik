@@ -837,23 +837,6 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
-                    {hasUnseenChange && (
-                      <span
-                        style={{
-                          marginLeft: '8px',
-                          padding: '2px 8px',
-                          borderRadius: '100px',
-                          backgroundColor: ACCENT + '1a',
-                          color: ACCENT,
-                          fontWeight: 700,
-                          letterSpacing: '0.1em',
-                          textTransform: 'uppercase',
-                          fontSize: '0.6rem',
-                        }}
-                      >
-                        Updated
-                      </span>
-                    )}
                   </div>
                 )}
 
