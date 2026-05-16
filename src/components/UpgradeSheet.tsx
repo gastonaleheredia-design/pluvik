@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { AuthModal } from './AuthModal';
 
 interface UpgradeSheetProps {
@@ -19,12 +19,13 @@ const BENEFITS: ReadonlyArray<{ icon: string; label: string }> = [
 ];
 
 export function UpgradeSheet({ onClose, onStartTrial }: UpgradeSheetProps) {
-  const [showComingSoon, setShowComingSoon] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const navigate = useNavigate();
 
   const handleGetPro = () => {
     if (onStartTrial) onStartTrial();
-    setShowComingSoon(true);
+    onClose();
+    navigate({ to: '/checkout', search: { price: 'pro_monthly' } as any });
   };
 
   return (
