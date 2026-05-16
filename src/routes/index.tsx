@@ -1316,7 +1316,17 @@ function HomePage() {
           </button>
           <button
             type="submit"
-            disabled={!questionText.trim()}
+            onClick={(e) => {
+              // Explicit handler so the arrow always fires handleSubmit,
+              // including right after voice transcription populates the
+              // input (form submit can be flaky if focus is still on the
+              // mic button when the user taps the arrow).
+              e.preventDefault();
+              if (questionText.trim().length > 0) {
+                void handleSubmit();
+              }
+            }}
+            disabled={questionText.trim().length === 0}
             aria-label="Ask"
             style={{
               width: '36px',
