@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
@@ -55,6 +55,9 @@ const WARN_BG = '#fef2f2';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: search.focus === '1' || search.focus === 1 || search.focus === true ? 1 : undefined,
+  }),
 });
 
 type FriendEvent = {
@@ -84,6 +87,7 @@ function friendVerdictColor(v: string | null | undefined): string {
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
+  const { focus: focusFlag } = useSearch({ from: '/' });
   const { address: selectedAddress, setAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
@@ -252,6 +256,16 @@ function HomePage() {
       // ignore
     }
   }, []);
+
+  // Auto-focus the question input when arriving with ?focus=1
+  // (e.g. from the "Plan a group event" prompt on the Profile screen).
+  useEffect(() => {
+    if (focusFlag !== 1) return;
+    const id = setTimeout(() => questionInputRef.current?.focus(), 80);
+    // Clear the flag so subsequent renders don't keep stealing focus.
+    navigate({ to: '/', search: {}, replace: true });
+    return () => clearTimeout(id);
+  }, [focusFlag, navigate]);
 
   // Onboarding has been removed. Ensure the flag is set so legacy code paths
   // never bounce returning users to /onboarding.
