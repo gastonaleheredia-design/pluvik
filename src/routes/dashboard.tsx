@@ -336,7 +336,7 @@ function DashboardPage() {
           fontFamily: 'Inter, sans-serif',
         }}
       >
-        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🌤️</div>
+        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🌤</div>
         <div
           style={{
             fontFamily: 'Fraunces, serif',
@@ -345,22 +345,22 @@ function DashboardPage() {
             marginBottom: '8px',
           }}
         >
-          {t('dashboard.sign_in_prompt')}
+          Track your forecasts
         </div>
         <div
           style={{
             fontSize: '0.95rem',
-            color: MUTED,
+            color: '#6b6357',
             maxWidth: '320px',
             marginBottom: '28px',
           }}
         >
-          {t('dashboard.sign_in_sub')}
+          Save forecasts and get notified when the weather changes.
         </div>
         <button
           onClick={() => setShowAuthModal(true)}
           style={{
-            backgroundColor: ACCENT,
+            backgroundColor: '#c2410c',
             color: PAGE_BG,
             padding: '13px 28px',
             borderRadius: '100px',
@@ -371,7 +371,7 @@ function DashboardPage() {
             cursor: 'pointer',
           }}
         >
-          {t('dashboard.sign_in_cta')}
+          Sign in or create account
         </button>
 
         {showAuthModal && (
