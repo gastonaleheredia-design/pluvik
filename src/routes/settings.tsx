@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { BottomNav } from '../components/BottomNav';
 import { AuthModal } from '../components/AuthModal';
 import { useAuth } from '../lib/auth';
@@ -22,7 +23,7 @@ const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const NOTIF_KEY = 'pluvik-notif-changes';
 const APP_VERSION = '0.1.0';
 
-const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)> = {
+const styles = {
   page: {
     minHeight: '100vh',
     background: PAPER,
