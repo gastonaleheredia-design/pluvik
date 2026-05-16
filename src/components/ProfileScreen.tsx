@@ -89,6 +89,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const isSelf = useMemo(() => {
     if (!user) return false;
@@ -314,6 +315,19 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
 
   return (
     <div style={page}>
+      {/* Search icon — top left */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        aria-label="Search users"
+        style={{
+          position: 'absolute', top: 24, left: 20,
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          padding: 6, lineHeight: 1, fontSize: '1.15rem',
+        }}
+      >
+        🔍
+      </button>
+
       {/* EDIT label — top right */}
       {isSelf && (
         <button
@@ -503,7 +517,187 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
         />
       )}
 
+      {searchOpen && (
+        <UserSearchSheet
+          currentUserId={user?.id ?? null}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+
       <BottomNav />
+    </div>
+  );
+}
+
+type SearchResult = {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+function UserSearchSheet({
+  currentUserId, onClose,
+}: { currentUserId: string | null; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Debounced search
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); setLoading(false); return; }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      const pattern = `%${q.replace(/[%_]/g, '')}%`;
+      let req = supabase
+        .from('user_profiles')
+        .select('id, username, display_name, avatar_url')
+        .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
+        .limit(30);
+      if (currentUserId) req = req.neq('id', currentUserId);
+      const { data } = await req;
+      const rows = (data ?? []) as SearchResult[];
+      setResults(rows);
+      setLoading(false);
+
+      // Determine which of these the current user already follows.
+      if (currentUserId && rows.length > 0) {
+        const { data: f } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUserId)
+          .in('following_id', rows.map((r) => r.id));
+        setFollowingIds(new Set((f ?? []).map((r: { following_id: string }) => r.following_id)));
+      } else {
+        setFollowingIds(new Set());
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, currentUserId]);
+
+  async function toggle(targetId: string) {
+    if (!currentUserId || busyId) return;
+    setBusyId(targetId);
+    try {
+      if (followingIds.has(targetId)) {
+        await supabase.from('follows').delete()
+          .eq('follower_id', currentUserId).eq('following_id', targetId);
+        setFollowingIds((prev) => {
+          const next = new Set(prev); next.delete(targetId); return next;
+        });
+      } else {
+        await supabase.from('follows').insert({ follower_id: currentUserId, following_id: targetId });
+        setFollowingIds((prev) => {
+          const next = new Set(prev); next.add(targetId); return next;
+        });
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(11,16,24,0.4)',
+      display: 'flex', alignItems: 'flex-end', zIndex: 100,
+    }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: PAPER, width: '100%', borderRadius: '16px 16px 0 0',
+        padding: '20px 20px 28px', maxHeight: '85vh', display: 'flex',
+        flexDirection: 'column', gap: 14,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h2 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: '1.4rem', color: INK, margin: 0, flex: 1 }}>
+            Find people
+          </h2>
+          <button onClick={onClose} aria-label="Close" style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.16em',
+            color: MUTED, padding: 4,
+          }}>CLOSE</button>
+        </div>
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search username or name…"
+          style={{
+            width: '100%', padding: '12px 14px', borderRadius: 100,
+            border: `1px solid ${BORDER}`, background: '#fff', color: INK,
+            fontFamily: '"Inter", system-ui, sans-serif', fontSize: '0.95rem',
+            boxSizing: 'border-box', outline: 'none',
+          }}
+        />
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {query.trim().length < 2 ? (
+            <p style={{ fontFamily: SERIF, fontStyle: 'italic', color: MUTED, fontSize: '0.9rem', textAlign: 'center', margin: '20px 0' }}>
+              Type at least 2 characters to search.
+            </p>
+          ) : loading ? (
+            <p style={{ fontFamily: MONO, color: MUTED, fontSize: '0.7rem', letterSpacing: '0.1em', textAlign: 'center', margin: '20px 0' }}>
+              SEARCHING…
+            </p>
+          ) : results.length === 0 ? (
+            <p style={{ fontFamily: SERIF, fontStyle: 'italic', color: MUTED, fontSize: '0.9rem', textAlign: 'center', margin: '20px 0' }}>
+              No one found for “{query.trim()}”.
+            </p>
+          ) : results.map((r) => {
+            const isFollowing = followingIds.has(r.id);
+            const initial = (r.display_name || r.username || '?').charAt(0).toUpperCase();
+            return (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 6px', borderBottom: `1px solid ${BORDER}`,
+              }}>
+                <Link
+                  to="/profile/$username"
+                  params={{ username: r.username }}
+                  onClick={onClose}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit' }}
+                >
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%',
+                    background: r.avatar_url ? SURFACE : ACCENT,
+                    color: '#fff', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+                    fontFamily: SERIF, fontSize: '1rem',
+                  }}>
+                    {r.avatar_url
+                      ? <img src={r.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : initial}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontFamily: SERIF, fontSize: '0.95rem', color: INK,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {r.display_name || r.username}
+                    </div>
+                    <div style={{
+                      fontFamily: MONO, fontSize: '0.65rem', color: MUTED,
+                      letterSpacing: '0.04em',
+                    }}>
+                      @{r.username}
+                    </div>
+                  </div>
+                </Link>
+                {currentUserId && (
+                  <button
+                    onClick={() => toggle(r.id)}
+                    disabled={busyId === r.id}
+                    style={isFollowing ? btnSecondary : btnPrimary}
+                  >
+                    {busyId === r.id ? '…' : (isFollowing ? 'Unfollow' : 'Follow')}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
