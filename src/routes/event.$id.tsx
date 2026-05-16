@@ -28,6 +28,7 @@ interface TrackedEvent {
   lat?: number | null;
   lon?: number | null;
   current_forecast_stage?: string | null;
+  current_mode?: 'regular' | 'severe' | 'hurricane' | null;
   current_climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
   current_climate_interpretation?: string | null;
   current_climate_framing?: string | null;
@@ -56,6 +57,54 @@ const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
+
+/**
+ * Derive lightweight "ALSO WORTH KNOWING" factor cards from whatever text
+ * the latest snapshot/event has. We do not persist `secondary_factors` on
+ * tracked_events, so this scans current_summary + main_threat + the
+ * original question for known risk keywords and surfaces the matches.
+ */
+function pickFactorIcon(label: string): string {
+  const k = label.toLowerCase();
+  if (k.includes('heat') || k.includes('temp')) return '🌡';
+  if (k.includes('humid') || k.includes('dew')) return '💧';
+  if (k.includes('wind') || k.includes('gust')) return '🌬';
+  if (k.includes('fog') || k.includes('vis')) return '🌫';
+  if (k.includes('uv') || k.includes('sun')) return '☀️';
+  if (k.includes('lightning') || k.includes('storm') || k.includes('thunder')) return '🌩';
+  if (k.includes('cold') || k.includes('chill') || k.includes('snow')) return '❄️';
+  return '•';
+}
+
+function deriveSecondaryFactors(
+  text: string,
+): Array<{ factor: string; note: string }> {
+  const lower = text.toLowerCase();
+  const out: Array<{ factor: string; note: string }> = [];
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const pickSentence = (needle: RegExp) =>
+    sentences.find((s) => needle.test(s.toLowerCase())) ?? '';
+
+  if (/(heat index|feels like|hot|scorch|\b9[0-9]°|10[0-9]°)/.test(lower)) {
+    out.push({ factor: 'heat', note: pickSentence(/heat|feels|hot|°/) || 'Heat will be a factor — hydrate.' });
+  }
+  if (/(humid|dew\s?point|muggy)/.test(lower)) {
+    out.push({ factor: 'humidity', note: pickSentence(/humid|dew|muggy/) || 'High humidity — expect discomfort.' });
+  }
+  if (/(wind|gust)/.test(lower)) {
+    out.push({ factor: 'wind', note: pickSentence(/wind|gust/) || 'Gusty winds expected.' });
+  }
+  if (/(fog|visibility|low cloud)/.test(lower)) {
+    out.push({ factor: 'fog', note: pickSentence(/fog|visibility/) || 'Reduced visibility possible.' });
+  }
+  if (/(uv|sunburn|sunny)/.test(lower)) {
+    out.push({ factor: 'UV', note: pickSentence(/uv|sun/) || 'UV will be elevated — sunscreen up.' });
+  }
+  if (/(lightning|thunder|storm cell)/.test(lower)) {
+    out.push({ factor: 'lightning', note: pickSentence(/lightning|thunder|storm/) || 'Lightning risk in the area.' });
+  }
+  return out.slice(0, 4);
+}
 
 function EventPage() {
   const { t, i18n } = useTranslation();
@@ -514,13 +563,90 @@ function EventPage() {
           </div>
         )}
 
-        {/* Live MRMS radar — only when current stage is `live` and we have coordinates. */}
-        {!event.archived_at &&
-          snapshots[0]?.stage === 'live' &&
-          typeof event.lat === 'number' &&
-          typeof event.lon === 'number' && (
-            <LiveRadarMap lat={event.lat} lon={event.lon} />
-          )}
+        {/* Live MRMS radar — only for severe/hurricane modes, or when the
+            event is within 2 hours AND we're already in the live nowcast
+            stage (which implies active precipitation nearby). Standard
+            "will it rain tomorrow?" events skip the radar entirely. */}
+        {(() => {
+          const isSevere =
+            event.current_mode === 'severe' || event.current_mode === 'hurricane';
+          const hoursToEvent = event.event_at
+            ? (new Date(event.event_at).getTime() - Date.now()) / 3_600_000
+            : Infinity;
+          const livePrecipNearby =
+            snapshots[0]?.stage === 'live' && hoursToEvent <= 2 && hoursToEvent >= -1;
+          const showRadar =
+            !event.archived_at &&
+            (isSevere || livePrecipNearby) &&
+            typeof event.lat === 'number' &&
+            typeof event.lon === 'number';
+          if (showRadar) {
+            return <LiveRadarMap lat={event.lat as number} lon={event.lon as number} />;
+          }
+          const factorSource = [
+            event.current_summary ?? '',
+            snapshots[0]?.summary ?? '',
+            snapshots[0]?.main_threat ?? '',
+            event.question ?? '',
+          ].join(' ');
+          const factors = deriveSecondaryFactors(factorSource);
+          if (factors.length === 0) return null;
+          return (
+            <div style={{ marginBottom: '20px' }}>
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: MUTED,
+                  marginBottom: '10px',
+                }}
+              >
+                Also worth knowing
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: '8px',
+                }}
+              >
+                {factors.map((f) => (
+                  <div
+                    key={f.factor}
+                    style={{
+                      backgroundColor: 'rgba(11,16,24,0.04)',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      gap: '10px',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{pickFactorIcon(f.factor)}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.58rem',
+                          letterSpacing: '0.12em',
+                          textTransform: 'uppercase',
+                          color: MUTED,
+                        }}
+                      >
+                        {f.factor}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', lineHeight: 1.35, color: INK }}>
+                        {f.note}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Current forecast card */}
         <div
