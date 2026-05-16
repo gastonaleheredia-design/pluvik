@@ -66,8 +66,6 @@ function formatTime(d: Date): string {
 }
 
 function formatDateRelative(start: Date, end: Date | null | undefined, now: Date): string {
-  const lower = q.toLowerCase();
-  void lower;
   const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const hasTime = start.getHours() !== 0 || start.getMinutes() !== 0;
   const tomorrow = new Date(now);
