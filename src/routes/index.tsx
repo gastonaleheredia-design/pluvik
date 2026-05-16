@@ -84,7 +84,7 @@ function friendVerdictColor(v: string | null | undefined): string {
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const { address: selectedAddress, freshness, followError, resumeFollowing } = useAddress();
+  const { address: selectedAddress, setAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -237,56 +237,12 @@ function HomePage() {
     }
   }, []);
 
-  // Redirect to onboarding if not completed.
-  // Wait for auth to finish hydrating so signed-in users with a saved
-  // onboarding flag in their profile are not bounced to onboarding.
+  // Onboarding has been removed. Ensure the flag is set so legacy code paths
+  // never bounce returning users to /onboarding.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (authLoading) return;
-
-    const localDone = localStorage.getItem(ONBOARDING_KEY) === 'true';
-
-    // Anonymous: rely on local flag only.
-    if (!user) {
-      if (!localDone) navigate({ to: '/onboarding' });
-      return;
-    }
-
-    // Signed in: check profile flag, mirror to local for fast subsequent loads.
-    let cancelled = false;
-    supabase
-      .from('profiles')
-      .select('onboarding_completed_at')
-      .eq('id', user.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.warn('[onboarding] profile read failed; trusting local flag', error);
-          // If local says done, stay. If not, do NOT redirect on a transient
-          // error — better to show home than to bounce a returning user.
-          return;
-        }
-        const remoteDone = !!data?.onboarding_completed_at;
-        if (remoteDone) {
-          try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
-          return;
-        }
-        // Remote says not done. If local says done, backfill remote.
-        if (localDone) {
-          supabase
-            .from('profiles')
-            .update({ onboarding_completed_at: new Date().toISOString() })
-            .eq('id', user.id)
-            .then(({ error: updErr }) => {
-              if (updErr) console.warn('[onboarding] profile backfill failed', updErr);
-            });
-          return;
-        }
-        navigate({ to: '/onboarding' });
-      });
-    return () => { cancelled = true; };
-  }, [authLoading, user, navigate]);
+    try { localStorage.setItem(ONBOARDING_KEY, 'true'); } catch {}
+  }, []);
 
   // ---- Voice input via MediaRecorder + Lovable AI Gateway (Gemini) ----
   const cleanupRecording = () => {
@@ -567,6 +523,32 @@ function HomePage() {
     const composedQuestion = baseText;
     const distilled = distillQuestion(composedQuestion);
     const intent = classifyIntent(distilled);
+    // First-question location prompt: if we still have the default coords
+    // (user never granted permission), ask now. If they deny or it fails,
+    // proceed without coordinates — they can set location manually later.
+    if (selectedAddress.meta === 'DEFAULT' && typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 10_000,
+            maximumAge: 60_000,
+          });
+        });
+        setAddress({
+          label: 'Current location',
+          meta: 'FOLLOWING',
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        });
+        resumeFollowing();
+      } catch {
+        // User denied or it timed out — fall through with defaults.
+      }
+    }
+    // Re-read coords after potential update via the position result above.
+    const submitLat = finalPlace?.lat ?? selectedAddress.lat ?? undefined;
+    const submitLon = finalPlace?.lon ?? selectedAddress.lon ?? undefined;
     // Defense-in-depth: if the chip resolver didn't land on a place but
     // the question contains a high-confidence city/state, geocode it
     // here (bypassing the proximity guard) so we don't fall back to the
@@ -593,8 +575,8 @@ function HomePage() {
       search: {
         q: composedQuestion,
         address: finalPlace?.label ?? selectedAddress.label,
-        lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
-        lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
+        lat: finalPlace?.lat ?? submitLat,
+        lon: finalPlace?.lon ?? submitLon,
         eventAtIso: finalTime ? finalTime.start.toISOString() : undefined,
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
         intent,
