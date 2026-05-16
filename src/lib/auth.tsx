@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
-export type SubscriptionTier = 'free' | 'pro';
+export type SubscriptionTier = 'free' | 'pro' | 'business';
 
 const ADMIN_EMAILS: string[] = ['gaston.ale.heredia@gmail.com'];
 
@@ -53,7 +53,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select('subscription_tier')
         .eq('id', userId)
         .maybeSingle();
-      setTier((profile?.subscription_tier as SubscriptionTier) ?? 'free');
+      const profTier = (profile?.subscription_tier as SubscriptionTier) ?? 'free';
+      // Promote to 'business' if user owns or is an accepted member of a company.
+      try {
+        const { count: ownedCount } = await supabase
+          .from('company_profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('owner_user_id', userId);
+        if ((ownedCount ?? 0) > 0) {
+          setTier('business');
+          return;
+        }
+        const { count: memberCount } = await supabase
+          .from('company_members')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .not('accepted_at', 'is', null);
+        if ((memberCount ?? 0) > 0) {
+          setTier('business');
+          return;
+        }
+      } catch {
+        // ignore — fall back to profile tier
+      }
+      setTier(profTier);
     } catch {
       setTier('free');
     }
