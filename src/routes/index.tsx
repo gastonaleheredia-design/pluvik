@@ -18,6 +18,7 @@ import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
+import { notifySevereWeather } from '../lib/severeWeatherPush';
 import { formatEventDateRange } from '../lib/formatEventDateRange';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 import { AuthModal } from '../components/AuthModal';
@@ -541,6 +542,19 @@ function HomePage() {
     }, 30000);
     return () => clearInterval(id);
   }, [briefing?.alert?.expires_iso, selectedAddress.lat, selectedAddress.lon, i18n.language]);
+
+  // Push notification for newly-detected severe warnings at the user's
+  // saved location. Deduped via localStorage (`pluvik-last-alert-id`) so
+  // the same warning never re-fires across re-fetches.
+  useEffect(() => {
+    const a = briefing?.alert;
+    if (!a) return;
+    const place = selectedAddress.label?.split(',')[0]?.trim() || 'your area';
+    notifySevereWeather(
+      { event: a.event, expiresIso: a.expires_iso, expiresLocal: a.expires_local },
+      place,
+    ).catch(() => { /* notification failures are non-fatal */ });
+  }, [briefing?.alert?.event, briefing?.alert?.expires_iso, selectedAddress.label]);
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
