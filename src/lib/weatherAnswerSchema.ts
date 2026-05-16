@@ -87,6 +87,14 @@ export const WeatherAnswerSchema = z.object({
   percentage: z.number().min(0).max(100).optional(),
   summary: z.string().min(1),
 
+  /** Short event title synthesized from the question: "[Activity] · [Location] · [Date/Time]", max 40 chars. */
+  event_title: z.string().max(40).optional(),
+  /** Secondary risk factors the model auto-surfaced for the activity. */
+  secondary_factors: z.array(z.object({
+    factor: z.string(),
+    note: z.string(),
+  })).nullable().optional(),
+
   confidence: z.enum(['HIGH', 'MEDIUM', 'LOW', 'VERY_LOW']).optional(),
   confidence_reason: z.string().optional(),
   current_state: z.string().optional(),
