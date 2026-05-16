@@ -1870,80 +1870,12 @@ function AnswerPage() {
         </div>
       )}
       {showUpgradeSheet && (
-        <div
-          onClick={() => setShowUpgradeSheet(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            background: 'rgba(11,16,24,0.55)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 480,
-              background: '#faf7f0',
-              borderTopLeftRadius: 20, borderTopRightRadius: 20,
-              padding: '28px 22px 32px',
-              boxShadow: '0 -8px 28px rgba(0,0,0,0.18)',
-            }}
-          >
-            <div style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.6rem', letterSpacing: '0.18em',
-              textTransform: 'uppercase', color: ACCENT, marginBottom: 10,
-            }}>
-              Pluvik Pro
-            </div>
-            <div style={{
-              fontFamily: 'Inter, sans-serif', fontSize: '1.15rem',
-              fontWeight: 600, color: INK, lineHeight: 1.3, marginBottom: 18,
-            }}>
-              Track this forecast and get notified the moment it changes.
-            </div>
-            <ul style={{
-              listStyle: 'none', padding: 0, margin: '0 0 24px',
-              fontFamily: 'Inter, sans-serif', fontSize: '0.92rem',
-              color: INK, lineHeight: 1.55,
-            }}>
-              <li style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                <span style={{ color: ACCENT }}>✓</span>
-                Unlimited event tracking
-              </li>
-              <li style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                <span style={{ color: ACCENT }}>✓</span>
-                Forecast change alerts
-              </li>
-              <li style={{ display: 'flex', gap: 10 }}>
-                <span style={{ color: ACCENT }}>✓</span>
-                Saved places sync across devices
-              </li>
-            </ul>
-            <button
-              onClick={() => { /* payment hookup TBD */ }}
-              style={{
-                width: '100%', padding: '14px 16px', borderRadius: 12,
-                background: ACCENT, color: '#faf7f0', border: 'none',
-                fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.98rem',
-                cursor: 'pointer', marginBottom: 10,
-              }}
-            >
-              Get Pro — $4.99/mo
-            </button>
-            <button
-              onClick={() => setShowUpgradeSheet(false)}
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: 12,
-                background: 'transparent', color: MUTED,
-                border: '1px solid rgba(11,16,24,0.15)',
-                fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
-                cursor: 'pointer',
-              }}
-            >
-              Maybe later
-            </button>
-          </div>
-        </div>
+        <UpgradeSheet
+          accent={ACCENT}
+          ink={INK}
+          muted={MUTED}
+          onClose={() => setShowUpgradeSheet(false)}
+        />
       )}
     </>
   );
