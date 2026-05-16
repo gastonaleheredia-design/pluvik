@@ -321,6 +321,67 @@ const STYLES = {
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
 };
 
+/* ---------------- HRRR forecast (FUTURE tab) ---------------- */
+
+const HRRR_API = "https://mesonet.agron.iastate.edu/api/1/radarfcst.json";
+
+interface HrrrFrame {
+  /** Epoch ms of the forecast valid time. */
+  validMs: number;
+  /** Tile URL template (must contain {z}/{x}/{y}). */
+  tileUrl: string;
+}
+
+/**
+ * Fetch IEM's HRRR forecast frame index. Returns a normalized list of
+ * { validMs, tileUrl } so the slider can map +Nh → nearest forecast frame.
+ * The shape of radarfcst.json varies; this reader is intentionally
+ * defensive and falls back to building a tile.py URL when only a
+ * timestamp is present.
+ */
+async function fetchHrrrForecastFrames(): Promise<HrrrFrame[]> {
+  try {
+    const res = await fetch(HRRR_API);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw: any[] = data?.frames ?? data?.data ?? [];
+    const out: HrrrFrame[] = [];
+    for (const r of raw) {
+      const validIso = r?.valid ?? r?.valid_at ?? r?.time ?? null;
+      const ms = validIso ? new Date(validIso).getTime() : (typeof r?.ts === "number" ? r.ts * 1000 : NaN);
+      if (!Number.isFinite(ms)) continue;
+      let tileUrl: string | null = r?.tile_url ?? r?.url ?? r?.tiles ?? null;
+      if (!tileUrl) {
+        // Derive from timestamp using IEM tile.py convention for HRRR REFD.
+        const d = new Date(ms);
+        const pad = (n: number) => n.toString().padStart(2, "0");
+        const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+        tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
+      }
+      if (!/\{z\}/.test(tileUrl) || !/\{x\}/.test(tileUrl) || !/\{y\}/.test(tileUrl)) continue;
+      out.push({ validMs: ms, tileUrl });
+    }
+    out.sort((a, b) => a.validMs - b.validMs);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Pick the forecast frame closest to (now + hoursAhead). Returns null if no
+ *  frame is within ~45 min of the requested time. */
+function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame | null {
+  if (!frames.length) return null;
+  const target = Date.now() + hoursAhead * 3600 * 1000;
+  let best: HrrrFrame | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const f of frames) {
+    const diff = Math.abs(f.validMs - target);
+    if (diff < bestDiff) { bestDiff = diff; best = f; }
+  }
+  return best && bestDiff <= 45 * 60 * 1000 ? best : null;
+}
+
 /** Keep warning polygons painted above the radar raster after any swap. */
 function enforceLayerOrder(map: mapboxgl.Map) {
   if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
@@ -370,6 +431,12 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   // Tracks whether the user has precise (GPS) coords. Drives the 📍 button
   // visual state and gates the silent auto-prompt on first open.
   const [precise, setPrecise] = useState<boolean>(false);
+
+  // FUTURE tab state — HRRR forecast frames overlaid on the same basemap.
+  const [view, setView] = useState<"radar" | "future">("radar");
+  const [forecastHour, setForecastHour] = useState<number>(1);
+  const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
+  const [forecastLoading, setForecastLoading] = useState<boolean>(false);
 
   // Close every floating panel/tool — used when opening a new one so they
   // don't stack on top of each other.
@@ -933,6 +1000,73 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       map.setLayoutProperty("live-radar-layer", "visibility", showRadar ? "visible" : "none");
     }
   }, [showRadar]);
+
+  // Lazy-load HRRR forecast frames the first time the FUTURE tab is opened.
+  useEffect(() => {
+    if (view !== "future" || forecastFrames !== null || forecastLoading) return;
+    let cancelled = false;
+    setForecastLoading(true);
+    fetchHrrrForecastFrames().then((frames) => {
+      if (cancelled) return;
+      setForecastFrames(frames);
+      setForecastLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [view, forecastFrames, forecastLoading]);
+
+  // Drive the HRRR forecast raster layer. Adds the layer on first use,
+  // updates its tiles when the selected hour changes, and toggles
+  // visibility against the live radar based on the active tab.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const liveHasLayer = map.getLayer("live-radar-layer");
+    if (view === "radar") {
+      if (map.getLayer("hrrr-forecast-layer")) {
+        map.setLayoutProperty("hrrr-forecast-layer", "visibility", "none");
+      }
+      if (liveHasLayer) {
+        map.setLayoutProperty("live-radar-layer", "visibility", showRadar ? "visible" : "none");
+      }
+      return;
+    }
+
+    // FUTURE tab — hide live radar, show forecast (if frame available).
+    if (liveHasLayer) {
+      map.setLayoutProperty("live-radar-layer", "visibility", "none");
+    }
+    const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+    if (!frame) {
+      if (map.getLayer("hrrr-forecast-layer")) {
+        map.setLayoutProperty("hrrr-forecast-layer", "visibility", "none");
+      }
+      return;
+    }
+    const existing = map.getSource("hrrr-forecast") as mapboxgl.RasterTileSource | undefined;
+    if (existing) {
+      (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([frame.tileUrl]);
+    } else {
+      map.addSource("hrrr-forecast", {
+        type: "raster",
+        tiles: [frame.tileUrl],
+        tileSize: 256,
+        maxzoom: 9,
+        attribution: "© NOAA HRRR · IEM",
+      });
+      const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
+      map.addLayer({
+        id: "hrrr-forecast-layer",
+        type: "raster",
+        source: "hrrr-forecast",
+        layout: { visibility: "visible" },
+        paint: { "raster-opacity": 0.78, "raster-resampling": "linear" },
+      }, beforeId);
+    }
+    if (map.getLayer("hrrr-forecast-layer")) {
+      map.setLayoutProperty("hrrr-forecast-layer", "visibility", "visible");
+    }
+  }, [view, forecastHour, forecastFrames, showRadar]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -1121,12 +1255,144 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       )}
 
       {/* Top-left: live indicator only */}
-      <div style={pillTopLeft}>
-        <span style={liveDot} />
-        {source === "station" && stationId
-          ? `Live · ${stationId}`
-          : "Live · Mosaic"}
+      {view === "radar" ? (
+        <div style={pillTopLeft}>
+          <span style={liveDot} />
+          {source === "station" && stationId
+            ? `Live · ${stationId}`
+            : "Live · Mosaic"}
+        </div>
+      ) : (
+        <div
+          style={{
+            ...pillTopLeft,
+            backgroundColor: "rgba(120,53,15,0.85)",
+            color: "#fbbf24",
+            borderColor: "rgba(251,191,36,0.55)",
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              backgroundColor: "#fbbf24",
+              marginRight: 6,
+              display: "inline-block",
+            }}
+          />
+          PREDICTED ·{" "}
+          {(() => {
+            const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+            const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
+            return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
+          })()}
+        </div>
+      )}
+
+      {/* RADAR / FUTURE tabs */}
+      <div
+        style={{
+          position: "absolute",
+          top: 12,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "inline-flex",
+          backgroundColor: "rgba(11,16,24,0.78)",
+          border: "1px solid rgba(250,247,240,0.18)",
+          borderRadius: 999,
+          padding: 3,
+          zIndex: 5,
+          fontFamily: "JetBrains Mono, ui-monospace, monospace",
+          fontSize: "0.6rem",
+          letterSpacing: "0.16em",
+        }}
+      >
+        {(["radar", "future"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              backgroundColor: view === v
+                ? (v === "future" ? "#fbbf24" : "#faf7f0")
+                : "transparent",
+              color: view === v
+                ? (v === "future" ? "#451a03" : "#0b1018")
+                : "rgba(250,247,240,0.7)",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
+          >
+            {v === "radar" ? "RADAR" : "FUTURE"}
+          </button>
+        ))}
       </div>
+
+      {/* FUTURE slider + missing-frame message */}
+      {view === "future" && (
+        <div
+          style={{
+            position: "absolute",
+            left: 16,
+            right: 16,
+            bottom: 110,
+            zIndex: 5,
+            backgroundColor: "rgba(11,16,24,0.82)",
+            border: "1px solid rgba(251,191,36,0.35)",
+            borderRadius: 12,
+            padding: "10px 14px 12px",
+            color: "#faf7f0",
+            fontFamily: "JetBrains Mono, ui-monospace, monospace",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "0.58rem",
+              letterSpacing: "0.16em",
+              marginBottom: 6,
+              color: "#fbbf24",
+            }}
+          >
+            <span>HRRR FORECAST · +{forecastHour}H</span>
+            <span style={{ color: "rgba(250,247,240,0.55)" }}>
+              {forecastLoading ? "LOADING…" : `${forecastFrames?.length ?? 0} FRAMES`}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={18}
+            step={1}
+            value={forecastHour}
+            onChange={(e) => setForecastHour(parseInt(e.target.value, 10))}
+            style={{ width: "100%", accentColor: "#fbbf24" }}
+            aria-label="Forecast hour offset"
+          />
+          {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
+            <div
+              style={{
+                marginTop: 8,
+                fontFamily: "Fraunces, serif",
+                fontStyle: "italic",
+                fontSize: "0.85rem",
+                color: "#fde68a",
+              }}
+            >
+              Forecast not yet available
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Right toolbar */}
       <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
