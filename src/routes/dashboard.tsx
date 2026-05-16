@@ -493,6 +493,21 @@ function DashboardPage() {
     await supabase.from('tracked_events').delete().eq('id', eventId);
   };
 
+  const deleteEvent = async (eventId: string) => {
+    setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+    await supabase.from('tracked_events').delete().eq('id', eventId);
+  };
+
+  const archiveEvent = async (eventId: string) => {
+    const nowIso = new Date().toISOString();
+    setEvents((prev) =>
+      view === 'active'
+        ? prev.filter((ev) => ev.id !== eventId)
+        : prev.map((ev) => (ev.id === eventId ? { ...ev, archived_at: nowIso } : ev)),
+    );
+    await supabase.from('tracked_events').update({ archived_at: nowIso }).eq('id', eventId);
+  };
+
   if (loading) {
     return (
       <div
