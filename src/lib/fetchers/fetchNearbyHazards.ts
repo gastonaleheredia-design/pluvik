@@ -106,6 +106,24 @@ export async function loadActiveSbwGeo(): Promise<any | null> {
 export { polygonCentroid as polygonCentroidLngLat, geometryCentroid, pointInGeometry };
 
 /**
+ * Maximum distance (mi) a hazard of a given type stays "nearby" enough to
+ * surface. Advisories return null and are suppressed entirely from the
+ * nearby list (they're not the kind of thing you cross town to know about).
+ */
+function maxNearbyDistance(event: string): number | null {
+  const e = event.toLowerCase();
+  if (e.includes('tornado warning')) return 10;
+  if (e.includes('flash flood warning')) return 15;
+  if (e.includes('severe thunderstorm warning')) return 25;
+  if (e.includes('extreme wind warning')) return 10;
+  if (e.includes('winter storm warning') || e.includes('ice storm warning') || e.includes('blizzard warning')) return 50;
+  if (e.includes('watch')) return 40;
+  if (e.includes('advisory')) return null;
+  // Unknown warning types: fall back to the caller's radius (no extra cap).
+  return Number.POSITIVE_INFINITY;
+}
+
+/**
  * Active SBWs within `radiusMi` of (lat, lon), sorted by distance.
  * Polygon-aware: the `containsUser` flag is true when the user is INSIDE
  * the warning, which the caller can use to upgrade messaging.
@@ -115,6 +133,7 @@ export async function fetchNearbyHazards(
   lon: number,
   radiusMi: number = 75,
   limit: number = 5,
+  options: { tornadoEmergency?: boolean } = {},
 ): Promise<NearbyHazard[]> {
   const geo = await loadActiveSbw();
   if (!geo?.features?.length) return [];
@@ -135,6 +154,21 @@ export async function fetchNearbyHazards(
     const dist = Math.round(Math.hypot(dx, dy));
     if (dist > radiusMi) continue;
 
+    const containsUser = pointInGeometry(lat, lon, f.geometry);
+
+    // Tornado-emergency mode: suppress ALL nearby warnings except the one
+    // covering the user's exact coordinates. The shelter screen shouldn't
+    // be cluttered with distant hazards.
+    if (options.tornadoEmergency && !containsUser) continue;
+
+    // Per-type distance gating (advisories return null → drop entirely,
+    // unless the user is literally inside the polygon).
+    if (!containsUser) {
+      const maxMi = maxNearbyDistance(event);
+      if (maxMi == null) continue;
+      if (dist > maxMi) continue;
+    }
+
     const bearingDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
     const expiresIso = String(f.properties?.expire ?? f.properties?.expires ?? '') || null;
 
@@ -143,7 +177,7 @@ export async function fetchNearbyHazards(
       distanceMi: dist,
       bearing: compass(bearingDeg),
       expiresIso,
-      containsUser: pointInGeometry(lat, lon, f.geometry),
+      containsUser,
     });
   }
 
