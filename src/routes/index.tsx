@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
@@ -55,6 +55,9 @@ const WARN_BG = '#fef2f2';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: search.focus === '1' || search.focus === 1 || search.focus === true ? 1 : undefined,
+  }),
 });
 
 type FriendEvent = {
