@@ -572,24 +572,6 @@ function DashboardPage() {
           const isClimate = stage === 'climate';
           const isOutlook = stage === 'outlook';
           const isModelTrend = stage === 'model_trend';
-          const isPastDue =
-            !!event.event_at &&
-            new Date(event.event_at).getTime() < Date.now() &&
-            !event.archived_at;
-          const stageBadge: string =
-            isPastDue ? 'WINDING DOWN'
-            : stage === 'climate' ? 'TOO FAR OUT · TRACKING'
-            : stage === 'outlook' ? 'LONG-RANGE TREND'
-            : stage === 'model_trend' ? 'EARLY SIGNAL'
-            : stage === 'live' ? 'HAPPENING NOW'
-            : stage === 'short_range' ? 'COMING UP'
-            : 'TRACKING';
-          // Visual tier: muted for "still far out, just watching",
-          // accent for "real / imminent".
-          const mutedBadge =
-            stageBadge === 'TRACKING' ||
-            stageBadge === 'TOO FAR OUT · TRACKING' ||
-            stageBadge === 'LONG-RANGE TREND';
           const isRainQ = isRainYesNoQuestion(event.question);
           // For rain yes/no questions, answer the question literally instead
           // of mashing the plan verdict ("NO") into the headline next to a
