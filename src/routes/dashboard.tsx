@@ -926,47 +926,7 @@ function DashboardPage() {
                   </div>
                 )}
 
-                {/* Why MAYBE block — only on uncertain answers with rationale */}
-                {displayWord === 'MAYBE' && event.current_maybe_explanation && (
-                  <div
-                    style={{
-                      marginTop: '10px',
-                      paddingTop: '10px',
-                      borderTop: `1px solid ${INK}10`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '0.6rem',
-                        letterSpacing: '0.14em',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        color: ACCENT,
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Why maybe
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '0.85rem',
-                        lineHeight: 1.4,
-                        color: INK,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 5,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {event.current_maybe_explanation.afd_quote}{' '}
-                      {event.current_maybe_explanation.model_reconciliation}{' '}
-                      <span style={{ color: MUTED }}>
-                        {event.current_maybe_explanation.why_uncertain}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* Why MAYBE long-form rationale lives on the detail view ("Why?") — not on the tracking card. */}
               </div>
             </Link>
           );
