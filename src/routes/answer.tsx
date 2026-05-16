@@ -670,8 +670,8 @@ function AnswerPage() {
     if (user) {
       saveAndTrack();
     } else {
-      // Guest path — persist to localStorage so the work isn't lost,
-      // then nudge with a non-blocking sheet (not the auth modal).
+      // Guest path — also persist locally so the work isn't lost while they
+      // decide, then open the shared AuthModal (with Continue as guest).
       try {
         const raw = localStorage.getItem('pluvik-guest-events') || '[]';
         const guestEvents: unknown[] = JSON.parse(raw);
@@ -691,7 +691,7 @@ function AnswerPage() {
       } catch (e) {
         console.error('[answer] guest save failed', e);
       }
-      setShowGuestSheet(true);
+      setShowAuthModal(true);
     }
   };
 
@@ -2069,10 +2069,13 @@ function AnswerPage() {
             </button>
           </div>
         </div>
-        {answer && user && (
+        {answer && (
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, paddingBottom: 24 }}>
             <button
-              onClick={() => setShowCreateGroup(true)}
+              onClick={() => {
+                if (user) setShowCreateGroup(true);
+                else setShowAuthModal(true);
+              }}
               style={{
                 background: 'none', border: `1px solid ${INK}`, borderRadius: 999,
                 padding: '10px 18px', cursor: 'pointer',
