@@ -693,6 +693,7 @@ function HomePage() {
       key={i18n.language}
       style={{
         minHeight: '100vh',
+        position: 'relative',
         backgroundColor: PAGE_BG,
         color: INK,
         display: 'flex',
