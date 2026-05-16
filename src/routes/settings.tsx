@@ -475,6 +475,135 @@ function SettingsPage() {
         </div>
       </section>
 
+      {/* BUSINESS (Pro only) */}
+      {user && isPro && (
+        <section style={styles.section}>
+          <p style={styles.sectionLabel}>Business</p>
+          <div style={styles.card}>
+            {bizLoading ? (
+              <div style={{ fontFamily: SERIF, fontStyle: 'italic', color: MUTED, fontSize: '0.9rem' }}>
+                Loading…
+              </div>
+            ) : !business ? (
+              <>
+                <div style={styles.rowLabelMono}>No business account</div>
+                <div style={{ ...styles.emailText, marginBottom: 14, fontStyle: 'italic', color: MUTED }}>
+                  Create one to invite teammates and share tracked forecasts.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSheet(true)}
+                  style={{ ...styles.signInBtn, background: ACCENT }}
+                >
+                  Create Business Account
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={styles.rowLabelMono}>Business</div>
+                <div style={styles.emailText}>{business.business_name}</div>
+                <div
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: '0.6rem',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: MUTED,
+                    marginTop: 4,
+                  }}
+                >
+                  {business.industry}
+                </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <div style={styles.rowLabelMono}>Invite team member</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="teammate@email.com"
+                      style={{
+                        flex: 1,
+                        padding: '12px 14px',
+                        borderRadius: 12,
+                        border: `1px solid ${BORDER}`,
+                        background: PAPER,
+                        fontFamily: SERIF,
+                        fontSize: '0.95rem',
+                        color: INK,
+                        boxSizing: 'border-box',
+                        minWidth: 0,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleInvite}
+                      disabled={inviting}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 999,
+                        border: 'none',
+                        background: INK,
+                        color: PAPER,
+                        fontFamily: 'inherit',
+                        fontWeight: 500,
+                        fontSize: '0.85rem',
+                        cursor: inviting ? 'wait' : 'pointer',
+                        opacity: inviting ? 0.7 : 1,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {inviting ? 'Sending…' : 'Invite'}
+                    </button>
+                  </div>
+                  {inviteError && (
+                    <p style={{ fontFamily: SERIF, fontSize: '0.8rem', color: '#b91c1c', margin: '8px 0 0' }}>
+                      {inviteError}
+                    </p>
+                  )}
+                </div>
+
+                {members.filter((m) => m.invited_email).length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={styles.rowLabelMono}>Members</div>
+                    {members
+                      .filter((m) => m.invited_email)
+                      .map((m) => (
+                        <div
+                          key={m.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 0',
+                            borderBottom: `1px solid ${BORDER}`,
+                          }}
+                        >
+                          <span style={{ fontFamily: SERIF, fontSize: '0.9rem', color: INK, wordBreak: 'break-all' }}>
+                            {m.invited_email}
+                          </span>
+                          <span
+                            style={{
+                              fontFamily: MONO,
+                              fontSize: '0.55rem',
+                              letterSpacing: '0.1em',
+                              textTransform: 'uppercase',
+                              color: m.accepted_at ? ACCENT : MUTED,
+                            }}
+                          >
+                            {m.accepted_at ? 'Joined' : 'Invited'}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ABOUT */}
       <section style={styles.section}>
         <p style={styles.sectionLabel}>About</p>
