@@ -146,7 +146,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
     (async () => {
       const { data: created } = await supabase
         .from('weather_events')
-        .select('id, title, activity_type, verdict, event_date, status, creator_id')
+        .select('id, title, activity_type, verdict, event_date, event_end, status, creator_id')
         .eq('creator_id', profile.id)
         .order('event_date', { ascending: false });
       if (cancel) return;
@@ -159,7 +159,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
       else {
         const { data: joined } = await supabase
           .from('weather_events')
-          .select('id, title, activity_type, verdict, event_date, status, creator_id')
+          .select('id, title, activity_type, verdict, event_date, event_end, status, creator_id')
           .in('id', ids)
           .neq('creator_id', profile.id)
           .order('event_date', { ascending: false });
