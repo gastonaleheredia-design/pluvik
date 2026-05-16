@@ -30,6 +30,7 @@ type WeatherEvent = {
   activity_type: string | null;
   verdict: string | null;
   event_date: string | null;
+  event_end: string | null;
   status: string | null;
   creator_id: string;
 };
