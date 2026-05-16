@@ -99,12 +99,13 @@ function EventPage() {
     })();
 
     function loadTrackedEvent() {
+    const u = user!;
     Promise.all([
       supabase
         .from('tracked_events')
         .select('*')
         .eq('id', id)
-        .eq('user_id', user.id)
+        .eq('user_id', u.id)
         .single(),
       supabase
         .from('event_forecast_snapshots')
