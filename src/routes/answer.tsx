@@ -1926,6 +1926,30 @@ function AnswerPage() {
               </button>
             )}
             <button
+              onClick={() => {
+                const dateLabel = eventAtIso
+                  ? new Date(eventAtIso).toLocaleDateString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                    })
+                  : new Date().toLocaleDateString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                    });
+                void shareForecast({
+                  verdictWord: String(verdictWord),
+                  summary: verdictSentence || directAnswer,
+                  location: contextLine || resolvedAddress,
+                  dateLabel,
+                });
+              }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.65rem', letterSpacing: '0.18em', color: ACCENT,
+              }}
+            >
+              {t('answer.share', { defaultValue: 'SHARE' })}
+            </button>
+            <button
               onClick={handleSaveTrack}
               disabled={saving}
               style={{
