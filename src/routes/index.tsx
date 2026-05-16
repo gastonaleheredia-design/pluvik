@@ -23,6 +23,22 @@ const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
 
+interface Occasion {
+  key: string;
+  emoji: string;
+  label: string;
+  contextSuffix: string;
+}
+
+const OCCASIONS: Occasion[] = [
+  { key: 'construction', emoji: '🏗', label: 'Construction', contextSuffix: 'construction activity' },
+  { key: 'running',      emoji: '🏃', label: 'Running',      contextSuffix: 'going for a run' },
+  { key: 'boating',      emoji: '⛵', label: 'Boating',      contextSuffix: 'boating' },
+  { key: 'wedding',      emoji: '💒', label: 'Wedding',      contextSuffix: 'an outdoor wedding' },
+  { key: 'event',        emoji: '🎉', label: 'Event',        contextSuffix: 'an outdoor event' },
+  { key: 'game_day',     emoji: '🏈', label: 'Game Day',     contextSuffix: 'a game day' },
+];
+
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -79,6 +95,7 @@ function HomePage() {
   const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
   const [placeResolving, setPlaceResolving] = useState(false);
+  const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -426,14 +443,19 @@ function HomePage() {
     if (!questionText.trim()) return;
     let finalPlace = pickedPlace;
     const finalTime = pickedTime;
-    const distilled = distillQuestion(questionText.trim());
+    const baseText = questionText.trim();
+    const occasion = OCCASIONS.find((o) => o.key === selectedOccasion);
+    const composedQuestion = occasion
+      ? `${baseText} — ${occasion.contextSuffix}`
+      : baseText;
+    const distilled = distillQuestion(composedQuestion);
     const intent = classifyIntent(distilled);
     // Defense-in-depth: if the chip resolver didn't land on a place but
     // the question contains a high-confidence city/state, geocode it
     // here (bypassing the proximity guard) so we don't fall back to the
     // active address coords.
     if (!finalPlace && !pickedPlaceManual) {
-      const extracted = extractPlaceFromQuestion(questionText.trim());
+      const extracted = extractPlaceFromQuestion(baseText);
       if (extracted && extracted.confidence === 'high') {
         const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
           ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
@@ -448,7 +470,7 @@ function HomePage() {
     navigate({
       to: '/answer',
       search: {
-        q: questionText.trim(),
+        q: composedQuestion,
         address: finalPlace?.label ?? selectedAddress.label,
         lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
         lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
@@ -1045,6 +1067,48 @@ function HomePage() {
           padding: '0 20px 20px',
         }}
       >
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            overflowX: 'auto',
+            padding: '0 0 10px',
+            marginBottom: 4,
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {OCCASIONS.map((o) => {
+            const active = selectedOccasion === o.key;
+            return (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setSelectedOccasion(active ? null : o.key)}
+                aria-pressed={active}
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '7px 14px',
+                  borderRadius: 999,
+                  background: active ? 'rgba(194,65,12,0.08)' : '#fff',
+                  border: `1px solid ${active ? ACCENT : 'rgba(11,16,24,0.1)'}`,
+                  color: active ? ACCENT : INK,
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{o.emoji}</span>
+                <span>{o.label}</span>
+              </button>
+            );
+          })}
+        </div>
         <div
           style={{
             display: 'flex',
