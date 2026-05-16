@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 
@@ -24,6 +25,47 @@ const RISK_COLORS: Record<number, { bg: string; label: string }> = {
   5: { bg: '#b91c1c', label: 'HIGH' },
 };
 
+type EmergencyKind = 'tornado' | 'flash_flood' | null;
+
+/** Find the first active alert string matching an emergency warning type. */
+function detectEmergency(alerts: string[] | undefined): { kind: EmergencyKind; raw: string | null } {
+  if (!alerts?.length) return { kind: null, raw: null };
+  for (const a of alerts) {
+    const lower = a.toLowerCase();
+    if (lower.includes('tornado warning')) return { kind: 'tornado', raw: a };
+    if (lower.includes('flash flood warning')) return { kind: 'flash_flood', raw: a };
+  }
+  return { kind: null, raw: null };
+}
+
+function detectSevereTstmWarning(alerts: string[] | undefined): boolean {
+  return !!alerts?.some((a) => a.toLowerCase().includes('severe thunderstorm warning'));
+}
+
+/** Pull a human-readable expiry like "until 10 PM CDT" out of an alert string. */
+function extractExpiry(raw: string | null): string | null {
+  if (!raw) return null;
+  const m = raw.match(/until\s+([0-9:]+\s*(?:AM|PM)?(?:\s*[A-Z]{2,5})?)/i);
+  return m ? m[1].trim() : null;
+}
+
+const EMERGENCY_COPY: Record<Exclude<EmergencyKind, null>, {
+  label: string;
+  headline: string;
+  instruction: string;
+}> = {
+  tornado: {
+    label: 'TORNADO WARNING',
+    headline: 'TAKE SHELTER NOW',
+    instruction: 'Move to the lowest floor interior room. Stay away from windows.',
+  },
+  flash_flood: {
+    label: 'FLASH FLOOD WARNING',
+    headline: 'MOVE TO HIGHER GROUND',
+    instruction: 'Do not drive through flooded roads. Turn around, don\u2019t drown.',
+  },
+};
+
 export function SevereAnswerScreen({
   answer,
   question,
@@ -42,11 +84,29 @@ export function SevereAnswerScreen({
     { type: t('severe.threat_flood'), level: 'LOW' },
   ];
 
+  const emergency = detectEmergency(answer.active_alerts);
+  const isSevereTstmWarning = !emergency.kind && detectSevereTstmWarning(answer.active_alerts);
+
+  if (emergency.kind) {
+    return (
+      <EmergencyShelterScreen
+        kind={emergency.kind}
+        rawAlert={emergency.raw}
+        otherAlerts={(answer.active_alerts ?? []).filter((a) => a !== emergency.raw)}
+        riskLabel={answer.risk_level ?? null}
+        riskNum={riskNum}
+        onBack={onBack}
+      />
+    );
+  }
+
+  const pageBg = isSevereTstmWarning ? '#431407' : '#0b1018';
+
   return (
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: '#0b1018',
+        backgroundColor: pageBg,
         color: '#faf7f0',
         paddingBottom: '48px',
         position: 'relative',
@@ -149,6 +209,25 @@ export function SevereAnswerScreen({
         >
           "{answer.summary}"
         </p>
+
+        {isSevereTstmWarning && (
+          <div
+            style={{
+              backgroundColor: 'rgba(254,215,170,0.12)',
+              border: '2px solid #fb923c',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '18px',
+            }}
+          >
+            <div className="mono-label" style={{ fontSize: '0.6rem', color: '#fdba74', marginBottom: '6px' }}>
+              SHELTER GUIDANCE
+            </div>
+            <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1rem', lineHeight: 1.4, color: '#fff7ed' }}>
+              Move indoors away from windows. Damaging wind and large hail possible — stay inside until the warning expires.
+            </p>
+          </div>
+        )}
 
         <div
           className="mono-label"
@@ -274,6 +353,283 @@ export function SevereAnswerScreen({
         >
           {saving ? '...' : t('answer.save_track')}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Full-screen emergency layout (Tornado / Flash Flood Warning)      */
+/* ---------------------------------------------------------------- */
+
+interface EmergencyShelterScreenProps {
+  kind: Exclude<EmergencyKind, null>;
+  rawAlert: string | null;
+  otherAlerts: string[];
+  riskLabel: string | null;
+  riskNum: number;
+  onBack: () => void;
+}
+
+function EmergencyShelterScreen({
+  kind,
+  rawAlert,
+  otherAlerts,
+  riskLabel,
+  riskNum,
+  onBack,
+}: EmergencyShelterScreenProps) {
+  const [showDetails, setShowDetails] = useState(false);
+  const copy = EMERGENCY_COPY[kind];
+  const expiry = extractExpiry(rawAlert);
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#7f1d1d',
+        color: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '56px 22px 32px',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <style>{`@keyframes emergPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.5)}}`}</style>
+
+      <button
+        onClick={onBack}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          marginBottom: '20px',
+          alignSelf: 'flex-start',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.7)',
+          }}
+        >
+          ← BACK
+        </span>
+      </button>
+
+      {/* TOP: pulsing dot + warning tag */}
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: '8vh',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 11,
+            height: 11,
+            borderRadius: '50%',
+            backgroundColor: '#ef4444',
+            boxShadow: '0 0 0 4px rgba(239,68,68,0.25)',
+            animation: 'emergPulse 1.1s ease-in-out infinite',
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.7rem',
+            letterSpacing: '0.2em',
+            fontWeight: 700,
+            color: '#ffffff',
+          }}
+        >
+          {copy.label} · ACTIVE{expiry ? ` · UNTIL ${expiry.toUpperCase()}` : ''}
+        </span>
+      </div>
+
+      {/* CENTER: action headline + instruction */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <h1
+          style={{
+            fontFamily: 'Fraunces, serif',
+            fontWeight: 400,
+            fontSize: 'clamp(3rem, 12vw, 5rem)',
+            lineHeight: 1,
+            letterSpacing: '-0.025em',
+            color: '#ffffff',
+            margin: 0,
+            marginBottom: '24px',
+          }}
+        >
+          {copy.headline}
+        </h1>
+        <p
+          style={{
+            fontFamily: 'Fraunces, serif',
+            fontStyle: 'italic',
+            fontSize: 'clamp(1.05rem, 3vw, 1.35rem)',
+            lineHeight: 1.45,
+            color: '#ffffff',
+            opacity: 0.95,
+            margin: 0,
+            maxWidth: '32ch',
+          }}
+        >
+          {copy.instruction}
+        </p>
+      </div>
+
+      {/* BOTTOM: radar button + collapsible details */}
+      <div style={{ marginTop: '24px' }}>
+        <a
+          href="https://radar.weather.gov/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'block',
+            width: '100%',
+            padding: '16px',
+            backgroundColor: '#ffffff',
+            color: '#7f1d1d',
+            borderRadius: '12px',
+            textAlign: 'center',
+            textDecoration: 'none',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontWeight: 700,
+            fontSize: '0.78rem',
+            letterSpacing: '0.16em',
+            marginBottom: '14px',
+          }}
+        >
+          VIEW RADAR →
+        </a>
+
+        <button
+          type="button"
+          onClick={() => setShowDetails((v) => !v)}
+          style={{
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '8px 0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            color: 'rgba(255,255,255,0.85)',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.62rem',
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+          }}
+          aria-expanded={showDetails}
+        >
+          <span>More details</span>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-block',
+              transform: showDetails ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 160ms ease',
+            }}
+          >
+            ▾
+          </span>
+        </button>
+
+        {showDetails && (
+          <div
+            style={{
+              marginTop: '10px',
+              backgroundColor: 'rgba(0,0,0,0.25)',
+              borderRadius: '10px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.55rem',
+                  letterSpacing: '0.18em',
+                  color: 'rgba(255,255,255,0.7)',
+                  marginBottom: '6px',
+                }}
+              >
+                NEARBY WARNINGS · WITHIN 10 MI
+              </div>
+              {otherAlerts.length > 0 ? (
+                otherAlerts.map((a, i) => (
+                  <p
+                    key={i}
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontStyle: 'italic',
+                      fontSize: '0.88rem',
+                      lineHeight: 1.4,
+                      color: '#ffffff',
+                      margin: 0,
+                      marginBottom: i < otherAlerts.length - 1 ? '6px' : 0,
+                    }}
+                  >
+                    {a}
+                  </p>
+                ))
+              ) : (
+                <p
+                  style={{
+                    fontFamily: 'Fraunces, serif',
+                    fontStyle: 'italic',
+                    fontSize: '0.88rem',
+                    color: 'rgba(255,255,255,0.7)',
+                    margin: 0,
+                  }}
+                >
+                  No other warnings within 10 miles.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.55rem',
+                  letterSpacing: '0.18em',
+                  color: 'rgba(255,255,255,0.7)',
+                  marginBottom: '6px',
+                }}
+              >
+                SPC RISK
+              </div>
+              <p
+                style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: '0.92rem',
+                  color: '#ffffff',
+                  margin: 0,
+                }}
+              >
+                {riskLabel
+                  ? `${riskLabel} · Level ${riskNum} of 5`
+                  : `Level ${riskNum} of 5`}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
