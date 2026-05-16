@@ -351,6 +351,10 @@ function AnswerPage() {
 
   const handleSaveTrack = () => {
     if (!answer) return;
+    if (tier === 'free') {
+      setShowUpgradeSheet(true);
+      return;
+    }
     if (user) {
       saveAndTrack();
     } else {
