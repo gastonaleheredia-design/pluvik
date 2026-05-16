@@ -8,6 +8,8 @@ import { BottomNav } from '../components/BottomNav';
 import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
 import { StageBadge } from '../components/StageBadge';
 import type { ForecastStage } from '../lib/forecastStage';
+import { synthesizeEventTitle } from '../lib/synthesizeEventTitle';
+import { formatEventDateRange } from '../lib/formatEventDateRange';
 
 interface TrackedEvent {
   id: string;
@@ -21,6 +23,7 @@ interface TrackedEvent {
   created_at: string;
   archived_at?: string | null;
   event_at?: string | null;
+  event_end?: string | null;
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
@@ -83,6 +86,24 @@ function formatEventDate(iso: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Return one row per day spanned by [start, end] inclusive (whole days),
+ * capped at 7 entries so a card never gets dominated by the breakdown.
+ */
+function enumerateDays(startIso: string, endIso: string): Date[] {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return [];
+  const days: Date[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor.getTime() <= last.getTime() && days.length < 7) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 }
 
 function shortLocation(addr: string): string {
