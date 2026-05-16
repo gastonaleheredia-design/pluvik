@@ -1529,3 +1529,141 @@ function DailyLimitCountdown({
     </div>
   );
 }
+
+function RainWindowSheet({
+  hours,
+  onClose,
+}: {
+  hours: Array<{ time: string; prob: number }>;
+  onClose: () => void;
+}) {
+  const data = hours.slice(0, 48);
+  const maxProb = Math.max(10, ...data.map((h) => h.prob));
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1100,
+        background: 'rgba(11,16,24,0.45)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 640, background: PAGE_BG,
+          borderTopLeftRadius: 22, borderTopRightRadius: 22,
+          padding: '18px 18px 28px',
+          boxShadow: '0 -8px 30px rgba(0,0,0,0.18)',
+          maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div style={{
+          width: 40, height: 4, borderRadius: 999,
+          background: 'rgba(11,16,24,0.18)', margin: '0 auto 14px',
+        }} />
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          marginBottom: 14, padding: '0 4px',
+        }}>
+          <h2 style={{
+            margin: 0,
+            fontFamily: 'Fraunces, Georgia, serif',
+            fontWeight: 400,
+            fontSize: '1.4rem',
+            color: INK,
+          }}>
+            Rain window
+          </h2>
+          <span style={{
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.55rem',
+            letterSpacing: '0.16em',
+            color: MUTED,
+            textTransform: 'uppercase',
+          }}>
+            Next 48 h
+          </span>
+        </div>
+        {data.length === 0 ? (
+          <div style={{
+            padding: '40px 8px',
+            fontFamily: 'Fraunces, serif', fontStyle: 'italic',
+            color: MUTED, textAlign: 'center', fontSize: '0.95rem',
+          }}>
+            No hourly rain data available.
+          </div>
+        ) : (
+          <div style={{
+            overflowX: 'auto', overflowY: 'hidden',
+            WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+            paddingBottom: 6,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'flex-end',
+              gap: 6, height: 170, paddingLeft: 4, paddingRight: 4,
+            }}>
+              {data.map((h, i) => {
+                const d = new Date(h.time);
+                const hr = d.getHours();
+                const label = hr === 0 ? '12a' : hr === 12 ? '12p' : hr > 12 ? `${hr - 12}p` : `${hr}a`;
+                const heightPct = Math.max(2, (h.prob / maxProb) * 100);
+                const color = h.prob > 40 ? ACCENT : 'rgba(11,16,24,0.18)';
+                const showDayMark = i === 0 || hr === 0;
+                return (
+                  <div key={h.time + i} style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    flexShrink: 0, width: 22, gap: 4,
+                  }}>
+                    <div style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.5rem', color: h.prob > 40 ? ACCENT : MUTED,
+                      height: 12, lineHeight: '12px',
+                    }}>
+                      {h.prob >= 10 ? `${h.prob}` : ''}
+                    </div>
+                    <div style={{
+                      width: '100%', height: 120,
+                      display: 'flex', alignItems: 'flex-end',
+                    }}>
+                      <div style={{
+                        width: '100%', height: `${heightPct}%`,
+                        background: color, borderRadius: 3,
+                        transition: 'height 200ms ease',
+                      }} />
+                    </div>
+                    <div style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.5rem', letterSpacing: '0.04em',
+                      color: showDayMark ? INK : MUTED,
+                      fontWeight: showDayMark ? 600 : 400,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div style={{
+          marginTop: 14, display: 'flex', alignItems: 'center', gap: 14,
+          padding: '0 4px',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.55rem', letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: MUTED,
+        }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 10, height: 10, background: ACCENT, borderRadius: 2 }} />
+            &gt; 40%
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 10, height: 10, background: 'rgba(11,16,24,0.18)', borderRadius: 2 }} />
+            &le; 40%
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
