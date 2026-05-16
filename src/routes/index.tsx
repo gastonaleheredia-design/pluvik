@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
-import { getHomeBriefing, type HomeBriefing } from '../lib/homeBriefing.functions';
+import { getHomeBriefing, getAlertSeverity, type HomeBriefing, type AlertSeverity } from '../lib/homeBriefing.functions';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { classifyIntent } from '../lib/weatherIntelligence';
