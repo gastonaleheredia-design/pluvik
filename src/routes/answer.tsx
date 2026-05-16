@@ -1683,7 +1683,18 @@ function AnswerPage() {
         />
       ) : (
         <BriefingScreen
-          scenario="rain"
+          scenario={
+            intent === 'rain_chance' || intent === 'nowcast'
+              ? 'rain'
+              : intent === 'flood'
+              ? 'flood'
+              : intent === 'storm_risk' ||
+                intent === 'severe_weather' ||
+                intent === 'tornado_risk' ||
+                intent === 'lightning'
+              ? 'severe'
+              : 'general'
+          }
           contextLabel={address.split(',').slice(0, 2).join(',').trim()}
           directAnswer={directAnswer}
           facts={facts}
