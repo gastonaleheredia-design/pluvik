@@ -586,7 +586,7 @@ function EventPage() {
           const factorSource = [
             event.current_summary ?? '',
             snapshots[0]?.summary ?? '',
-            snapshots[0]?.mainThreat ?? '',
+            snapshots[0]?.main_threat ?? '',
             event.question ?? '',
           ].join(' ');
           const factors = deriveSecondaryFactors(factorSource);
