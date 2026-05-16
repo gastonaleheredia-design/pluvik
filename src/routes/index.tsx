@@ -543,6 +543,19 @@ function HomePage() {
     return () => clearInterval(id);
   }, [briefing?.alert?.expires_iso, selectedAddress.lat, selectedAddress.lon, i18n.language]);
 
+  // Push notification for newly-detected severe warnings at the user's
+  // saved location. Deduped via localStorage (`pluvik-last-alert-id`) so
+  // the same warning never re-fires across re-fetches.
+  useEffect(() => {
+    const a = briefing?.alert;
+    if (!a) return;
+    const place = selectedAddress.label?.split(',')[0]?.trim() || 'your area';
+    notifySevereWeather(
+      { event: a.event, expiresIso: a.expires_iso, expiresLocal: a.expires_local },
+      place,
+    ).catch(() => { /* notification failures are non-fatal */ });
+  }, [briefing?.alert?.event, briefing?.alert?.expires_iso, selectedAddress.label]);
+
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
     // Free-tier daily gate. Pro users (and admin emails, mapped to
