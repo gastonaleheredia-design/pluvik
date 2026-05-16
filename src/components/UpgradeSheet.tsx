@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { AuthModal } from './AuthModal';
+
 interface UpgradeSheetProps {
   onClose: () => void;
   onStartTrial?: () => void;
@@ -6,6 +9,7 @@ interface UpgradeSheetProps {
 const ACCENT = '#c2410c';
 const INK = '#0b1018';
 const MUTED = 'rgba(11,16,24,0.55)';
+const CONTACT_EMAIL = 'gaston.ale.heredia@gmail.com';
 
 const BENEFITS: ReadonlyArray<{ icon: string; label: string }> = [
   { icon: '📍', label: 'Track unlimited forecasts' },
@@ -14,6 +18,14 @@ const BENEFITS: ReadonlyArray<{ icon: string; label: string }> = [
 ];
 
 export function UpgradeSheet({ onClose, onStartTrial }: UpgradeSheetProps) {
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+
+  const handleGetPro = () => {
+    if (onStartTrial) onStartTrial();
+    setShowComingSoon(true);
+  };
+
   return (
     <>
       <div
@@ -112,7 +124,7 @@ export function UpgradeSheet({ onClose, onStartTrial }: UpgradeSheetProps) {
         </ul>
 
         <button
-          onClick={onStartTrial}
+          onClick={handleGetPro}
           style={{
             display: 'block',
             width: '100%',
@@ -141,7 +153,111 @@ export function UpgradeSheet({ onClose, onStartTrial }: UpgradeSheetProps) {
         >
           Cancel anytime. No commitment.
         </div>
+        <button
+          type="button"
+          onClick={() => setShowAuth(true)}
+          style={{
+            display: 'block',
+            width: '100%',
+            marginTop: 18,
+            padding: 0,
+            background: 'none',
+            border: 'none',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '0.88rem',
+            color: INK,
+            textAlign: 'center',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            textUnderlineOffset: 3,
+          }}
+        >
+          Already have an account? Sign in
+        </button>
       </div>
+
+      {showComingSoon && (
+        <>
+          <div
+            onClick={() => setShowComingSoon(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(11,16,24,0.6)',
+              zIndex: 200,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: '#faf7f0',
+              borderRadius: '24px 24px 0 0',
+              zIndex: 201,
+              padding: '28px 22px 36px 22px',
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontWeight: 400,
+                fontSize: '1.5rem',
+                letterSpacing: '-0.01em',
+                color: INK,
+                margin: 0,
+              }}
+            >
+              Subscription coming soon
+            </h3>
+            <p
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '0.95rem',
+                color: INK,
+                lineHeight: 1.5,
+                margin: '12px 0 20px 0',
+              }}
+            >
+              To get early access, email us at{' '}
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                style={{ color: ACCENT, textDecoration: 'underline' }}
+              >
+                {CONTACT_EMAIL}
+              </a>
+              .
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowComingSoon(false)}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '14px 18px',
+                borderRadius: 14,
+                backgroundColor: ACCENT,
+                color: '#faf7f0',
+                border: 'none',
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 600,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </>
+      )}
+
+      {showAuth && (
+        <AuthModal
+          onClose={() => setShowAuth(false)}
+          onSuccess={() => setShowAuth(false)}
+        />
+      )}
     </>
   );
 }
