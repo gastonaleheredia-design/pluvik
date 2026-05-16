@@ -1302,6 +1302,82 @@ function AnswerPage() {
       ? 'TRACK THIS DATE'
       : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
+  // Limited answer view for free users on questions 2 and 3 of the day.
+  // Shows only the verdict word and one-line summary; hides confidence,
+  // hour-by-hour, Why?, and briefing details.
+  if (limitedAnswer && tier !== 'pro') {
+    return (
+      <>
+        <div
+          style={{
+            minHeight: '100vh',
+            backgroundColor: PAGE_BG,
+            color: INK,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            padding: '52px 28px 32px',
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          <div>
+            <button
+              onClick={() => navigate({ to: '/' })}
+              style={{
+                background: 'transparent', border: 'none', color: MUTED,
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                letterSpacing: '0.12em', cursor: 'pointer', padding: 0, marginBottom: 32,
+              }}
+            >
+              ← BACK
+            </button>
+            <div style={{
+              fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+              letterSpacing: '0.18em', color: MUTED, marginBottom: 12,
+              textTransform: 'uppercase',
+            }}>
+              {contextLine}
+            </div>
+            <div style={{
+              fontFamily: 'Fraunces, Georgia, serif', fontSize: 96,
+              lineHeight: 1, color: ACCENT, fontWeight: 500, letterSpacing: '-0.03em',
+              marginBottom: 24,
+            }}>
+              {verdictWord}
+            </div>
+            <div style={{
+              fontFamily: 'Fraunces, Georgia, serif', fontSize: 22,
+              lineHeight: 1.35, color: INK, fontWeight: 400,
+            }}>
+              {verdictSentence}
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 48 }}>
+            <button
+              onClick={() => setShowUpgradeSheet(true)}
+              style={{
+                background: 'transparent', border: 'none', color: ACCENT,
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+                letterSpacing: '0.12em', cursor: 'pointer', textTransform: 'uppercase',
+                fontWeight: 600,
+              }}
+            >
+              Get Pro for the full picture →
+            </button>
+          </div>
+        </div>
+        {showUpgradeSheet && (
+          <UpgradeSheet
+            accent={ACCENT}
+            ink={INK}
+            muted={MUTED}
+            onClose={() => setShowUpgradeSheet(false)}
+          />
+        )}
+      </>
+    );
+  }
+
   if (!showWhy) {
     return (
       <>
