@@ -882,28 +882,6 @@ function DashboardPage() {
             </Link>
           );
         })}
-
-        {/* Add more */}
-        {events.length > 0 && (
-          <button
-            onClick={() => navigate({ to: '/' })}
-            style={{
-              width: '100%',
-              marginTop: '8px',
-              padding: '13px',
-              backgroundColor: 'transparent',
-              color: ACCENT,
-              borderRadius: '100px',
-              border: `1.5px solid ${ACCENT}`,
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: 500,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-            }}
-          >
-            {t('dashboard.add_event')}
-          </button>
-        )}
       </div>
 
       <BottomNav />
