@@ -787,6 +787,16 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       verdict_reason: { code: reasonCode, detail: reasonDetail },
       next_hour_prob: Number.isFinite(nextHourProb) ? Math.round(nextHourProb) : null,
       confidence,
+      rain_hours_48: (() => {
+        const start = Math.max(nowIdx, 0);
+        const end = Math.min(start + 48, times.length);
+        const out: Array<{ time: string; prob: number }> = [];
+        for (let i = start; i < end; i++) {
+          const p = Number.isFinite(probs[i]) ? Math.round(probs[i]) : 0;
+          out.push({ time: times[i], prob: p });
+        }
+        return out;
+      })(),
       why: await buildWhyPayload({
         lat, lon, language,
         word,
