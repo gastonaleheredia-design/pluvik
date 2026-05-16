@@ -8,7 +8,7 @@ export function BottomNav() {
   const { t } = useTranslation();
   const location = useLocation();
   const currentPath = location.pathname;
-  const { user, tier } = useAuth();
+  const { user } = useAuth();
   const [hasUnseen, setHasUnseen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasBusiness, setHasBusiness] = useState(false);
@@ -74,7 +74,6 @@ export function BottomNav() {
   const items = [
     { to: '/', label: t('nav.home'), key: 'home' },
     { to: '/dashboard', label: t('nav.tracking'), key: 'tracking' },
-    ...(tier === 'pro' ? [{ to: '/bulk', label: 'BULK', key: 'bulk' }] : []),
     ...(hasBusiness ? [{ to: '/business', label: 'TEAM', key: 'business' }] : []),
     { to: '/settings', label: t('nav.settings'), key: 'settings' },
   ] as const;
