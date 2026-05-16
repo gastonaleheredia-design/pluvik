@@ -10,6 +10,8 @@ import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
 import { getRefreshCadence, type WeatherMode } from '../lib/forecastStage';
+import { synthesizeEventTitle } from '../lib/synthesizeEventTitle';
+import { Users, Share2, Check } from 'lucide-react';
 
 interface TrackedEvent {
   id: string;
