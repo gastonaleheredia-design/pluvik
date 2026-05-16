@@ -700,35 +700,6 @@ function DashboardPage() {
                   ×
                 </button>
 
-                {/* Lifecycle pill — always present so every card has a label */}
-                <div
-                  data-stage={stage}
-                  data-badge={stageBadge}
-                  aria-label={`Tracking stage: ${stageBadge}`}
-                  style={{
-                    display: 'inline-block',
-                    alignSelf: 'flex-start',
-                    fontSize: '0.62rem',
-                    letterSpacing: '0.1em',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    color: allClear
-                      ? '#15803d'
-                      : isArchived || mutedBadge
-                      ? MUTED
-                      : ACCENT,
-                    backgroundColor: allClear
-                      ? '#15803d14'
-                      : isArchived || mutedBadge
-                      ? INK + '0d'
-                      : ACCENT + '14',
-                    padding: '3px 10px',
-                    borderRadius: '100px',
-                  }}
-                >
-                  {allClear ? 'All clear' : isArchived ? 'Tracking ended' : (stageBadge || 'TRACKING')}
-                </div>
-
                 {hasUnseenChange && (
                   <span
                     style={{
@@ -750,9 +721,26 @@ function DashboardPage() {
                   </span>
                 )}
 
-                {/* Stage badge (CLIMATE / OUTLOOK / TREND / FORECAST / LIVE) */}
-                <div style={{ marginTop: '2px' }}>
+                {/* Stage badge + archived state */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <StageBadge stage={stage as ForecastStage} />
+                  {isArchived && (
+                    <span
+                      style={{
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.58rem',
+                        letterSpacing: '0.12em',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        color: allClear ? GOOD : MUTED,
+                        backgroundColor: (allClear ? GOOD : INK) + '14',
+                        padding: '3px 8px',
+                        borderRadius: '100px',
+                      }}
+                    >
+                      {allClear ? 'All clear' : 'Tracking ended'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Verdict word — large, color-coded */}
