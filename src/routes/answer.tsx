@@ -1429,8 +1429,6 @@ function AnswerPage() {
             </span>
           </div>
 
-          <MaturityLadder />
-
           {/* big verdict word — sized by stage */}
           {displayVerdictWord && (
             <div
@@ -1499,522 +1497,61 @@ function AnswerPage() {
             </div>
           )}
 
-          {/* outlook tendency chip */}
-          {isOutlook && decisionLabel && (
-            <div
-              style={{
-                display: 'inline-block',
-                alignSelf: 'flex-start',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                border: `1.5px solid ${ACCENT}`,
-                color: ACCENT,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.72rem',
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                marginBottom: '20px',
-              }}
-            >
-              {decisionLabel}
-            </div>
-          )}
-
           {/* sentence */}
           <div style={verdictSentenceStyle}>
             {isClimate ? climateBody : verdictSentence}
           </div>
 
-          {/* ── Briefing block: rain strip + vitals + feel + verdict pill ── */}
-          {showBriefingBlock && (
-            <div style={{ maxWidth: '520px' }}>
-              {/* ── KEY NUMBER PILLS ─────────────────────────────────────────── */}
-              <div style={{
-                display: 'flex',
-                gap: '7px',
-                flexWrap: 'wrap' as const,
-                padding: '14px 0 16px',
-              }}>
-                {(() => {
-                  const activityType = (answer as { activity_type?: string | null }).activity_type ?? null;
-                  const heatActivities = ['running', 'dog_walking', 'golf', 'beach', 'yoga', 'marathon'];
-                  const isHeatActivity = activityType ? heatActivities.includes(activityType) : false;
-                  const isAlpine = activityType === 'hiking' || activityType === 'altitude';
-
-                  let primaryLabel = 'CHANCE OF RAIN';
-                  let primaryValue: string = `${answer.percentage ?? 0}%`;
-                  let primaryTone: 'go' | 'warn' | 'no' | 'neutral' =
-                    (answer.percentage ?? 0) >= 60 ? 'no' :
-                    (answer.percentage ?? 0) >= 30 ? 'warn' : 'go';
-
-                  if (isHeatActivity || intent === 'heat_index' || intent === 'temperature') {
-                    primaryLabel = 'HEAT INDEX';
-                    primaryValue = headlineNumber?.value ?? answer.main_concern ?? '—';
-                    primaryTone = 'no';
-                  } else if (isAlpine) {
-                    primaryLabel = 'CONDITIONS';
-                    primaryValue = answer.main_concern ?? headlineNumber?.value ?? '—';
-                    primaryTone = 'warn';
-                  } else if (intent === 'wind') {
-                    primaryLabel = 'WIND GUSTS';
-                    primaryValue = headlineNumber?.value ?? `${answer.percentage ?? 0}%`;
-                    primaryTone = 'warn';
-                  } else if (intent === 'marine') {
-                    primaryLabel = 'SEA STATE';
-                    primaryValue = headlineNumber?.value ?? answer.main_concern ?? '—';
-                    primaryTone = 'warn';
-                  } else if (intent === 'air_quality') {
-                    primaryLabel = 'AQI';
-                    primaryValue = headlineNumber?.value ?? '—';
-                    primaryTone = (answer.percentage ?? 0) >= 100 ? 'no' : 'warn';
-                  } else if (intent === 'snow' || intent === 'snow_ice') {
-                    primaryLabel = 'SNOW EXPECTED';
-                    primaryValue = headlineNumber?.value ?? `${answer.percentage ?? 0}%`;
-                    primaryTone = 'warn';
-                  }
-
-                  const pillColors = {
-                    go:      { bg: 'rgba(21,128,61,0.08)',  border: 'rgba(21,128,61,0.2)',  val: '#15803d', lbl: 'rgba(21,128,61,0.6)' },
-                    warn:    { bg: 'rgba(180,83,9,0.08)',   border: 'rgba(180,83,9,0.2)',   val: '#b45309', lbl: 'rgba(180,83,9,0.6)' },
-                    no:      { bg: 'rgba(185,28,28,0.07)',  border: 'rgba(185,28,28,0.2)',  val: '#b91c1c', lbl: 'rgba(185,28,28,0.5)' },
-                    neutral: { bg: 'rgba(11,16,24,0.04)',   border: 'rgba(11,16,24,0.1)',   val: INK,        lbl: MUTED },
-                  };
-                  const c = pillColors[primaryTone];
+          {/* ── Per-day breakdown for multi-day events ─────────────────── */}
+          {(() => {
+            const start = (() => {
+              if (eventAtIso) { const t = new Date(eventAtIso); if (Number.isFinite(t.getTime())) return t; }
+              const ev = extractEventTimeFromQuestion(question);
+              return ev?.eventAt ?? null;
+            })();
+            const end = (() => {
+              if (eventEndIso) { const t = new Date(eventEndIso); if (Number.isFinite(t.getTime())) return t; }
+              const ev = extractEventTimeFromQuestion(question);
+              return ev?.endAt ?? null;
+            })();
+            if (!start || !end) return null;
+            const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+            const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            const dayMs = 24 * 3600 * 1000;
+            const nDays = Math.round((endDay.getTime() - startDay.getTime()) / dayMs) + 1;
+            if (nDays < 2 || nDays > 7) return null;
+            const pct = typeof answer.percentage === 'number' ? answer.percentage : null;
+            const verdictLabel = (displayVerdictWord ?? verdictWord ?? '').toString().toUpperCase();
+            return (
+              <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '420px' }}>
+                {Array.from({ length: nDays }, (_, i) => {
+                  const d = new Date(startDay.getTime() + i * dayMs);
+                  const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
                   return (
-                    <div style={{
-                      display: 'inline-flex', alignItems: 'baseline', gap: '6px',
-                      background: c.bg, border: `1px solid ${c.border}`,
-                      borderRadius: '12px', padding: '9px 14px',
+                    <div key={i} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 0', borderBottom: `1px solid rgba(11,16,24,0.06)`,
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.7rem', letterSpacing: '0.12em', color: INK,
                     }}>
-                      <span style={{
-                        fontFamily: 'Fraunces, serif', fontWeight: 400,
-                        fontSize: 'clamp(1.3rem, 5vw, 1.6rem)', lineHeight: 1, color: c.val,
-                      }}>{primaryValue}</span>
-                      <span style={{
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '0.44rem', letterSpacing: '0.14em',
-                        textTransform: 'uppercase' as const, color: c.lbl,
-                      }}>{primaryLabel}</span>
+                      <span style={{ color: MUTED }}>{label}</span>
+                      <span>{verdictLabel}</span>
+                      <span style={{ color: ACCENT }}>{pct != null ? `${pct}%` : '—'}</span>
                     </div>
                   );
-                })()}
-
-                {headlineNumber && headlineNumber.label !== 'CHANCE OF RAIN' && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'baseline', gap: '6px',
-                    background: 'rgba(11,16,24,0.04)', border: '1px solid rgba(11,16,24,0.1)',
-                    borderRadius: '12px', padding: '9px 14px',
-                  }}>
-                    <span style={{
-                      fontFamily: 'Fraunces, serif', fontWeight: 400,
-                      fontSize: 'clamp(1.1rem, 4vw, 1.4rem)', lineHeight: 1, color: INK,
-                    }}>{headlineNumber.value}</span>
-                    <span style={{
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.44rem', letterSpacing: '0.14em',
-                      textTransform: 'uppercase' as const, color: MUTED,
-                    }}>{headlineNumber.label}</span>
-                  </div>
-                )}
-
-                {answer.time_context && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'baseline', gap: '6px',
-                    background: 'rgba(11,16,24,0.04)', border: '1px solid rgba(11,16,24,0.1)',
-                    borderRadius: '12px', padding: '9px 14px',
-                  }}>
-                    <span style={{
-                      fontFamily: 'Fraunces, serif', fontWeight: 400,
-                      fontSize: 'clamp(1.1rem, 4vw, 1.4rem)', lineHeight: 1, color: INK,
-                    }}>{answer.time_context}</span>
-                    <span style={{
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.44rem', letterSpacing: '0.14em',
-                      textTransform: 'uppercase' as const, color: MUTED,
-                    }}>WINDOW</span>
-                  </div>
-                )}
+                })}
               </div>
+            );
+          })()}
 
-              {/* ── HOUR-BY-HOUR TIMELINE ────────────────────────────────────── */}
-              {timelineRaw && timelineRaw.length > 0 && (
-                <div style={{ marginBottom: '18px' }}>
-                  <div style={{
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: '0.46rem', letterSpacing: '0.14em',
-                    textTransform: 'uppercase' as const,
-                    color: MUTED, marginBottom: '8px',
-                  }}>
-                    {windowLabel ? `${windowLabel.short} — hour by hour` : 'Hour by hour'}
-                  </div>
-                  <div style={{ display: 'flex', gap: '3px' }}>
-                    {timelineRaw.slice(0, 8).map((h, i) => {
-                      const isActive = h.severity === 'bad';
-                      const isWatch  = h.severity === 'watch';
-                      return (
-                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '4px' }}>
-                          <div style={{
-                            width: '100%', height: '40px', borderRadius: '7px',
-                            background: isActive ? 'rgba(185,28,28,0.16)'
-                              : isWatch ? 'rgba(180,83,9,0.13)'
-                              : 'rgba(21,128,61,0.1)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.85rem',
-                          }}>
-                            {isActive ? '⛈' : isWatch ? '🌦' : '☀️'}
-                          </div>
-                          <div style={{
-                            fontFamily: 'JetBrains Mono, monospace',
-                            fontSize: '0.38rem', letterSpacing: '0.06em',
-                            color: MUTED, textAlign: 'center' as const,
-                          }}>{h.hour_label}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── BEFORE / DURING / AFTER ──────────────────────────────────── */}
-              {(() => {
-                const bda = (answer as any).event_window ?? null;
-                if (!bda) return null;
-                const rows = [
-                  { tag: 'Before', text: bda.before, tagStyle: { bg: 'rgba(21,128,61,0.1)', color: '#15803d' } },
-                  { tag: 'During', text: bda.during, tagStyle: { bg: 'rgba(194,65,12,0.1)', color: ACCENT } },
-                  { tag: 'After',  text: bda.after,  tagStyle: { bg: 'rgba(11,16,24,0.06)', color: MUTED  } },
-                ].filter(r => r.text);
-                if (!rows.length) return null;
-                return (
-                  <div style={{
-                    border: `1px solid rgba(11,16,24,0.08)`,
-                    borderRadius: '14px', overflow: 'hidden',
-                    marginBottom: '14px',
-                  }}>
-                    {rows.map((row, i) => (
-                      <div key={row.tag} style={{
-                        display: 'flex', alignItems: 'flex-start', gap: '10px',
-                        padding: '11px 13px',
-                        borderBottom: i < rows.length - 1 ? `1px solid rgba(11,16,24,0.08)` : 'none',
-                      }}>
-                        <span style={{
-                          fontFamily: 'JetBrains Mono, monospace',
-                          fontSize: '0.44rem', letterSpacing: '0.12em',
-                          fontWeight: 600, textTransform: 'uppercase' as const,
-                          padding: '3px 8px', borderRadius: '100px',
-                          background: row.tagStyle.bg, color: row.tagStyle.color,
-                          flexShrink: 0, marginTop: '2px',
-                        }}>{row.tag}</span>
-                        <span style={{
-                          fontFamily: 'Inter, sans-serif',
-                          fontSize: '0.82rem', lineHeight: 1.5, color: INK,
-                        }}>{row.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── HAZARD GRID ──────────────────────────────────────────────── */}
-              {(() => {
-                const hazards = (answer as { hazards?: Record<string, { active?: boolean; severity?: string; note?: string } | string | null> | null }).hazards ?? null;
-                if (!hazards) return null;
-                const cells = [
-                  { icon: '🌧', name: 'Rain',      key: 'rain' },
-                  { icon: '⚡', name: 'Lightning', key: 'lightning' },
-                  { icon: '💨', name: 'Wind',      key: 'wind' },
-                  { icon: '🌡', name: 'Heat',      key: 'heat' },
-                  { icon: '❄️', name: 'Cold',      key: 'cold' },
-                  { icon: '🌊', name: 'Flood',     key: 'flood' },
-                ];
-                const anyActive = cells.some(c => {
-                  const v = hazards[c.key];
-                  return !!v && typeof v === 'object' && (v as { active?: boolean }).active === true;
-                });
-                if (!anyActive) return null;
-                return (
-                  <div style={{
-                    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '5px', marginBottom: '14px',
-                  }}>
-                    {cells.map(cell => {
-                      const h = hazards[cell.key] as { active?: boolean; severity?: string; note?: string } | null | undefined;
-                      const isActive = h?.active === true;
-                      const level = h?.severity ?? 'none';
-                      const bg = level === 'high' ? 'rgba(185,28,28,0.1)' :
-                                 level === 'med'  ? 'rgba(180,83,9,0.1)'  :
-                                 level === 'low'  ? 'rgba(180,83,9,0.06)' :
-                                 'rgba(11,16,24,0.03)';
-                      return (
-                        <div key={cell.key} style={{
-                          background: bg, borderRadius: '10px',
-                          padding: '10px 9px 8px',
-                          display: 'flex', flexDirection: 'column' as const, gap: '3px',
-                          opacity: isActive ? 1 : 0.35,
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>{cell.icon}</span>
-                          <span style={{
-                            fontFamily: 'JetBrains Mono, monospace',
-                            fontSize: '0.42rem', letterSpacing: '0.1em',
-                            textTransform: 'uppercase' as const, color: MUTED,
-                          }}>{cell.name}</span>
-                          <span style={{
-                            fontFamily: 'Inter, sans-serif',
-                            fontSize: '0.68rem', lineHeight: 1.3, color: INK,
-                          }}>
-                            {isActive ? h?.note ?? level : 'None'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-
-              {/* ── FEEL SENTENCE ────────────────────────────────────────────── */}
-              {feelSentence && (
-                <div style={{
-                  fontFamily: 'Fraunces, serif',
-                  fontSize: '0.95rem', lineHeight: 1.5,
-                  color: INK, opacity: 0.85,
-                  marginBottom: '14px', maxWidth: '480px',
-                }}>
-                  {feelSentence}
-                </div>
-              )}
-
-              {/* ── DECISION CARD ────────────────────────────────────────────── */}
-              {(answer.action || checkBackMin != null) && (
-                <div style={{
-                  background: INK, borderRadius: '16px',
-                  padding: '16px 18px', marginBottom: '14px',
-                }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center',
-                    gap: '10px', marginBottom: answer.action ? '10px' : 0,
-                  }}>
-                    <span style={{
-                      display: 'inline-block', padding: '4px 12px',
-                      borderRadius: '999px', fontWeight: 700,
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.52rem', letterSpacing: '0.16em',
-                      backgroundColor:
-                        softWord === 'YES' || softWord === 'LIKELY'   ? '#15803d' :
-                        softWord === 'NO'  || softWord === 'UNLIKELY' ? ACCENT    : '#f59e0b',
-                      color: '#faf7f0',
-                    }}>
-                      {displayVerdictWord ?? verdictWord}
-                    </span>
-                    {answer.confidence && (
-                      <span style={{
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '0.5rem', letterSpacing: '0.16em',
-                        color: 'rgba(250,247,240,0.5)',
-                      }}>
-                        CONF · <span style={{ color: '#f59e0b', fontWeight: 700 }}>
-                          {answer.confidence}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                  {answer.action && (
-                    <div style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontSize: '0.9rem', lineHeight: 1.55,
-                      color: 'rgba(250,247,240,0.95)',
-                      marginBottom: checkBackMin != null ? '10px' : 0,
-                    }}>
-                      {answer.action}
-                    </div>
-                  )}
-                  {checkBackMin != null && (
-                    <div style={{
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.46rem', letterSpacing: '0.16em',
-                      color: 'rgba(250,247,240,0.35)',
-                    }}>
-                      CHECK BACK IN {checkBackMin} MIN
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── ALSO WORTH KNOWING ───────────────────────────────────────── */}
-              {alsoItems.length > 0 && (
-                <div style={{
-                  border: `1px solid ${ACCENT}33`,
-                  borderLeft: `3px solid ${ACCENT}`,
-                  borderRadius: '12px', padding: '14px 16px',
-                  background: `${ACCENT}08`, marginBottom: '14px',
-                }}>
-                  <div style={{
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: '0.52rem', letterSpacing: '0.16em',
-                    color: ACCENT, marginBottom: '8px',
-                    textTransform: 'uppercase' as const,
-                  }}>
-                    {t('answer.also_label', { defaultValue: 'Also worth knowing' })}
-                  </div>
-                  {alsoItems.map((item, i) => (
-                    <div key={i} style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontSize: '0.9rem', lineHeight: 1.45, color: INK,
-                      marginBottom: i < alsoItems.length - 1 ? '6px' : 0,
-                    }}>
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* climate / outlook outro line */}
-          {(isClimate || isOutlook) && (
-            <div
-              style={{
-                fontSize: '0.85rem',
-                color: MUTED,
-                lineHeight: 1.5,
-                maxWidth: '420px',
-                marginBottom: '32px',
-              }}
-            >
-              {stageOutro || climateOutro}
-            </div>
-          )}
-
-          {/* climate / outlook structured facts */}
-          {(isClimate || isOutlook) && climateFacts && climateFacts.length > 0 && (
-            <div
-              style={{
-                border: `1px solid ${INK}14`,
-                borderRadius: '16px',
-                padding: '16px 16px 8px',
-                marginBottom: '32px',
-                maxWidth: '480px',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem',
-                  letterSpacing: '0.18em',
-                  color: MUTED,
-                  marginBottom: '12px',
-                }}
-              >
-                CLIMATE FOR THIS DATE
-              </div>
-              {climateInterpretation && (
-                <div style={{ marginBottom: '14px' }}>
-                  <div
-                    style={{
-                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.55rem',
-                      letterSpacing: '0.18em',
-                      color: MUTED,
-                      marginBottom: '6px',
-                    }}
-                  >
-                    THE READ
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontSize: '1rem',
-                      lineHeight: 1.5,
-                      color: INK,
-                    }}
-                  >
-                    {climateInterpretation}
-                  </div>
-                  {climateFraming && (
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        fontSize: '0.78rem',
-                        fontStyle: 'italic',
-                        color: MUTED,
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {climateFraming}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '12px 16px',
-                }}
-              >
-                {climateFacts.map((f) => (
-                  <div key={f.label} style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        fontSize: '0.55rem',
-                        letterSpacing: '0.16em',
-                        color: MUTED,
-                        marginBottom: '4px',
-                      }}
-                    >
-                      {f.label}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '1.1rem',
-                        color: INK,
-                        lineHeight: 1.2,
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {f.value}
-                    </div>
-                    {f.hint && (
-                      <div style={{ fontSize: '0.68rem', color: MUTED, marginTop: '2px' }}>
-                        {f.hint}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* headline number — only shown at model_trend (range pill);
-              short_range/live now surfaces the % via the vitals row above. */}
-          {headlineForStage && isModelTrend && (
-            <div style={{ marginBottom: '32px' }}>
-              <div
-                style={{
-                  fontFamily: 'Fraunces, serif',
-                  fontSize: 'clamp(2.4rem, 10vw, 3.5rem)',
-                  lineHeight: 1,
-                }}
-              >
-                {headlineForStage.value}
-              </div>
-              <div
-                style={{
-                  marginTop: '6px',
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
-                }}
-              >
-                {headlineForStage.label}
-              </div>
-            </div>
-          )}
 
           <div style={{ flex: 1 }} />
 
-          {/* Why? + Save */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Three action buttons: Why? / Save & Track / + Group Event */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, flexWrap: 'wrap' as const,
+          }}>
             {isClimate ? (
               <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
                 NO FORECAST YET
@@ -2025,36 +1562,12 @@ function AnswerPage() {
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.75rem', letterSpacing: '0.1em', color: ACCENT,
+                  fontSize: '0.85rem', letterSpacing: '0.08em', color: ACCENT,
                 }}
               >
                 {t('answer.why', { defaultValue: 'Why?' })} →
               </button>
             )}
-            <button
-              onClick={() => {
-                const dateLabel = eventAtIso
-                  ? new Date(eventAtIso).toLocaleDateString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                    })
-                  : new Date().toLocaleDateString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                    });
-                void shareForecast({
-                  verdictWord: String(verdictWord),
-                  summary: verdictSentence || directAnswer,
-                  location: contextLine || resolvedAddress,
-                  dateLabel,
-                });
-              }}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.65rem', letterSpacing: '0.18em', color: ACCENT,
-              }}
-            >
-              {t('answer.share', { defaultValue: 'SHARE' })}
-            </button>
             <button
               onClick={handleSaveTrack}
               disabled={saving}
@@ -2062,31 +1575,29 @@ function AnswerPage() {
                 background: 'none', border: 'none', cursor: saving ? 'default' : 'pointer', padding: 0,
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                 fontSize: '0.65rem', letterSpacing: '0.18em',
-                color: saving ? MUTED : INK,
+                color: saving ? MUTED : MUTED,
               }}
             >
-              {saving ? '…' : saveCtaLabel}
+              {saving ? '…' : (saveCtaLabel || 'SAVE & TRACK')}
             </button>
-          </div>
-        </div>
-        {answer && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, paddingBottom: 24 }}>
             <button
               onClick={() => {
                 if (user) setShowCreateGroup(true);
                 else setShowAuthModal(true);
               }}
               style={{
-                background: 'none', border: `1px solid ${INK}`, borderRadius: 999,
-                padding: '10px 18px', cursor: 'pointer',
+                background: 'none',
+                border: `1px solid ${INK}22`,
+                borderRadius: 999,
+                padding: '8px 14px', cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem', letterSpacing: '0.14em', color: INK,
+                fontSize: '0.62rem', letterSpacing: '0.16em', color: MUTED,
               }}
             >
-              + CREATE GROUP EVENT
+              + GROUP EVENT
             </button>
           </div>
-        )}
+        </div>
         {showAuthModal && (
           <AuthModal
             onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
