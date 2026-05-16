@@ -849,11 +849,16 @@ function DashboardPage() {
             ? new Date(new Date(event.event_at).getTime() + 24 * 3600 * 1000).toISOString()
             : null;
           return (
-            <Link
+            <SwipeableEventCard
               key={event.id}
+              showArchive={!isArchived}
+              onDelete={() => deleteEvent(event.id)}
+              onArchive={() => archiveEvent(event.id)}
+            >
+            <Link
               to="/event/$id"
               params={{ id: event.id }}
-              style={{ textDecoration: 'none', color: 'inherit' }}
+              style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
             >
               <div
                 style={{
@@ -861,7 +866,6 @@ function DashboardPage() {
                   border: `1px solid ${INK}14`,
                   borderRadius: '16px',
                   padding: '20px 22px',
-                  marginBottom: '14px',
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'column',
