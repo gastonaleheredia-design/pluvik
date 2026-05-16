@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { Link } from '@tanstack/react-router';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { formatEventDateRange } from '@/lib/formatEventDateRange';
 
 const PAPER = '#faf7f0';
 const INK = '#0b1018';
@@ -22,6 +23,7 @@ export interface GroupEvent {
   question: string | null;
   location_label: string | null;
   event_date: string | null;
+  event_end: string | null;
   verdict: string | null;
   confidence: string | null;
   forecast_stage: string | null;
@@ -217,10 +219,7 @@ export function GroupEventView({ event: initial }: { event: GroupEvent }) {
   }
 
   const eventDateText = event.event_date
-    ? new Date(event.event_date).toLocaleString(undefined, {
-        weekday: 'short', month: 'short', day: 'numeric',
-        hour: 'numeric', minute: '2-digit',
-      })
+    ? formatEventDateRange(event.event_date, event.event_end)
     : null;
 
   return (

@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { BottomNav } from './BottomNav';
 import { AuthModal } from './AuthModal';
+import { formatEventDateRange } from '@/lib/formatEventDateRange';
 
 const PAPER = '#faf7f0';
 const INK = '#0b1018';
@@ -30,6 +31,7 @@ type WeatherEvent = {
   activity_type: string | null;
   verdict: string | null;
   event_date: string | null;
+  event_end: string | null;
   status: string | null;
   creator_id: string;
 };
@@ -145,7 +147,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
     (async () => {
       const { data: created } = await supabase
         .from('weather_events')
-        .select('id, title, activity_type, verdict, event_date, status, creator_id')
+        .select('id, title, activity_type, verdict, event_date, event_end, status, creator_id')
         .eq('creator_id', profile.id)
         .order('event_date', { ascending: false });
       if (cancel) return;
@@ -158,7 +160,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
       else {
         const { data: joined } = await supabase
           .from('weather_events')
-          .select('id, title, activity_type, verdict, event_date, status, creator_id')
+          .select('id, title, activity_type, verdict, event_date, event_end, status, creator_id')
           .in('id', ids)
           .neq('creator_id', profile.id)
           .order('event_date', { ascending: false });
@@ -498,7 +500,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
                   </span>
                 )}
                 <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: MUTED }}>
-                  {e.event_date ? new Date(e.event_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                  {formatEventDateRange(e.event_date, e.event_end, { short: true })}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: MUTED, marginLeft: 'auto' }}>
                   👥 {participantCounts[e.id] ?? 0}

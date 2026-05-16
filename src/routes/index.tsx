@@ -18,6 +18,7 @@ import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
+import { formatEventDateRange } from '../lib/formatEventDateRange';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 import { AuthModal } from '../components/AuthModal';
 
@@ -67,6 +68,7 @@ type FriendEvent = {
   activity_type: string | null;
   verdict: string | null;
   event_date: string | null;
+  event_end: string | null;
   creator_username: string;
 };
 
@@ -212,7 +214,7 @@ function HomePage() {
 
       const { data: evs } = await supabase
         .from('weather_events')
-        .select('id, title, question, activity_type, verdict, event_date, creator_id, status')
+        .select('id, title, question, activity_type, verdict, event_date, event_end, creator_id, status')
         .in('id', partIds)
         .in('creator_id', followedIds)
         .neq('status', 'canceled')
@@ -236,6 +238,7 @@ function HomePage() {
         activity_type: e.activity_type as string | null,
         verdict: e.verdict as string | null,
         event_date: e.event_date as string | null,
+        event_end: e.event_end as string | null,
         creator_username: usernameById.get(e.creator_id as string) ?? 'friend',
       })));
     })();
@@ -1235,7 +1238,7 @@ function HomePage() {
                         fontSize: '0.82rem',
                         color: '#6b6b6b',
                       }}>
-                        {new Date(e.event_date).toLocaleDateString()}
+                        {formatEventDateRange(e.event_date, e.event_end)}
                       </span>
                     )}
                     {dayLabel && (

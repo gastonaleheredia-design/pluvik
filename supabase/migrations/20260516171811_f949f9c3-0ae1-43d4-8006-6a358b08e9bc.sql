@@ -1,0 +1,1 @@
+ALTER TABLE public.weather_events ADD COLUMN IF NOT EXISTS event_end timestamp with time zone;
