@@ -553,27 +553,39 @@ function HomePage() {
     const composedQuestion = baseText;
     const distilled = distillQuestion(composedQuestion);
     const intent = classifyIntent(distilled);
-    // First-question location prompt: if we still have the default coords
-    // (user never granted permission), ask now. If they deny or it fails,
-    // proceed without coordinates — they can set location manually later.
-    if (selectedAddress.meta === 'DEFAULT' && typeof navigator !== 'undefined' && navigator.geolocation) {
+    // First-question location prompt: only ask if we have NO usable place
+    // (no picked place from the question, and we're still on the default
+    // Houston coords). Wrap in a hard 4s timeout so a dismissed / hanging
+    // permission prompt can never block submission — the arrow MUST always
+    // navigate. If GPS fails, we just submit with whatever address we have.
+    const needsGps =
+      !finalPlace &&
+      selectedAddress.meta === 'DEFAULT' &&
+      typeof navigator !== 'undefined' &&
+      !!navigator.geolocation;
+    if (needsGps) {
       try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: false,
-            timeout: 10_000,
-            maximumAge: 60_000,
+        const pos = await Promise.race<GeolocationPosition | null>([
+          new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 3_500,
+              maximumAge: 60_000,
+            });
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
+        ]);
+        if (pos) {
+          setAddress({
+            label: 'Current location',
+            meta: 'FOLLOWING',
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
           });
-        });
-        setAddress({
-          label: 'Current location',
-          meta: 'FOLLOWING',
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-        });
-        resumeFollowing();
+          resumeFollowing();
+        }
       } catch {
-        // User denied or it timed out — fall through with defaults.
+        // Denied / timed out — fall through and submit anyway.
       }
     }
     // Re-read coords after potential update via the position result above.
