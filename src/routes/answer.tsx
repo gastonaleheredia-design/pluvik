@@ -1544,9 +1544,6 @@ function AnswerPage() {
             );
           })()}
 
-
-          <div style={{ flex: 1 }} />
-
           {/* ── ALSO WORTH KNOWING — secondary risk factors ─────────── */}
           {(() => {
             const factors = (answer as { secondary_factors?: Array<{ factor: string; note: string }> }).secondary_factors;
@@ -1605,6 +1602,8 @@ function AnswerPage() {
               </div>
             );
           })()}
+
+          <div style={{ flex: 1 }} />
 
           {/* Three action buttons: Why? / Save & Track / + Group Event */}
           <div style={{
