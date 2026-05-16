@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      business_profiles: {
+        Row: {
+          business_name: string
+          created_at: string
+          id: string
+          industry: string
+          owner_user_id: string
+        }
+        Insert: {
+          business_name: string
+          created_at?: string
+          id?: string
+          industry: string
+          owner_user_id: string
+        }
+        Update: {
+          business_name?: string
+          created_at?: string
+          id?: string
+          industry?: string
+          owner_user_id?: string
+        }
+        Relationships: []
+      }
       event_forecast_snapshots: {
         Row: {
           chance_of_impact: number | null
@@ -232,6 +256,44 @@ export type Database = {
         }
         Relationships: []
       }
+      team_members: {
+        Row: {
+          accepted_at: string | null
+          business_id: string
+          created_at: string
+          id: string
+          invited_email: string | null
+          role: string
+          user_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          business_id: string
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          role?: string
+          user_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          business_id?: string
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          role?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "business_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracked_events: {
         Row: {
           address: string
@@ -398,6 +460,14 @@ export type Database = {
     }
     Functions: {
       get_user_tier: { Args: { user_id: string }; Returns: string }
+      is_business_member: {
+        Args: { _business_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_business_owner: {
+        Args: { _business_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       forecast_change_tag:
