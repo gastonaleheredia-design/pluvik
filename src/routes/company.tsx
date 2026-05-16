@@ -5,6 +5,7 @@ import { BottomNav } from '../components/BottomNav';
 import { CreateGroupEventSheet } from '../components/CreateGroupEventSheet';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../integrations/supabase/client';
+import { formatEventDateRange } from '../lib/formatEventDateRange';
 
 export const Route = createFileRoute('/company')({
   component: CompanyPage,
@@ -27,6 +28,7 @@ type WeatherEvent = {
   question: string | null;
   verdict: string | null;
   event_date: string | null;
+  event_end: string | null;
   status: string | null;
   team_ids: string[] | null;
 };
@@ -125,7 +127,7 @@ function CompanyPage() {
 
       const { data: evs } = await supabase
         .from('weather_events')
-        .select('id, title, question, verdict, event_date, status, team_ids')
+        .select('id, title, question, verdict, event_date, event_end, status, team_ids')
         .eq('company_id', co.id)
         .neq('status', 'canceled')
         .order('event_date', { ascending: true });
@@ -326,7 +328,7 @@ function CompanyPage() {
                   )}
                   {e.event_date && (
                     <span style={{ fontFamily: SERIF, fontSize: '0.85rem', color: MUTED }}>
-                      {new Date(e.event_date).toLocaleDateString()}
+                      {formatEventDateRange(e.event_date, e.event_end)}
                     </span>
                   )}
                   <span style={{
