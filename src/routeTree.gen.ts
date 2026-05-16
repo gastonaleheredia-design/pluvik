@@ -17,6 +17,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CompanyRouteImport } from './routes/company'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as AnswerRouteImport } from './routes/answer'
@@ -67,6 +68,11 @@ const HelpRoute = HelpRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompanyRoute = CompanyRouteImport.update({
+  id: '/company',
+  path: '/company',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CheckoutRoute = CheckoutRouteImport.update({
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/answer': typeof AnswerRoute
   '/business': typeof BusinessRoute
   '/checkout': typeof CheckoutRouteWithChildren
+  '/company': typeof CompanyRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/answer': typeof AnswerRoute
   '/business': typeof BusinessRoute
   '/checkout': typeof CheckoutRouteWithChildren
+  '/company': typeof CompanyRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/answer': typeof AnswerRoute
   '/business': typeof BusinessRoute
   '/checkout': typeof CheckoutRouteWithChildren
+  '/company': typeof CompanyRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -197,6 +206,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/business'
     | '/checkout'
+    | '/company'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/business'
     | '/checkout'
+    | '/company'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/business'
     | '/checkout'
+    | '/company'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -261,6 +273,7 @@ export interface RootRouteChildren {
   AnswerRoute: typeof AnswerRoute
   BusinessRoute: typeof BusinessRoute
   CheckoutRoute: typeof CheckoutRouteWithChildren
+  CompanyRoute: typeof CompanyRoute
   DashboardRoute: typeof DashboardRoute
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -332,6 +345,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/company': {
+      id: '/company'
+      path: '/company'
+      fullPath: '/company'
+      preLoaderRoute: typeof CompanyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/checkout': {
@@ -442,6 +462,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnswerRoute: AnswerRoute,
   BusinessRoute: BusinessRoute,
   CheckoutRoute: CheckoutRouteWithChildren,
+  CompanyRoute: CompanyRoute,
   DashboardRoute: DashboardRoute,
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
