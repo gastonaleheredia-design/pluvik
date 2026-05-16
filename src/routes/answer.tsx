@@ -986,7 +986,9 @@ function AnswerPage() {
   const climateOutro =
     stageOutro || 'We will start giving you a real forecast about 10 days before your date.';
   const saveCtaLabel =
-    isClimate || isOutlook
+    tier === 'free'
+      ? 'TRACK — UPGRADE TO PRO'
+      : isClimate || isOutlook
       ? 'TRACK THIS DATE'
       : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
