@@ -4,6 +4,13 @@ import { supabase } from './supabase';
 
 export type SubscriptionTier = 'free' | 'pro';
 
+const ADMIN_EMAILS: string[] = ['gaston.ale.heredia@gmail.com'];
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
