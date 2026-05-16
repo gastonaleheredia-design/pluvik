@@ -6,6 +6,7 @@ import { BottomNav } from '../components/BottomNav';
 import { AuthModal } from '../components/AuthModal';
 import { useAuth } from '../lib/auth';
 import { usePreferences, type TempUnit, type WindUnit } from '../lib/preferencesContext';
+import { supabase } from '../integrations/supabase/client';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -22,6 +23,19 @@ const MONO = '"JetBrains Mono", ui-monospace, monospace';
 
 const NOTIF_KEY = 'pluvik-notif-changes';
 const APP_VERSION = '0.1.0';
+
+const INDUSTRIES = [
+  { value: 'construction', label: 'Construction' },
+  { value: 'events', label: 'Events' },
+  { value: 'marine', label: 'Marine' },
+  { value: 'sports', label: 'Sports' },
+  { value: 'agriculture', label: 'Agriculture' },
+  { value: 'other', label: 'Other' },
+] as const;
+type Industry = typeof INDUSTRIES[number]['value'];
+
+type Business = { id: string; business_name: string; industry: string };
+type TeamMember = { id: string; invited_email: string | null; role: string; accepted_at: string | null };
 
 const styles = {
   page: {
