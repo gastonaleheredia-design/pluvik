@@ -16,6 +16,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BulkRouteImport } from './routes/bulk'
 import { Route as AnswerRouteImport } from './routes/answer'
@@ -59,6 +60,11 @@ const HelpRoute = HelpRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckoutRoute = CheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BusinessRoute = BusinessRouteImport.update({
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   AnswerRoute: typeof AnswerRoute
   BulkRoute: typeof BulkRoute
   BusinessRoute: typeof BusinessRoute
+  CheckoutRoute: typeof CheckoutRoute
   DashboardRoute: typeof DashboardRoute
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -288,6 +301,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout': {
+      id: '/checkout'
+      path: '/checkout'
+      fullPath: '/checkout'
+      preLoaderRoute: typeof CheckoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/business': {
@@ -361,6 +381,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnswerRoute: AnswerRoute,
   BulkRoute: BulkRoute,
   BusinessRoute: BusinessRoute,
+  CheckoutRoute: CheckoutRoute,
   DashboardRoute: DashboardRoute,
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
@@ -377,3 +398,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
