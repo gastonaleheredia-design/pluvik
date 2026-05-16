@@ -73,7 +73,7 @@ const styles = {
     fontFamily: SERIF,
     fontSize: '1rem',
     color: INK,
-    wordBreak: 'break-all',
+    wordBreak: 'break-all' as const,
   },
   statusLine: {
     marginTop: 14,
