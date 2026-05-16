@@ -10,6 +10,8 @@ import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
 import { getRefreshCadence, type WeatherMode } from '../lib/forecastStage';
+import { synthesizeEventTitle } from '../lib/synthesizeEventTitle';
+import { Users, Share2, Check } from 'lucide-react';
 
 interface TrackedEvent {
   id: string;
@@ -124,6 +126,8 @@ function EventPage() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [stationOpen, setStationOpen] = useState(false);
+  const [participants, setParticipants] = useState<Array<{ id: string; initials: string }>>([]);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -1084,6 +1088,145 @@ function EventPage() {
             )}
           </div>
         </div>
+
+        {/* INVITE — share this tracked event */}
+        {(() => {
+          const eventUrl =
+            typeof window !== 'undefined'
+              ? `${window.location.origin}/event/${event.id}`
+              : `/event/${event.id}`;
+          const title = synthesizeEventTitle(event.question);
+          const shareText = `${title} — tracking the weather together on Pluvik`;
+          const onShare = async () => {
+            try {
+              await navigator.clipboard?.writeText(eventUrl);
+              setShareCopied(true);
+              setTimeout(() => setShareCopied(false), 1800);
+            } catch {
+              /* clipboard may be blocked — ignore */
+            }
+            if (typeof navigator !== 'undefined' && 'share' in navigator) {
+              try {
+                await (navigator as Navigator & { share: (d: ShareData) => Promise<void> }).share({
+                  title,
+                  text: shareText,
+                  url: eventUrl,
+                });
+              } catch {
+                /* user dismissed share sheet — ignore */
+              }
+            }
+          };
+          return (
+            <div
+              style={{
+                backgroundColor: '#fff',
+                border: `1px solid ${INK}14`,
+                borderRadius: '16px',
+                padding: '16px 18px',
+                marginBottom: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    backgroundColor: `${ACCENT}14`,
+                    color: ACCENT,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Users size={18} />
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    fontSize: '0.9rem',
+                    color: INK,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  Invite friends to track this with you
+                </div>
+                <button
+                  type="button"
+                  onClick={onShare}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: INK,
+                    color: PAGE_BG,
+                    border: 'none',
+                    borderRadius: '100px',
+                    padding: '8px 14px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.04em',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {shareCopied ? <Check size={14} /> : <Share2 size={14} />}
+                  {shareCopied ? 'Copied' : 'Share'}
+                </button>
+              </div>
+              {participants.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '-6px' }}>
+                  {participants.slice(0, 6).map((p, i) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: '50%',
+                        backgroundColor: `${ACCENT}22`,
+                        color: ACCENT,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: `2px solid ${PAGE_BG}`,
+                        marginLeft: i === 0 ? 0 : -8,
+                      }}
+                    >
+                      {p.initials}
+                    </div>
+                  ))}
+                  {participants.length > 6 && (
+                    <div
+                      style={{
+                        marginLeft: -8,
+                        fontSize: '0.75rem',
+                        color: MUTED,
+                      }}
+                    >
+                      +{participants.length - 6}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: '0.78rem',
+                    color: MUTED,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Just you so far
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Tracking journal */}
         <div
