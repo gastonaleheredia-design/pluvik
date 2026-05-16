@@ -18,10 +18,14 @@ import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
+import { UpgradeSheet } from '../components/UpgradeSheet';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
+
+// Free tier monthly question limit (placeholder — adjust later).
+const FREE_QUESTION_LIMIT = 10;
 
 interface Occasion {
   key: string;
@@ -69,8 +73,10 @@ function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
   const { address: selectedAddress, freshness, followError, resumeFollowing } = useAddress();
-  const { user, loading: authLoading } = useAuth();
+  const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [questionCount, setQuestionCount] = useState(0);
   const [questionText, setQuestionText] = useState('');
   const [isFirstOpen, setIsFirstOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -108,6 +114,41 @@ function HomePage() {
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Load monthly question count for the signed-in user; reset to 0 if the
+  // stored reset date is from a previous month.
+  useEffect(() => {
+    if (!user) { setQuestionCount(0); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('monthly_question_count, question_count_reset_at')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const now = new Date();
+      const resetAt = data.question_count_reset_at
+        ? new Date(data.question_count_reset_at as string)
+        : null;
+      const inPreviousMonth =
+        !resetAt ||
+        resetAt.getUTCFullYear() < now.getUTCFullYear() ||
+        (resetAt.getUTCFullYear() === now.getUTCFullYear() &&
+          resetAt.getUTCMonth() < now.getUTCMonth());
+      if (inPreviousMonth) {
+        const today = now.toISOString().slice(0, 10);
+        await supabase
+          .from('profiles')
+          .update({ monthly_question_count: 0, question_count_reset_at: today })
+          .eq('id', user.id);
+        setQuestionCount(0);
+      } else {
+        setQuestionCount((data.monthly_question_count as number) ?? 0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Consume any question prefilled by onboarding step 3.
   useEffect(() => {
@@ -441,6 +482,12 @@ function HomePage() {
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
+    // Free-tier monthly limit gate. Pro users (and admin emails, which are
+    // mapped to tier='pro' in auth) bypass entirely.
+    if (user && tier !== 'pro' && questionCount >= FREE_QUESTION_LIMIT) {
+      setShowUpgrade(true);
+      return;
+    }
     let finalPlace = pickedPlace;
     const finalTime = pickedTime;
     const baseText = questionText.trim();
@@ -466,6 +513,15 @@ function HomePage() {
         });
         if (geo) finalPlace = geo;
       }
+    }
+    // Increment monthly question count for signed-in free users (fire and forget).
+    if (user && tier !== 'pro') {
+      const next = questionCount + 1;
+      setQuestionCount(next);
+      void supabase
+        .from('profiles')
+        .update({ monthly_question_count: next })
+        .eq('id', user.id);
     }
     navigate({
       to: '/answer',
