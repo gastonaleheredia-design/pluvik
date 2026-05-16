@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { BottomNav } from './BottomNav';
+import { AuthModal } from './AuthModal';
 
 const PAPER = '#faf7f0';
 const INK = '#0b1018';
@@ -87,6 +88,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const isSelf = useMemo(() => {
     if (!user) return false;
@@ -210,9 +212,63 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
   }
   if (!user && !username) {
     return (
-      <div style={page}>
-        <h1 style={title}>Profile</h1>
-        <p style={{ fontFamily: MONO, color: MUTED, marginTop: 16 }}>Sign in to view your profile.</p>
+      <div
+        style={{
+          minHeight: '100vh',
+          backgroundColor: PAPER,
+          color: INK,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>👤</div>
+        <div
+          style={{
+            fontFamily: 'Fraunces, serif',
+            fontSize: '1.5rem',
+            fontWeight: 500,
+            marginBottom: '8px',
+          }}
+        >
+          Your profile lives here
+        </div>
+        <div
+          style={{
+            fontSize: '0.95rem',
+            color: '#6b6357',
+            maxWidth: '320px',
+            marginBottom: '28px',
+          }}
+        >
+          Sign in to set up your profile, follow friends, and share weather events.
+        </div>
+        <button
+          onClick={() => setShowAuthModal(true)}
+          style={{
+            backgroundColor: '#c2410c',
+            color: PAPER,
+            padding: '13px 28px',
+            borderRadius: '100px',
+            border: 'none',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+          }}
+        >
+          Sign in or create account
+        </button>
+        {showAuthModal && (
+          <AuthModal
+            onSuccess={() => setShowAuthModal(false)}
+            onClose={() => setShowAuthModal(false)}
+          />
+        )}
         <BottomNav />
       </div>
     );
