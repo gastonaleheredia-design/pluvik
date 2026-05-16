@@ -321,6 +321,67 @@ const STYLES = {
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
 };
 
+/* ---------------- HRRR forecast (FUTURE tab) ---------------- */
+
+const HRRR_API = "https://mesonet.agron.iastate.edu/api/1/radarfcst.json";
+
+interface HrrrFrame {
+  /** Epoch ms of the forecast valid time. */
+  validMs: number;
+  /** Tile URL template (must contain {z}/{x}/{y}). */
+  tileUrl: string;
+}
+
+/**
+ * Fetch IEM's HRRR forecast frame index. Returns a normalized list of
+ * { validMs, tileUrl } so the slider can map +Nh → nearest forecast frame.
+ * The shape of radarfcst.json varies; this reader is intentionally
+ * defensive and falls back to building a tile.py URL when only a
+ * timestamp is present.
+ */
+async function fetchHrrrForecastFrames(): Promise<HrrrFrame[]> {
+  try {
+    const res = await fetch(HRRR_API);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw: any[] = data?.frames ?? data?.data ?? [];
+    const out: HrrrFrame[] = [];
+    for (const r of raw) {
+      const validIso = r?.valid ?? r?.valid_at ?? r?.time ?? null;
+      const ms = validIso ? new Date(validIso).getTime() : (typeof r?.ts === "number" ? r.ts * 1000 : NaN);
+      if (!Number.isFinite(ms)) continue;
+      let tileUrl: string | null = r?.tile_url ?? r?.url ?? r?.tiles ?? null;
+      if (!tileUrl) {
+        // Derive from timestamp using IEM tile.py convention for HRRR REFD.
+        const d = new Date(ms);
+        const pad = (n: number) => n.toString().padStart(2, "0");
+        const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+        tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
+      }
+      if (!/\{z\}/.test(tileUrl) || !/\{x\}/.test(tileUrl) || !/\{y\}/.test(tileUrl)) continue;
+      out.push({ validMs: ms, tileUrl });
+    }
+    out.sort((a, b) => a.validMs - b.validMs);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Pick the forecast frame closest to (now + hoursAhead). Returns null if no
+ *  frame is within ~45 min of the requested time. */
+function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame | null {
+  if (!frames.length) return null;
+  const target = Date.now() + hoursAhead * 3600 * 1000;
+  let best: HrrrFrame | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const f of frames) {
+    const diff = Math.abs(f.validMs - target);
+    if (diff < bestDiff) { bestDiff = diff; best = f; }
+  }
+  return best && bestDiff <= 45 * 60 * 1000 ? best : null;
+}
+
 /** Keep warning polygons painted above the radar raster after any swap. */
 function enforceLayerOrder(map: mapboxgl.Map) {
   if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
