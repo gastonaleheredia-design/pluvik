@@ -21,6 +21,7 @@ import { extractSportsVenue } from '../lib/sportsVenues';
 import { formatEventDateRange } from '../lib/formatEventDateRange';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 import { AuthModal } from '../components/AuthModal';
+import { isSevereWeatherQuestion } from '../lib/severeWeatherInterpreter';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const PREFILL_KEY = 'pluvik-prefill-question';
@@ -550,6 +551,21 @@ function HomePage() {
       setShowCountdown(true);
       return;
     }
+    // Severe-weather intercept: if a Warning is active at the user's
+    // location AND the question is one of the well-known emergency
+    // queries, skip the standard pipeline entirely and route the answer
+    // screen into deterministic interpreter mode.
+    const interceptSevere = isSevereWeatherQuestion(
+      questionText.trim(),
+      briefing?.alert
+        ? {
+            event: briefing.alert.event,
+            description: briefing.alert.description,
+            expiresIso: briefing.alert.expires_iso,
+            expiresLocal: briefing.alert.expires_local,
+          }
+        : null,
+    );
     let finalPlace = pickedPlace;
     const finalTime = pickedTime;
     const baseText = questionText.trim();
@@ -627,6 +643,7 @@ function HomePage() {
         intent,
         placeSource: finalPlace ? 'question' : 'active_address',
         limitedAnswer,
+        severe: interceptSevere ? 1 : undefined,
       },
     });
   };

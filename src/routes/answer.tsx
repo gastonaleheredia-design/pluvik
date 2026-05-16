@@ -22,6 +22,137 @@ import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage'
 import { buildWindowLabel } from '../lib/windowLabel';
 import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
 import { toast } from 'sonner';
+import { useServerFn } from '@tanstack/react-start';
+import {
+  isSevereWeatherQuestion,
+  answerSevereWeatherQuestion,
+  type SevereAnswer,
+} from '../lib/severeWeatherInterpreter';
+import { getSevereContext } from '../lib/getSevereContext.functions';
+
+/* ---------- Severe-weather intercept screen (red, minimal) ---------- */
+
+function SevereInterceptScreen({
+  loading,
+  answer,
+  question,
+  onBack,
+}: {
+  loading: boolean;
+  answer: SevereAnswer | null;
+  question: string;
+  onBack: () => void;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#7f1d1d',
+        color: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '56px 22px 32px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          marginBottom: 20,
+          alignSelf: 'flex-start',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.6rem',
+          letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.75)',
+          textTransform: 'uppercase',
+        }}
+      >
+        ← BACK
+      </button>
+
+      <div
+        style={{
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.62rem',
+          letterSpacing: '0.2em',
+          fontWeight: 700,
+          color: '#fecaca',
+          marginBottom: '14px',
+        }}
+      >
+        {answer?.label ?? 'EMERGENCY · ACTIVE'}
+      </div>
+
+      <h1
+        style={{
+          fontFamily: 'Fraunces, serif',
+          fontWeight: 400,
+          fontSize: 'clamp(1.4rem, 4.5vw, 1.9rem)',
+          lineHeight: 1.15,
+          letterSpacing: '-0.015em',
+          color: '#ffffff',
+          margin: 0,
+          marginBottom: '20px',
+          opacity: 0.92,
+        }}
+      >
+        {question}
+      </h1>
+
+      <div style={{ flex: 1 }}>
+        {loading ? (
+          <p
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              fontSize: '1.05rem',
+              color: 'rgba(255,255,255,0.85)',
+            }}
+          >
+            Reading the latest warning…
+          </p>
+        ) : (
+          <p
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: 'clamp(1.1rem, 3.2vw, 1.4rem)',
+              lineHeight: 1.4,
+              color: '#ffffff',
+              margin: 0,
+            }}
+          >
+            {answer?.message}
+          </p>
+        )}
+      </div>
+
+      <a
+        href="/?radar=1"
+        style={{
+          display: 'block',
+          width: '100%',
+          padding: '16px',
+          backgroundColor: '#ffffff',
+          color: '#7f1d1d',
+          borderRadius: 12,
+          textAlign: 'center',
+          textDecoration: 'none',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontWeight: 700,
+          fontSize: '0.78rem',
+          letterSpacing: '0.16em',
+          marginTop: '24px',
+        }}
+      >
+        VIEW RADAR →
+      </a>
+    </div>
+  );
+}
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -324,6 +455,11 @@ export const Route = createFileRoute('/answer')({
       search.limitedAnswer === true ||
       search.limitedAnswer === 'true' ||
       search.limitedAnswer === 1,
+    severe:
+      search.severe === 1 ||
+      search.severe === '1' ||
+      search.severe === true ||
+      search.severe === 'true',
   }),
   component: AnswerPage,
 });
@@ -379,7 +515,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer, severe } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -395,6 +531,11 @@ function AnswerPage() {
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+
+  // Severe-weather intercept state (parallel to the normal pipeline).
+  const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
+  const [severeLoading, setSevereLoading] = useState<boolean>(false);
+  const fetchSevereContext = useServerFn(getSevereContext);
 
   // Detected place override from the question text. Computed synchronously so
   // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
@@ -486,6 +627,61 @@ function AnswerPage() {
     if (!question || !address) {
       navigate({ to: '/' });
       return;
+    }
+
+    // Severe-weather intercept: skip the LLM pipeline entirely. Fetch
+    // active warning + rotation/trend context, run the rule-based
+    // interpreter, and render the simplified red screen below.
+    if (severe) {
+      let cancelled = false;
+      (async () => {
+        setSevereLoading(true);
+        const lat = typeof searchLat === 'number' ? searchLat : selectedAddress.lat;
+        const lon = typeof searchLon === 'number' ? searchLon : selectedAddress.lon;
+        if (lat == null || lon == null) {
+          if (!cancelled) {
+            setSevereAnswer(
+              answerSevereWeatherQuestion(question, {
+                activeAlert: null,
+                userLat: 0,
+                userLon: 0,
+                rotationSignatures: null,
+                radarTrend: null,
+              }),
+            );
+            setSevereLoading(false);
+            setStatus('success');
+          }
+          return;
+        }
+        try {
+          const ctx = await fetchSevereContext({ data: { lat, lon } });
+          if (cancelled) return;
+          // Re-check intercept against the freshly-fetched alert; if no
+          // warning is actually active, fall back to the standard pipeline.
+          if (!isSevereWeatherQuestion(question, ctx.activeAlert)) {
+            setSevereLoading(false);
+            return; // standard pipeline will be triggered by re-running effect
+          }
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: lat,
+              userLon: lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+          setStatus('success');
+        } catch {
+          if (!cancelled) {
+            setStatus('error');
+          }
+        } finally {
+          if (!cancelled) setSevereLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
     }
 
     const fetchAnswer = async () => {
@@ -696,6 +892,19 @@ function AnswerPage() {
   };
 
   // ── LOADING STATE ──────────────────────────────
+  // Severe-weather intercept: simplified red screen, no confidence ladder,
+  // no tracking prompt. Renders as soon as the interpreter has a result.
+  if (severe && (severeAnswer || severeLoading)) {
+    return (
+      <SevereInterceptScreen
+        loading={severeLoading && !severeAnswer}
+        answer={severeAnswer}
+        question={question}
+        onBack={() => navigate({ to: '/' })}
+      />
+    );
+  }
+
   if (status === 'loading') {
     return (
       <div
