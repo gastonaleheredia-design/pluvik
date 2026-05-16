@@ -1000,6 +1000,73 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       map.setLayoutProperty("live-radar-layer", "visibility", showRadar ? "visible" : "none");
     }
   }, [showRadar]);
+
+  // Lazy-load HRRR forecast frames the first time the FUTURE tab is opened.
+  useEffect(() => {
+    if (view !== "future" || forecastFrames !== null || forecastLoading) return;
+    let cancelled = false;
+    setForecastLoading(true);
+    fetchHrrrForecastFrames().then((frames) => {
+      if (cancelled) return;
+      setForecastFrames(frames);
+      setForecastLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [view, forecastFrames, forecastLoading]);
+
+  // Drive the HRRR forecast raster layer. Adds the layer on first use,
+  // updates its tiles when the selected hour changes, and toggles
+  // visibility against the live radar based on the active tab.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const liveHasLayer = map.getLayer("live-radar-layer");
+    if (view === "radar") {
+      if (map.getLayer("hrrr-forecast-layer")) {
+        map.setLayoutProperty("hrrr-forecast-layer", "visibility", "none");
+      }
+      if (liveHasLayer) {
+        map.setLayoutProperty("live-radar-layer", "visibility", showRadar ? "visible" : "none");
+      }
+      return;
+    }
+
+    // FUTURE tab — hide live radar, show forecast (if frame available).
+    if (liveHasLayer) {
+      map.setLayoutProperty("live-radar-layer", "visibility", "none");
+    }
+    const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+    if (!frame) {
+      if (map.getLayer("hrrr-forecast-layer")) {
+        map.setLayoutProperty("hrrr-forecast-layer", "visibility", "none");
+      }
+      return;
+    }
+    const existing = map.getSource("hrrr-forecast") as mapboxgl.RasterTileSource | undefined;
+    if (existing) {
+      (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([frame.tileUrl]);
+    } else {
+      map.addSource("hrrr-forecast", {
+        type: "raster",
+        tiles: [frame.tileUrl],
+        tileSize: 256,
+        maxzoom: 9,
+        attribution: "© NOAA HRRR · IEM",
+      });
+      const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
+      map.addLayer({
+        id: "hrrr-forecast-layer",
+        type: "raster",
+        source: "hrrr-forecast",
+        layout: { visibility: "visible" },
+        paint: { "raster-opacity": 0.78, "raster-resampling": "linear" },
+      }, beforeId);
+    }
+    if (map.getLayer("hrrr-forecast-layer")) {
+      map.setLayoutProperty("hrrr-forecast-layer", "visibility", "visible");
+    }
+  }, [view, forecastHour, forecastFrames, showRadar]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
