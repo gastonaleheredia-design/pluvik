@@ -171,6 +171,34 @@ const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 
 /* ---------------------------------------------------------------- */
+/* Alert severity classification                                     */
+/* ---------------------------------------------------------------- */
+
+export type AlertSeverity = 'critical' | 'high' | 'elevated' | 'low' | 'none';
+
+const SEVERITY_MAP: Record<AlertSeverity, string[]> = {
+  critical: ['Tornado Warning', 'Flash Flood Warning', 'Extreme Wind Warning'],
+  high: ['Severe Thunderstorm Warning', 'Winter Storm Warning', 'Ice Storm Warning', 'Blizzard Warning'],
+  elevated: ['Tornado Watch', 'Flash Flood Watch', 'Winter Storm Watch', 'Severe Thunderstorm Watch'],
+  low: ['Wind Advisory', 'Dense Fog Advisory', 'Heat Advisory', 'Frost Advisory'],
+  none: [],
+};
+
+/**
+ * Classify an NWS alert event string into a severity bucket. Matching is
+ * case-insensitive and trims whitespace. Unknown alert types fall through
+ * to `'none'` so the UI treats them as non-emergencies.
+ */
+export function getAlertSeverity(alertType: string | null | undefined): AlertSeverity {
+  if (!alertType) return 'none';
+  const normalized = alertType.trim().toLowerCase();
+  for (const sev of ['critical', 'high', 'elevated', 'low'] as const) {
+    if (SEVERITY_MAP[sev].some((t) => t.toLowerCase() === normalized)) return sev;
+  }
+  return 'none';
+}
+
+/* ---------------------------------------------------------------- */
 /* Lightweight in-memory cache + NWS fallback                       */
 /* ---------------------------------------------------------------- */
 
