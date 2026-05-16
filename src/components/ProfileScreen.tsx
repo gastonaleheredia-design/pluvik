@@ -436,14 +436,35 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
 
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {list.length === 0 ? (
-          <p style={{
-            fontFamily: SERIF, fontStyle: 'italic', color: MUTED,
-            fontSize: '0.95rem', marginTop: 18, textAlign: 'center', lineHeight: 1.5,
-          }}>
-            {tab === 'events'
-              ? 'No group events yet. Ask a question and invite friends.'
-              : 'Not joining any events yet.'}
-          </p>
+          tab === 'events' ? (
+            <Link
+              to="/"
+              search={{ focus: 1 }}
+              style={{
+                display: 'block',
+                marginTop: 18,
+                padding: '22px 16px',
+                border: `1.5px dashed ${ACCENT}`,
+                borderRadius: 14,
+                background: 'transparent',
+                textAlign: 'center',
+                textDecoration: 'none',
+                color: ACCENT,
+                fontFamily: SERIF,
+                fontSize: '1.05rem',
+                letterSpacing: '0.01em',
+              }}
+            >
+              + Plan a group event
+            </Link>
+          ) : (
+            <p style={{
+              fontFamily: SERIF, fontStyle: 'italic', color: MUTED,
+              fontSize: '0.95rem', marginTop: 18, textAlign: 'center', lineHeight: 1.5,
+            }}>
+              Not joining any events yet.
+            </p>
+          )
         ) : list.map((e) => (
           <Link key={e.id} to="/event/$id" params={{ id: e.id }} style={cardLink}>
             <div style={card}>
