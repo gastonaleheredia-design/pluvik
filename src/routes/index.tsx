@@ -21,6 +21,7 @@ import { extractSportsVenue } from '../lib/sportsVenues';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
+const PREFILL_KEY = 'pluvik-prefill-question';
 
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -90,6 +91,21 @@ function HomePage() {
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Consume any question prefilled by onboarding step 3.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const prefill = localStorage.getItem(PREFILL_KEY);
+      if (prefill && prefill.trim()) {
+        setQuestionText(prefill);
+        localStorage.removeItem(PREFILL_KEY);
+        setTimeout(() => questionInputRef.current?.focus(), 60);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Redirect to onboarding if not completed.
   // Wait for auth to finish hydrating so signed-in users with a saved
