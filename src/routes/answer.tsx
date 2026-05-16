@@ -505,6 +505,61 @@ function AnswerPage() {
       return;
     }
 
+    // Severe-weather intercept: skip the LLM pipeline entirely. Fetch
+    // active warning + rotation/trend context, run the rule-based
+    // interpreter, and render the simplified red screen below.
+    if (severe) {
+      let cancelled = false;
+      (async () => {
+        setSevereLoading(true);
+        const lat = typeof searchLat === 'number' ? searchLat : selectedAddress.lat;
+        const lon = typeof searchLon === 'number' ? searchLon : selectedAddress.lon;
+        if (lat == null || lon == null) {
+          if (!cancelled) {
+            setSevereAnswer(
+              answerSevereWeatherQuestion(question, {
+                activeAlert: null,
+                userLat: 0,
+                userLon: 0,
+                rotationSignatures: null,
+                radarTrend: null,
+              }),
+            );
+            setSevereLoading(false);
+            setStatus('success');
+          }
+          return;
+        }
+        try {
+          const ctx = await fetchSevereContext({ data: { lat, lon } });
+          if (cancelled) return;
+          // Re-check intercept against the freshly-fetched alert; if no
+          // warning is actually active, fall back to the standard pipeline.
+          if (!isSevereWeatherQuestion(question, ctx.activeAlert)) {
+            setSevereLoading(false);
+            return; // standard pipeline will be triggered by re-running effect
+          }
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: lat,
+              userLon: lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+          setStatus('success');
+        } catch {
+          if (!cancelled) {
+            setStatus('error');
+          }
+        } finally {
+          if (!cancelled) setSevereLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }
+
     const fetchAnswer = async () => {
       try {
         let coords: { lat: number; lon: number } | null = null;
