@@ -127,6 +127,10 @@ function RootComponent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Onboarding has been removed. Set the legacy flag immediately on first
+    // app load so any lingering check never bounces a brand-new user into
+    // an onboarding flow. Subsequent visits are no-ops.
+    try { localStorage.setItem("pluvik-onboarding-complete", "true"); } catch {}
     if (window.location.pathname.startsWith("/onboarding")) return;
 
     const timeoutId = window.setTimeout(() => {
