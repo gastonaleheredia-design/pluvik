@@ -1623,6 +1623,7 @@ function AnswerPage() {
             eventAtIso={
               (answer as WeatherAnswer & { event_at?: string | null }).event_at ?? eventAtIso ?? null
             }
+            eventEndIso={eventEndIso ?? null}
             verdict={answer.verdict ?? null}
             confidence={answer.confidence ?? null}
             forecastStage={(answer as WeatherAnswer & { forecast_stage?: string | null }).forecast_stage ?? null}
