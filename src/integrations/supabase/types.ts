@@ -140,6 +140,7 @@ export type Database = {
           onboarding_completed_at: string | null
           quiet_hours_end: number | null
           quiet_hours_start: number | null
+          subscription_tier: string
         }
         Insert: {
           created_at?: string | null
@@ -149,6 +150,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
+          subscription_tier?: string
         }
         Update: {
           created_at?: string | null
@@ -158,6 +160,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
+          subscription_tier?: string
         }
         Relationships: []
       }
@@ -201,6 +204,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          status: string
+          tier: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          status: string
+          tier: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          status?: string
+          tier?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       tracked_events: {
         Row: {
@@ -367,7 +397,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_tier: { Args: { user_id: string }; Returns: string }
     }
     Enums: {
       forecast_change_tag:
