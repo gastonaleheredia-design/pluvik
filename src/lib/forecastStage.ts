@@ -100,3 +100,72 @@ export function getForecastStageInfo(stage: ForecastStage): ForecastStageInfo {
 export function resolveForecastStage(input: ClassifyStageInput): ForecastStageInfo {
   return getForecastStageInfo(classifyForecastStage(input));
 }
+
+/**
+ * Live weather "mode" surfaced by `askWeather`. Severe / hurricane events
+ * always refresh aggressively regardless of how far out the event is.
+ */
+export type WeatherMode = 'regular' | 'severe' | 'hurricane';
+
+export interface RefreshCadence {
+  /** Minutes between refreshes for this event. */
+  intervalMinutes: number;
+  /** Badge label shown on the tracking card. */
+  badgeLabel: 'LIVE' | 'FORECAST' | 'TREND' | 'OUTLOOK' | 'CLIMATE';
+  /** Tier name, useful for styling (red pulse for live, etc.). */
+  tier: 'live' | 'forecast' | 'trend' | 'outlook' | 'climate';
+  /** True when the tier should pulse red (severe / hurricane / live). */
+  pulse: boolean;
+  /** True when the underlying mode is severe or hurricane. */
+  severe: boolean;
+}
+
+/**
+ * Compute how often a tracked event should refresh and what badge to show.
+ *
+ * Tiers (per product spec):
+ *   severe / hurricane → every 15 min, pulsing red LIVE
+ *   < 6h               → every 30 min, LIVE
+ *   6–72h              → every 4 hours, FORECAST
+ *   3–14d (72–336h)    → twice daily (12h), TREND
+ *   14d+ (≥ 336h)      → weekly, OUTLOOK or CLIMATE
+ */
+export function getRefreshCadence(
+  hoursAhead: number,
+  mode: WeatherMode = 'regular',
+): RefreshCadence {
+  const severe = mode === 'severe' || mode === 'hurricane';
+  if (severe) {
+    return { intervalMinutes: 15, badgeLabel: 'LIVE', tier: 'live', pulse: true, severe: true };
+  }
+  if (hoursAhead < 6) {
+    return { intervalMinutes: 30, badgeLabel: 'LIVE', tier: 'live', pulse: true, severe: false };
+  }
+  if (hoursAhead < 72) {
+    return {
+      intervalMinutes: 240,
+      badgeLabel: 'FORECAST',
+      tier: 'forecast',
+      pulse: false,
+      severe: false,
+    };
+  }
+  if (hoursAhead < 336) {
+    return {
+      intervalMinutes: 720,
+      badgeLabel: 'TREND',
+      tier: 'trend',
+      pulse: false,
+      severe: false,
+    };
+  }
+  // 14+ days out: OUTLOOK band (≤ ~15d) vs CLIMATE (further out).
+  const isOutlook = hoursAhead <= 360;
+  return {
+    intervalMinutes: 10_080, // weekly
+    badgeLabel: isOutlook ? 'OUTLOOK' : 'CLIMATE',
+    tier: isOutlook ? 'outlook' : 'climate',
+    pulse: false,
+    severe: false,
+  };
+}
