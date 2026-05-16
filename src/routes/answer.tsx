@@ -22,6 +22,13 @@ import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage'
 import { buildWindowLabel } from '../lib/windowLabel';
 import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
 import { toast } from 'sonner';
+import { useServerFn } from '@tanstack/react-start';
+import {
+  isSevereWeatherQuestion,
+  answerSevereWeatherQuestion,
+  type SevereAnswer,
+} from '../lib/severeWeatherInterpreter';
+import { getSevereContext } from '../lib/getSevereContext.functions';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
 
@@ -324,6 +331,11 @@ export const Route = createFileRoute('/answer')({
       search.limitedAnswer === true ||
       search.limitedAnswer === 'true' ||
       search.limitedAnswer === 1,
+    severe:
+      search.severe === 1 ||
+      search.severe === '1' ||
+      search.severe === true ||
+      search.severe === 'true',
   }),
   component: AnswerPage,
 });
