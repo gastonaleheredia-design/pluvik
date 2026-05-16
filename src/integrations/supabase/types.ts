@@ -38,6 +38,142 @@ export type Database = {
         }
         Relationships: []
       }
+      company_members: {
+        Row: {
+          accepted_at: string | null
+          company_id: string
+          id: string
+          invited_email: string | null
+          role: string
+          team_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          company_id: string
+          id?: string
+          invited_email?: string | null
+          role?: string
+          team_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          company_id?: string
+          id?: string
+          invited_email?: string | null
+          role?: string
+          team_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_members_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "company_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_profiles: {
+        Row: {
+          company_name: string
+          created_at: string
+          id: string
+          industry: string | null
+          logo_url: string | null
+          owner_user_id: string
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          id?: string
+          industry?: string | null
+          logo_url?: string | null
+          owner_user_id: string
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          id?: string
+          industry?: string | null
+          logo_url?: string | null
+          owner_user_id?: string
+        }
+        Relationships: []
+      }
+      company_teams: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_teams_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_comments: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          is_anonymous: boolean
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          is_anonymous?: boolean
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          is_anonymous?: boolean
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_comments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "weather_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_forecast_snapshots: {
         Row: {
           chance_of_impact: number | null
@@ -97,6 +233,62 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      event_participants: {
+        Row: {
+          event_id: string
+          id: string
+          is_anonymous: boolean
+          joined_at: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          event_id: string
+          id?: string
+          is_anonymous?: boolean
+          joined_at?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          event_id?: string
+          id?: string
+          is_anonymous?: boolean
+          joined_at?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_participants_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "weather_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+          id?: string
+        }
+        Relationships: []
       }
       journal_entries: {
         Row: {
@@ -484,6 +676,113 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          daily_question_count: number
+          display_name: string | null
+          id: string
+          last_question_date: string | null
+          tier: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          daily_question_count?: number
+          display_name?: string | null
+          id: string
+          last_question_date?: string | null
+          tier?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          daily_question_count?: number
+          display_name?: string | null
+          id?: string
+          last_question_date?: string | null
+          tier?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      weather_events: {
+        Row: {
+          activity_type: string | null
+          company_id: string | null
+          confidence: string | null
+          created_at: string
+          creator_id: string
+          event_date: string | null
+          forecast_stage: string | null
+          id: string
+          lat: number | null
+          location_label: string | null
+          lon: number | null
+          question: string | null
+          status: string
+          status_message: string | null
+          status_set_at: string | null
+          team_ids: string[] | null
+          title: string | null
+          verdict: string | null
+        }
+        Insert: {
+          activity_type?: string | null
+          company_id?: string | null
+          confidence?: string | null
+          created_at?: string
+          creator_id: string
+          event_date?: string | null
+          forecast_stage?: string | null
+          id?: string
+          lat?: number | null
+          location_label?: string | null
+          lon?: number | null
+          question?: string | null
+          status?: string
+          status_message?: string | null
+          status_set_at?: string | null
+          team_ids?: string[] | null
+          title?: string | null
+          verdict?: string | null
+        }
+        Update: {
+          activity_type?: string | null
+          company_id?: string | null
+          confidence?: string | null
+          created_at?: string
+          creator_id?: string
+          event_date?: string | null
+          forecast_stage?: string | null
+          id?: string
+          lat?: number | null
+          location_label?: string | null
+          lon?: number | null
+          question?: string | null
+          status?: string
+          status_message?: string | null
+          status_set_at?: string | null
+          team_ids?: string[] | null
+          title?: string | null
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -516,6 +815,18 @@ export type Database = {
       }
       is_business_owner: {
         Args: { _business_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_company_admin: {
+        Args: { _company_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_company_member: {
+        Args: { _company_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_event_participant: {
+        Args: { _event_id: string; _user_id: string }
         Returns: boolean
       }
     }
