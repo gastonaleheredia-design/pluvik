@@ -23,6 +23,8 @@ import { UpgradeSheet } from '../components/UpgradeSheet';
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
+const HOME_SESSIONS_KEY = 'pluvik-home-sessions';
+const HOME_SESSIONS_CHIP_LIMIT = 5;
 
 // Free tier DAILY question limit. After the 1st question they get the full
 // answer; questions 2 and 3 get the limited answer; the 4th is blocked
@@ -114,6 +116,7 @@ function HomePage() {
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
   const [placeResolving, setPlaceResolving] = useState(false);
   const [rainSheetOpen, setRainSheetOpen] = useState(false);
+  const [showSuggestionChips, setShowSuggestionChips] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -126,6 +129,20 @@ function HomePage() {
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Increment home-session counter once on mount; show suggestion chips
+  // only while the counter is at or below the limit.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let n = 0;
+    try {
+      const raw = localStorage.getItem(HOME_SESSIONS_KEY);
+      n = raw ? parseInt(raw, 10) || 0 : 0;
+    } catch {}
+    n += 1;
+    try { localStorage.setItem(HOME_SESSIONS_KEY, String(n)); } catch {}
+    setShowSuggestionChips(n <= HOME_SESSIONS_CHIP_LIMIT);
+  }, []);
 
   // Load daily question count for the signed-in user from user_profiles.
   // Reset to 0 if last_question_date is not today.
@@ -1124,6 +1141,49 @@ function HomePage() {
         )}
         <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}`}</style>
       </div>
+
+      {/* Starter question chips — shown only for the first few sessions. */}
+      {showSuggestionChips && !questionText.trim() && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            overflowX: 'auto',
+            padding: '0 20px 12px',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {[
+            t('home.chip_rain_weekend', { defaultValue: 'Will it rain this weekend?' }),
+            t('home.chip_concrete', { defaultValue: 'Is it safe to pour concrete tomorrow?' }),
+            t('home.chip_run_6pm', { defaultValue: 'Should I run outside at 6pm?' }),
+          ].map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => {
+                setQuestionText(label);
+                requestAnimationFrame(() => questionInputRef.current?.focus());
+              }}
+              style={{
+                flexShrink: 0,
+                padding: '7px 14px',
+                borderRadius: 100,
+                border: `1px solid rgba(11,16,24,0.12)`,
+                backgroundColor: PAGE_BG,
+                color: INK,
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* FRIENDS' EVENTS — events from people you follow */}
       {user && friendEvents.length > 0 && (
