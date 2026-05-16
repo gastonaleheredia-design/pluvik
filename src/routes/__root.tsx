@@ -15,6 +15,7 @@ import { I18nextProvider } from "react-i18next";
 import { AuthProvider } from "../lib/auth";
 import { AddressProvider } from "../lib/addressContext";
 import { PreferencesProvider } from "../lib/preferencesContext";
+import { Toaster } from "sonner";
 
 function NotFoundComponent() {
   return (
@@ -146,6 +147,7 @@ function RootComponent() {
           </PreferencesProvider>
         </AddressProvider>
       </I18nextProvider>
+      <Toaster position="bottom-center" />
     </QueryClientProvider>
   );
 }
