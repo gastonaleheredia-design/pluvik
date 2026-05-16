@@ -75,7 +75,7 @@ export function BottomNav() {
     { to: '/', label: t('nav.home'), key: 'home' },
     { to: '/dashboard', label: t('nav.tracking'), key: 'tracking' },
     ...(hasBusiness ? [{ to: '/business', label: 'TEAM', key: 'business' }] : []),
-    { to: '/settings', label: t('nav.settings'), key: 'settings' },
+    { to: '/profile', label: 'PROFILE', key: 'profile' },
   ] as const;
 
   return (
