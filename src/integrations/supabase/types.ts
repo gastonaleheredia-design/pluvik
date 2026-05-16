@@ -720,6 +720,7 @@ export type Database = {
           created_at: string
           creator_id: string
           event_date: string | null
+          event_end: string | null
           forecast_stage: string | null
           id: string
           lat: number | null
@@ -740,6 +741,7 @@ export type Database = {
           created_at?: string
           creator_id: string
           event_date?: string | null
+          event_end?: string | null
           forecast_stage?: string | null
           id?: string
           lat?: number | null
@@ -760,6 +762,7 @@ export type Database = {
           created_at?: string
           creator_id?: string
           event_date?: string | null
+          event_end?: string | null
           forecast_stage?: string | null
           id?: string
           lat?: number | null
