@@ -1663,6 +1663,14 @@ function AnswerPage() {
             onClose={() => setShowAuthModal(false)}
           />
         )}
+        {showUpgradeSheet && (
+          <UpgradeSheet
+            accent={ACCENT}
+            ink={INK}
+            muted={MUTED}
+            onClose={() => setShowUpgradeSheet(false)}
+          />
+        )}
       </>
     );
   }
