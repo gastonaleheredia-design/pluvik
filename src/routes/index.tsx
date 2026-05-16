@@ -79,6 +79,7 @@ function HomePage() {
   const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
   const [placeResolving, setPlaceResolving] = useState(false);
+  const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -426,14 +427,19 @@ function HomePage() {
     if (!questionText.trim()) return;
     let finalPlace = pickedPlace;
     const finalTime = pickedTime;
-    const distilled = distillQuestion(questionText.trim());
+    const baseText = questionText.trim();
+    const occasion = OCCASIONS.find((o) => o.key === selectedOccasion);
+    const composedQuestion = occasion
+      ? `${baseText} — ${occasion.contextSuffix}`
+      : baseText;
+    const distilled = distillQuestion(composedQuestion);
     const intent = classifyIntent(distilled);
     // Defense-in-depth: if the chip resolver didn't land on a place but
     // the question contains a high-confidence city/state, geocode it
     // here (bypassing the proximity guard) so we don't fall back to the
     // active address coords.
     if (!finalPlace && !pickedPlaceManual) {
-      const extracted = extractPlaceFromQuestion(questionText.trim());
+      const extracted = extractPlaceFromQuestion(baseText);
       if (extracted && extracted.confidence === 'high') {
         const proximity = (selectedAddress.lat != null && selectedAddress.lon != null)
           ? { lat: selectedAddress.lat, lon: selectedAddress.lon }
@@ -448,7 +454,7 @@ function HomePage() {
     navigate({
       to: '/answer',
       search: {
-        q: questionText.trim(),
+        q: composedQuestion,
         address: finalPlace?.label ?? selectedAddress.label,
         lat: finalPlace?.lat ?? selectedAddress.lat ?? undefined,
         lon: finalPlace?.lon ?? selectedAddress.lon ?? undefined,
