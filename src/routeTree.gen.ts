@@ -22,6 +22,7 @@ import { Route as BulkRouteImport } from './routes/bulk'
 import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventIdRouteImport } from './routes/event.$id'
+import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
@@ -92,6 +93,11 @@ const EventIdRoute = EventIdRouteImport.update({
   path: '/event/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
+  id: '/return',
+  path: '/return',
+  getParentRoute: () => CheckoutRoute,
+} as any)
 const AlertIdRoute = AlertIdRouteImport.update({
   id: '/alert/$id',
   path: '/alert/$id',
@@ -119,7 +125,7 @@ export interface FileRoutesByFullPath {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
-  '/checkout': typeof CheckoutRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -138,7 +145,7 @@ export interface FileRoutesByTo {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
-  '/checkout': typeof CheckoutRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -158,7 +166,7 @@ export interface FileRoutesById {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
-  '/checkout': typeof CheckoutRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
@@ -237,7 +249,7 @@ export interface RootRouteChildren {
   AnswerRoute: typeof AnswerRoute
   BulkRoute: typeof BulkRoute
   BusinessRoute: typeof BusinessRoute
-  CheckoutRoute: typeof CheckoutRoute
+  CheckoutRoute: typeof CheckoutRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -345,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/checkout/return': {
+      id: '/checkout/return'
+      path: '/return'
+      fullPath: '/checkout/return'
+      preLoaderRoute: typeof CheckoutReturnRouteImport
+      parentRoute: typeof CheckoutRoute
+    }
     '/alert/$id': {
       id: '/alert/$id'
       path: '/alert/$id'
@@ -376,12 +395,24 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface CheckoutRouteChildren {
+  CheckoutReturnRoute: typeof CheckoutReturnRoute
+}
+
+const CheckoutRouteChildren: CheckoutRouteChildren = {
+  CheckoutReturnRoute: CheckoutReturnRoute,
+}
+
+const CheckoutRouteWithChildren = CheckoutRoute._addFileChildren(
+  CheckoutRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnswerRoute: AnswerRoute,
   BulkRoute: BulkRoute,
   BusinessRoute: BusinessRoute,
-  CheckoutRoute: CheckoutRoute,
+  CheckoutRoute: CheckoutRouteWithChildren,
   DashboardRoute: DashboardRoute,
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
