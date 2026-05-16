@@ -314,7 +314,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
 
   return (
     <div style={page}>
-      {/* Pencil edit icon — top right */}
+      {/* EDIT label — top right */}
       {isSelf && (
         <button
           onClick={() => setEditOpen(true)}
@@ -322,10 +322,13 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
           style={{
             position: 'absolute', top: 28, right: 24,
             background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '1.1rem', padding: 6, color: MUTED, lineHeight: 1,
+            padding: 6, lineHeight: 1,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.6rem', letterSpacing: '0.16em',
+            color: '#6b6357',
           }}
         >
-          ✏️
+          EDIT
         </button>
       )}
 
