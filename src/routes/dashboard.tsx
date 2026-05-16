@@ -25,6 +25,8 @@ interface TrackedEvent {
   event_at?: string | null;
   event_end?: string | null;
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
+  next_refresh_at?: string | null;
+  current_mode?: 'regular' | 'severe' | 'hurricane' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
   current_verdict_word?: string | null;
@@ -128,6 +130,15 @@ function relFuture(iso: string): string {
   const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff - days * 86400) / 3600);
   return hours > 0 ? `in ${days}d ${hours}h` : `in ${days}d`;
+}
+
+/** Compact "Xm" / "Xh" / "Xd" countdown — no "in " prefix. */
+function untilShort(iso: string): string {
+  const diff = Math.floor((new Date(iso).getTime() - Date.now()) / 1000);
+  if (diff <= 60) return 'soon';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
 }
 
 function DashboardPage() {
@@ -726,7 +737,13 @@ function DashboardPage() {
 
                 {/* Stage badge + archived state */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <StageBadge stage={stage as ForecastStage} />
+                  <StageBadge
+                    stage={
+                      (event.current_mode === 'severe' || event.current_mode === 'hurricane'
+                        ? 'live'
+                        : (stage as ForecastStage))
+                    }
+                  />
                   {isArchived && (
                     <span
                       style={{
@@ -908,6 +925,9 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
+                    {!isArchived && event.next_refresh_at && (
+                      <> · Updates in {untilShort(event.next_refresh_at)}</>
+                    )}
                   </div>
                 )}
 

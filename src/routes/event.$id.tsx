@@ -9,6 +9,7 @@ import { GroupEventView, type GroupEvent } from '../components/GroupEventView';
 import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
+import { getRefreshCadence, type WeatherMode } from '../lib/forecastStage';
 
 interface TrackedEvent {
   id: string;
@@ -201,11 +202,20 @@ function EventPage() {
         verdict_word?: 'YES' | 'NO' | 'MAYBE';
         verdict_sentence?: string;
         maybe_explanation?: TrackedEvent['current_maybe_explanation'];
+        mode?: WeatherMode;
       };
       const verdictWord =
         a.verdict_word ??
         (a.verdict === 'GO' ? 'YES' : a.verdict === 'NO-GO' ? 'NO' : 'MAYBE');
       const verdictSentence = a.verdict_sentence ?? a.summary;
+
+      // Compute next refresh time so the dashboard "Updates in …" countdown
+      // and the cron throttle agree with what the manual refresh just wrote.
+      const cadenceMode: WeatherMode = a.mode ?? 'regular';
+      const cadence = getRefreshCadence(hoursAhead ?? 24, cadenceMode);
+      const nextRefreshIso = new Date(
+        Date.now() + cadence.intervalMinutes * 60_000,
+      ).toISOString();
 
       // Mirror the new answer onto tracked_events so the dashboard card
       // shows the latest verdict at a glance.
@@ -222,6 +232,8 @@ function EventPage() {
           // Refresh event_at in case the question/time interpretation changed.
           event_at: a.event_at ?? event.event_at ?? null,
           current_forecast_stage: a.forecast_stage ?? event.current_forecast_stage ?? null,
+          current_mode: cadenceMode,
+          next_refresh_at: nextRefreshIso,
           current_climate_facts:
             ((a as { climate_facts?: unknown }).climate_facts as never) ?? null,
           current_climate_interpretation:

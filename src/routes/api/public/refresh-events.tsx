@@ -18,22 +18,12 @@ import {
   type PreviousSnapshot,
   type SnapshotInput,
 } from '@/lib/snapshots';
-import type { ForecastStage } from '@/lib/forecastStage';
+import type { ForecastStage, WeatherMode } from '@/lib/forecastStage';
+import { getRefreshCadence } from '@/lib/forecastStage';
 import { sendEventNotification } from '@/lib/pushNotifications';
 
 // Cap per run to keep the worker responsive.
 const MAX_EVENTS_PER_RUN = 50;
-
-/**
- * Tiered refresh interval based on how close the event is.
- * Returns the minimum minutes that must pass between refreshes.
- */
-function refreshIntervalMinutes(hoursToEvent: number): number {
-  if (hoursToEvent <= 6) return 15;
-  if (hoursToEvent <= 24) return 60;
-  if (hoursToEvent <= 72) return 180;
-  return 720; // 12h
-}
 
 interface EventRow {
   id: string;
@@ -43,6 +33,8 @@ interface EventRow {
   lon: number | null;
   event_at: string | null;
   last_checked_at: string | null;
+  next_refresh_at: string | null;
+  current_mode: string | null;
 }
 
 function verifyApiKey(request: Request): boolean {
@@ -100,6 +92,7 @@ async function refreshOne(
     verdict_word?: string;
     verdict_sentence?: string;
     forecast_stage?: ForecastStage;
+    mode?: WeatherMode;
     main_threat?: string;
     data_sources?: string[];
     event_at?: string;
@@ -127,6 +120,13 @@ async function refreshOne(
   const resolvedEventAtIso = Number.isFinite(resolvedEventAtMs)
     ? new Date(resolvedEventAtMs).toISOString()
     : null;
+  // Compute when this event is next due — uses live weather mode so severe /
+  // hurricane events refresh aggressively regardless of horizon.
+  const cadenceMode: WeatherMode = a.mode ?? 'regular';
+  const cadence = getRefreshCadence(hoursAhead, cadenceMode);
+  const nextRefreshIso = new Date(
+    Date.now() + cadence.intervalMinutes * 60_000,
+  ).toISOString();
   const usableFields = isUsable
     ? {
         current_verdict: a.verdict ?? null,
@@ -155,6 +155,8 @@ async function refreshOne(
       ...(isUsable ? { last_checked_at: nowIso } : {}),
       event_at: resolvedEventAtIso ?? a.event_at ?? event.event_at ?? null,
       event_phrase: parsedTime?.sourcePhrase ?? null,
+      current_mode: cadenceMode,
+      next_refresh_at: nextRefreshIso,
       ...usableFields,
     })
     .eq('id', event.id);
@@ -264,7 +266,7 @@ async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}
 
   let q = supabaseAdmin
     .from('tracked_events')
-    .select('id, question, address, lat, lon, event_at, last_checked_at')
+    .select('id, question, address, lat, lon, event_at, last_checked_at, next_refresh_at, current_mode')
     .is('archived_at', null)
     .eq('is_active', true)
     .not('event_at', 'is', null)
@@ -283,8 +285,14 @@ async function runRefresh(opts: { force?: boolean; userId?: string | null } = {}
   const candidates = ((events ?? []) as EventRow[]).filter((ev) => {
     if (force) return true;
     if (!ev.event_at) return false;
+    // Fast path: scheduler wrote a next_refresh_at — trust it.
+    if (ev.next_refresh_at) {
+      return new Date(ev.next_refresh_at).getTime() <= now;
+    }
+    // Fallback for legacy rows: compute cadence from horizon + mode.
     const hoursToEvent = Math.max(0, (new Date(ev.event_at).getTime() - now) / 3_600_000);
-    const intervalMin = refreshIntervalMinutes(hoursToEvent);
+    const mode = (ev.current_mode as WeatherMode | null) ?? 'regular';
+    const intervalMin = getRefreshCadence(hoursToEvent, mode).intervalMinutes;
     if (!ev.last_checked_at) return true;
     const ageMin = (now - new Date(ev.last_checked_at).getTime()) / 60_000;
     return ageMin >= intervalMin;
