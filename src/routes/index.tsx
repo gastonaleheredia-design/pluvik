@@ -716,6 +716,24 @@ function HomePage() {
   };
   const nearbyLine = renderNearby();
   const warning = briefing?.alert ?? null;
+  const severity: AlertSeverity = getAlertSeverity(warning?.event);
+  const SEVERITY_PAGE_BG: Record<AlertSeverity, string> = {
+    critical: '#7f1d1d',
+    high: '#431407',
+    elevated: PAGE_BG,
+    low: PAGE_BG,
+    none: PAGE_BG,
+  };
+  const pageBg = SEVERITY_PAGE_BG[severity];
+  const isDarkSeverity = severity === 'critical' || severity === 'high';
+  const SEVERITY_BANNER: Record<AlertSeverity, { bg: string; border: string; color: string } | null> = {
+    critical: { bg: 'rgba(255,255,255,0.08)', border: '#fecaca', color: '#fff5f5' },
+    high:     { bg: 'rgba(255,255,255,0.08)', border: '#fdba74', color: '#fff7ed' },
+    elevated: { bg: '#fff7ed', border: '#ea580c', color: '#9a3412' },
+    low:      { bg: '#fefce8', border: '#eab308', color: '#854d0e' },
+    none:     null,
+  };
+  const bannerStyle = SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
 
   return (
     <div
@@ -723,8 +741,8 @@ function HomePage() {
       style={{
         minHeight: '100vh',
         position: 'relative',
-        backgroundColor: PAGE_BG,
-        color: INK,
+        backgroundColor: pageBg,
+        color: isDarkSeverity ? '#faf7f0' : INK,
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
@@ -796,23 +814,42 @@ function HomePage() {
               width: '100%',
               maxWidth: '480px',
               marginBottom: '20px',
-              padding: '10px 14px',
+              padding: severity === 'elevated' || severity === 'critical' ? '14px 16px' : '10px 14px',
               borderRadius: '10px',
-              backgroundColor: WARN_BG,
-              border: `1px solid ${WARN}`,
+              backgroundColor: bannerStyle.bg,
+              border: `${severity === 'elevated' || severity === 'critical' ? 2 : 1}px solid ${bannerStyle.border}`,
               textAlign: 'center',
               cursor: 'pointer',
               fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.62rem',
+              fontSize: severity === 'elevated' || severity === 'critical' ? '0.7rem' : '0.62rem',
               letterSpacing: '0.18em',
-              color: WARN,
+              color: bannerStyle.color,
               fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
             }}
           >
-            {warning.event.toUpperCase()}
-            {warning.expires_local
-              ? ` · ${t('home.warning_until', { defaultValue: 'UNTIL' })} ${warning.expires_local}`
-              : ` · ${t('home.warning_active', { defaultValue: 'ACTIVE' })}`}
+            {severity === 'critical' && (
+              <span
+                aria-hidden
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  animation: 'homePulse 1.1s ease-in-out infinite',
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <span>
+              {warning.event.toUpperCase()}
+              {warning.expires_local
+                ? ` · ${t('home.warning_until', { defaultValue: 'UNTIL' })} ${warning.expires_local}`
+                : ` · ${t('home.warning_active', { defaultValue: 'ACTIVE' })}`}
+            </span>
           </button>
         )}
 
