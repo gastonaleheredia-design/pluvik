@@ -22,7 +22,7 @@ const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const NOTIF_KEY = 'pluvik-notif-changes';
 const APP_VERSION = '0.1.0';
 
-const styles: Record<string, CSSProperties> = {
+const styles: Record<string, CSSProperties | ((...args: any[]) => CSSProperties)> = {
   page: {
     minHeight: '100vh',
     background: PAPER,
