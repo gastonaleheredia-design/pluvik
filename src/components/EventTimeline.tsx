@@ -28,57 +28,34 @@ const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
 
-const TAG_LABEL: Record<ChangeTag, string> = {
-  INITIAL: 'Started tracking',
-  STAGE_PROMOTED: 'Forecast sharpened',
-  NEW_DATA_SOURCE: 'New data in',
-  SIGNIFICANT_CHANGE: 'Significant change',
-  MINOR_REFRESH: 'Minor refresh',
-  RESOLVED_BENIGN: 'All clear',
-  CONCLUDED: 'Tracking ended',
-};
-
-const TAG_COLOR: Record<ChangeTag, string> = {
-  INITIAL: '#6b7280',
-  STAGE_PROMOTED: '#0369a1',
-  NEW_DATA_SOURCE: '#7c3aed',
-  SIGNIFICANT_CHANGE: '#b91c1c',
-  MINOR_REFRESH: '#6b6357',
-  RESOLVED_BENIGN: '#15803d',
-  CONCLUDED: INK,
-};
-
-function relTime(iso: string): string {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return 'JUST NOW';
-  if (diff < 3600) return `${Math.floor(diff / 60)} MIN AGO`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} HRS AGO`;
-  return new Date(iso)
-    .toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-    .toUpperCase();
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diff < 3600) return 'JUST NOW';
+  if (diff < 86400) return `${Math.floor(diff / 3600)}H AGO`;
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).toUpperCase();
 }
 
-const dotStyle = (color: string): CSSProperties => ({
-  position: 'absolute',
-  left: '-26px',
-  top: '4px',
-  width: '10px',
-  height: '10px',
-  borderRadius: '50%',
-  backgroundColor: color,
-});
+/** Trim a sentence to the first ~15 words so the timeline stays scannable. */
+function trim15(text: string): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= 15) return text.trim();
+  return words.slice(0, 15).join(' ') + '…';
+}
 
-const tagPill = (tag: ChangeTag): CSSProperties => ({
-  display: 'inline-block',
-  fontSize: '0.65rem',
-  letterSpacing: '0.08em',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  color: '#faf7f0',
-  backgroundColor: TAG_COLOR[tag],
-  padding: '3px 8px',
-  borderRadius: '100px',
-  marginBottom: '6px',
+const dotStyle = (filled: boolean, color: string): CSSProperties => ({
+  position: 'absolute',
+  left: '-25px',
+  top: '5px',
+  width: '11px',
+  height: '11px',
+  borderRadius: '50%',
+  backgroundColor: filled ? color : 'transparent',
+  border: `1.5px solid ${color}`,
+  boxSizing: 'border-box',
 });
 
 export function EventTimeline({ snapshots }: { snapshots: TimelineSnapshot[] }) {
@@ -92,50 +69,52 @@ export function EventTimeline({ snapshots }: { snapshots: TimelineSnapshot[] }) 
       }}
     >
       {snapshots.map((s, idx) => {
-        const color = s.is_final
-          ? INK
-          : idx === 0
-            ? ACCENT
-            : TAG_COLOR[s.change_tag];
+        const isLatest = idx === 0;
+        const dotColor = isLatest ? ACCENT : MUTED;
+        const textColor = isLatest ? INK : MUTED;
+        const verdict = (s.decision_label ?? '').toUpperCase();
         return (
-          <div key={s.id} style={{ position: 'relative', marginBottom: '22px' }}>
-            <div style={dotStyle(color)} />
+          <div key={s.id} style={{ position: 'relative', marginBottom: '20px' }}>
+            <div style={dotStyle(isLatest, dotColor)} />
             <div
               style={{
-                fontSize: '0.7rem',
-                letterSpacing: '0.1em',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.62rem',
+                letterSpacing: '0.12em',
                 color: MUTED,
-                marginBottom: '6px',
+                marginBottom: '4px',
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
               }}
             >
-              {idx === 0 && !s.is_final ? 'NOW · ' : ''}
-              {relTime(s.created_at)}
+              <span>{shortDate(s.created_at)}</span>
+              {verdict && (
+                <>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span style={{ color: isLatest ? ACCENT : MUTED, fontWeight: 700 }}>
+                    {verdict}
+                  </span>
+                </>
+              )}
+              {s.chance_of_impact != null && (
+                <>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span>{s.chance_of_impact}%</span>
+                </>
+              )}
             </div>
-            <span style={tagPill(s.change_tag)}>{TAG_LABEL[s.change_tag]}</span>
             {s.summary && (
               <div
                 style={{
-                  fontSize: '0.95rem',
-                  fontStyle: s.is_final ? 'normal' : 'italic',
-                  color: INK,
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: '0.92rem',
+                  color: textColor,
                   lineHeight: 1.4,
-                  marginBottom: '4px',
+                  fontStyle: isLatest ? 'normal' : 'italic',
                 }}
               >
-                {s.is_final ? s.summary : `\u201C${s.summary}\u201D`}
-              </div>
-            )}
-            {(s.decision_label || s.chance_of_impact != null) && !s.is_final && (
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  letterSpacing: '0.06em',
-                  color: MUTED,
-                }}
-              >
-                {s.decision_label ?? ''}
-                {s.decision_label && s.chance_of_impact != null ? ' · ' : ''}
-                {s.chance_of_impact != null ? `${s.chance_of_impact}%` : ''}
+                {trim15(s.summary)}
               </div>
             )}
           </div>
