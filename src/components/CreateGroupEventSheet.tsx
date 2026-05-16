@@ -36,6 +36,7 @@ export interface CreateGroupEventSheetProps {
   lat?: number | null;
   lon?: number | null;
   eventAtIso?: string | null;
+  eventEndIso?: string | null;
   verdict?: string | null;
   confidence?: string | null;
   forecastStage?: string | null;
@@ -52,7 +53,7 @@ function toLocalInputValue(iso: string | null | undefined): string {
 }
 
 export function CreateGroupEventSheet({
-  open, onClose, question, address, lat, lon, eventAtIso,
+  open, onClose, question, address, lat, lon, eventAtIso, eventEndIso,
   verdict, confidence, forecastStage,
 }: CreateGroupEventSheetProps) {
   const { user } = useAuth();
@@ -61,6 +62,8 @@ export function CreateGroupEventSheet({
   const [title, setTitle] = useState(() => synthesizeEventTitle(question).slice(0, 120));
   const [activity, setActivity] = useState('other');
   const [eventAt, setEventAt] = useState(toLocalInputValue(eventAtIso));
+  const [eventEnd, setEventEnd] = useState(toLocalInputValue(eventEndIso ?? eventAtIso));
+  const [dateMode, setDateMode] = useState<'moment' | 'range'>(eventEndIso ? 'range' : 'moment');
   const [inviteText, setInviteText] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedInvitees, setSelectedInvitees] = useState<Suggestion[]>([]);
@@ -78,10 +81,12 @@ export function CreateGroupEventSheet({
     if (!open) return;
     setTitle(synthesizeEventTitle(question).slice(0, 120));
     setEventAt(toLocalInputValue(eventAtIso));
+    setEventEnd(toLocalInputValue(eventEndIso ?? eventAtIso));
+    setDateMode(eventEndIso ? 'range' : 'moment');
     setInviteText('');
     setSelectedInvitees([]);
     setError(null);
-  }, [open, question, eventAtIso]);
+  }, [open, question, eventAtIso, eventEndIso]);
 
   // load user's companies (owner or member)
   useEffect(() => {
@@ -174,6 +179,9 @@ export function CreateGroupEventSheet({
       const invitees = Array.from(allInviteesMap.values());
 
       const isoDate = new Date(eventAt).toISOString();
+      const isoEnd = dateMode === 'range' && eventEnd
+        ? new Date(eventEnd).toISOString()
+        : null;
       const useCompany = asCompany && !!companyId;
 
       const { data: ev, error: evErr } = await supabase
@@ -187,6 +195,7 @@ export function CreateGroupEventSheet({
           lon: lon ?? null,
           activity_type: activity,
           event_date: isoDate,
+          event_end: isoEnd,
           verdict: verdict ?? null,
           confidence: confidence ?? null,
           forecast_stage: forecastStage ?? null,
