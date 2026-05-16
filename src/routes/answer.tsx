@@ -12,6 +12,7 @@ import { RainRateBar, type RainHour } from '../components/briefing/RainRateBar';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
+import { CreateGroupEventSheet } from '../components/CreateGroupEventSheet';
 import { useAddress } from '../lib/addressContext';
 import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
