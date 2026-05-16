@@ -1113,6 +1113,7 @@ function DashboardPage() {
                 {/* Why MAYBE long-form rationale lives on the detail view ("Why?") — not on the tracking card. */}
               </div>
             </Link>
+            </SwipeableEventCard>
           );
         })}
       </div>
