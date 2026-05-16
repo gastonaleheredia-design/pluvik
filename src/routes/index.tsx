@@ -1379,6 +1379,7 @@ function HomePage() {
         />
       )}
       {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       {showCountdown && (
         <DailyLimitCountdown
           onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
