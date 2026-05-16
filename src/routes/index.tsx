@@ -94,6 +94,27 @@ function HomePage() {
   const [dailyCount, setDailyCount] = useState(0);
   const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
+
+  // Load the signed-in user's avatar + display name for the top-right circle.
+  useEffect(() => {
+    if (!user) {
+      setAvatarUrl(null);
+      setDisplayName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('display_name, avatar_url')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setAvatarUrl((data?.avatar_url as string | null) ?? null);
+      setDisplayName((data?.display_name as string | null) ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
