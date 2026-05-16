@@ -4,6 +4,13 @@ import { supabase } from './supabase';
 
 export type SubscriptionTier = 'free' | 'pro';
 
+const ADMIN_EMAILS: string[] = ['gaston.ale.heredia@gmail.com'];
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -24,6 +31,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loadTier(userId: string): Promise<void> {
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (isAdminEmail(userData?.user?.email)) {
+        setTier('pro');
+        return;
+      }
       const { data: sub } = await supabase
         .from('subscriptions')
         .select('tier')
@@ -58,7 +70,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       if (session?.user) {
-        void loadTier(session.user.id);
+        if (isAdminEmail(session.user.email)) {
+          setTier('pro');
+        } else {
+          void loadTier(session.user.id);
+        }
       } else {
         setTier('free');
       }
@@ -76,7 +92,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       setLoading(false);
       if (session?.user) {
-        void loadTier(session.user.id);
+        if (isAdminEmail(session.user.email)) {
+          setTier('pro');
+        } else {
+          void loadTier(session.user.id);
+        }
       }
     });
 
