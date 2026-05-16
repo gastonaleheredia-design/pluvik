@@ -618,15 +618,17 @@ function SettingsPage() {
               Open
             </Link>
           </div>
-          <div style={styles.aboutRowLast}>
+          <div style={styles.aboutRow}>
             <span style={styles.aboutLabel}>Privacy Policy</span>
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
-              style={{ ...styles.aboutLink, opacity: 0.6 }}
-            >
-              Coming soon
-            </a>
+            <Link to="/privacy" style={styles.aboutLink}>
+              Open
+            </Link>
+          </div>
+          <div style={styles.aboutRowLast}>
+            <span style={styles.aboutLabel}>Terms of Service</span>
+            <Link to="/terms" style={styles.aboutLink}>
+              Open
+            </Link>
           </div>
         </div>
       </section>
