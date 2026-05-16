@@ -91,6 +91,7 @@ function HomePage() {
   };
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [recordElapsed, setRecordElapsed] = useState(0);
