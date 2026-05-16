@@ -87,20 +87,6 @@ function formatDateRelative(start: Date, end: Date | null | undefined, now: Date
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-function _unused(start: Date, end?: Date | null): string {
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  if (!end || !Number.isFinite(end.getTime())) return fmt(start);
-  // Same day → single date
-  if (start.toDateString() === end.toDateString()) return fmt(start);
-  // Same month → "May 24–25"
-  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-    const month = start.toLocaleDateString('en-US', { month: 'short' });
-    return `${month} ${start.getDate()}–${end.getDate()}`;
-  }
-  // Cross-month → "May 30 – Jun 2"
-  return `${fmt(start)} – ${fmt(end)}`;
-}
-
 /**
  * Return a short synthesized title for `question`.
  *
