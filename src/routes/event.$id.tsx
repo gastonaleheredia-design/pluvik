@@ -28,6 +28,7 @@ interface TrackedEvent {
   lat?: number | null;
   lon?: number | null;
   current_forecast_stage?: string | null;
+  current_mode?: 'regular' | 'severe' | 'hurricane' | null;
   current_climate_facts?: Array<{ label: string; value: string; hint?: string }> | null;
   current_climate_interpretation?: string | null;
   current_climate_framing?: string | null;
@@ -56,6 +57,54 @@ const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
+
+/**
+ * Derive lightweight "ALSO WORTH KNOWING" factor cards from whatever text
+ * the latest snapshot/event has. We do not persist `secondary_factors` on
+ * tracked_events, so this scans current_summary + main_threat + the
+ * original question for known risk keywords and surfaces the matches.
+ */
+function pickFactorIcon(label: string): string {
+  const k = label.toLowerCase();
+  if (k.includes('heat') || k.includes('temp')) return '🌡';
+  if (k.includes('humid') || k.includes('dew')) return '💧';
+  if (k.includes('wind') || k.includes('gust')) return '🌬';
+  if (k.includes('fog') || k.includes('vis')) return '🌫';
+  if (k.includes('uv') || k.includes('sun')) return '☀️';
+  if (k.includes('lightning') || k.includes('storm') || k.includes('thunder')) return '🌩';
+  if (k.includes('cold') || k.includes('chill') || k.includes('snow')) return '❄️';
+  return '•';
+}
+
+function deriveSecondaryFactors(
+  text: string,
+): Array<{ factor: string; note: string }> {
+  const lower = text.toLowerCase();
+  const out: Array<{ factor: string; note: string }> = [];
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const pickSentence = (needle: RegExp) =>
+    sentences.find((s) => needle.test(s.toLowerCase())) ?? '';
+
+  if (/(heat index|feels like|hot|scorch|\b9[0-9]°|10[0-9]°)/.test(lower)) {
+    out.push({ factor: 'heat', note: pickSentence(/heat|feels|hot|°/) || 'Heat will be a factor — hydrate.' });
+  }
+  if (/(humid|dew\s?point|muggy)/.test(lower)) {
+    out.push({ factor: 'humidity', note: pickSentence(/humid|dew|muggy/) || 'High humidity — expect discomfort.' });
+  }
+  if (/(wind|gust)/.test(lower)) {
+    out.push({ factor: 'wind', note: pickSentence(/wind|gust/) || 'Gusty winds expected.' });
+  }
+  if (/(fog|visibility|low cloud)/.test(lower)) {
+    out.push({ factor: 'fog', note: pickSentence(/fog|visibility/) || 'Reduced visibility possible.' });
+  }
+  if (/(uv|sunburn|sunny)/.test(lower)) {
+    out.push({ factor: 'UV', note: pickSentence(/uv|sun/) || 'UV will be elevated — sunscreen up.' });
+  }
+  if (/(lightning|thunder|storm cell)/.test(lower)) {
+    out.push({ factor: 'lightning', note: pickSentence(/lightning|thunder|storm/) || 'Lightning risk in the area.' });
+  }
+  return out.slice(0, 4);
+}
 
 function EventPage() {
   const { t, i18n } = useTranslation();
