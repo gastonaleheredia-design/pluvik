@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { AuthModal } from './AuthModal';
 
 interface UpgradeSheetProps {
@@ -174,6 +175,23 @@ export function UpgradeSheet({ onClose, onStartTrial }: UpgradeSheetProps) {
         >
           Already have an account? Sign in
         </button>
+        <div
+          style={{
+            marginTop: 18,
+            textAlign: 'center',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '0.78rem',
+            color: MUTED,
+          }}
+        >
+          <Link to="/terms" onClick={onClose} style={{ color: MUTED, textDecoration: 'underline' }}>
+            Terms
+          </Link>
+          <span style={{ margin: '0 8px' }}>·</span>
+          <Link to="/privacy" onClick={onClose} style={{ color: MUTED, textDecoration: 'underline' }}>
+            Privacy
+          </Link>
+        </div>
       </div>
 
       {showComingSoon && (
