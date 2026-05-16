@@ -729,66 +729,99 @@ function DashboardPage() {
                   {allClear ? 'All clear' : isArchived ? 'Tracking ended' : (stageBadge || 'TRACKING')}
                 </div>
 
-                {/* Event name */}
+                {hasUnseenChange && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '14px',
+                      right: '44px',
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.6rem',
+                      letterSpacing: '0.14em',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      color: PAGE_BG,
+                      backgroundColor: ACCENT,
+                      padding: '3px 8px',
+                      borderRadius: '100px',
+                    }}
+                  >
+                    New
+                  </span>
+                )}
+
+                {/* Stage badge (CLIMATE / OUTLOOK / TREND / FORECAST / LIVE) */}
+                <div style={{ marginTop: '2px' }}>
+                  <StageBadge stage={stage as ForecastStage} />
+                </div>
+
+                {/* Verdict word — large, color-coded */}
+                {displayWord ? (
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontWeight: 500,
+                      fontSize: 'clamp(2rem, 8vw, 2.8rem)',
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      color: verdictColor(displayWord === 'MAYBE' ? 'CAUTION' : displayWord),
+                    }}
+                  >
+                    {displayWord === 'MAYBE' ? 'CAUTION' : displayWord}
+                  </div>
+                ) : (
+                  isClimate && (
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontStyle: 'italic',
+                        fontSize: '1.05rem',
+                        color: MUTED,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      Too far out for a verdict — tracking.
+                    </div>
+                  )
+                )}
+
+                {/* Question — truncated to one line */}
                 <div
+                  title={event.question}
                   style={{
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: '0.85rem',
+                    fontFamily: 'Fraunces, serif',
+                    fontSize: '0.95rem',
                     color: INK,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                     paddingRight: '32px',
                   }}
                 >
                   {event.question}
                 </div>
 
-                {/* Verdict word */}
-                {displayWord && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontWeight: 400,
-                      fontSize: isModelTrend ? 'clamp(1.7rem, 7vw, 2.2rem)' : 'clamp(2.2rem, 9vw, 3rem)',
-                      lineHeight: 0.95,
-                      letterSpacing: '-0.02em',
-                      color: INK,
-                    }}
-                  >
-                    {displayWord === 'MAYBE' ? 'CAUTION' : displayWord}
-                  </div>
-                )}
-                {isClimate && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontStyle: 'italic',
-                      fontSize: '1rem',
-                      color: MUTED,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {event.current_summary && event.current_summary.trim().length > 0
-                      ? event.current_summary
-                      : 'Too far out for a forecast — we will sharpen this as the date gets closer.'}
-                  </div>
-                )}
-                {isOutlook && event.current_summary && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontStyle: 'italic',
-                      fontSize: '0.95rem',
-                      color: MUTED,
-                      lineHeight: 1.4,
-                      marginTop: '4px',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {event.current_summary}
-                  </div>
-                )}
+                {/* Location · event date */}
+                <div
+                  style={{
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.62rem',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: MUTED,
+                    display: 'flex',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span>📍 {shortLocation(event.address)}</span>
+                  {event.event_at && (
+                    <>
+                      <span style={{ opacity: 0.5 }}>·</span>
+                      <span>{formatEventDate(event.event_at)}</span>
+                    </>
+                  )}
+                </div>
 
                 {/* One number / tendency line */}
                 {pctLine && (
