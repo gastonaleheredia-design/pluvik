@@ -26,6 +26,8 @@ type WeatherAnswer = ExtendedWeatherAnswer;
 function UpgradeSheet({
   accent, ink, muted, onClose,
 }: { accent: string; ink: string; muted: string; onClose: () => void }) {
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const contactEmail = 'gaston.ale.heredia@gmail.com';
   return (
     <div
       onClick={onClose}
@@ -45,6 +47,45 @@ function UpgradeSheet({
           boxShadow: '0 -8px 28px rgba(0,0,0,0.18)',
         }}
       >
+        {showComingSoon ? (
+          <>
+            <div style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.6rem', letterSpacing: '0.18em',
+              textTransform: 'uppercase', color: accent, marginBottom: 10,
+            }}>
+              Pluvik Pro
+            </div>
+            <div style={{
+              fontFamily: 'Fraunces, serif', fontSize: '1.35rem',
+              fontWeight: 400, color: ink, lineHeight: 1.25, marginBottom: 12,
+              letterSpacing: '-0.01em',
+            }}>
+              Subscription coming soon
+            </div>
+            <div style={{
+              fontFamily: 'Inter, sans-serif', fontSize: '0.95rem',
+              color: ink, lineHeight: 1.5, marginBottom: 20,
+            }}>
+              To get early access, email us at{' '}
+              <a href={`mailto:${contactEmail}`} style={{ color: accent, textDecoration: 'underline' }}>
+                {contactEmail}
+              </a>.
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                width: '100%', padding: '14px 16px', borderRadius: 12,
+                background: accent, color: '#faf7f0', border: 'none',
+                fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.98rem',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </>
+        ) : (
+        <>
         <div style={{
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: '0.6rem', letterSpacing: '0.18em',
@@ -77,7 +118,7 @@ function UpgradeSheet({
           </li>
         </ul>
         <button
-          onClick={() => { /* payment hookup TBD */ }}
+          onClick={() => setShowComingSoon(true)}
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 12,
             background: accent, color: '#faf7f0', border: 'none',
@@ -99,6 +140,8 @@ function UpgradeSheet({
         >
           Maybe later
         </button>
+        </>
+        )}
       </div>
     </div>
   );
