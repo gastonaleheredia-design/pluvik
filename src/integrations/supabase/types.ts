@@ -160,8 +160,10 @@ export type Database = {
           created_at: string | null
           id: string
           language: string | null
+          monthly_question_count: number
           notification_sensitivity: string | null
           onboarding_completed_at: string | null
+          question_count_reset_at: string
           quiet_hours_end: number | null
           quiet_hours_start: number | null
           subscription_tier: string
@@ -170,8 +172,10 @@ export type Database = {
           created_at?: string | null
           id: string
           language?: string | null
+          monthly_question_count?: number
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
+          question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
           subscription_tier?: string
@@ -180,8 +184,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           language?: string | null
+          monthly_question_count?: number
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
+          question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
           subscription_tier?: string
