@@ -506,6 +506,166 @@ function SettingsPage() {
       {showAuth && (
         <AuthModal onSuccess={() => setShowAuth(false)} onClose={() => setShowAuth(false)} />
       )}
+      {showSheet && (
+        <BusinessSheet
+          name={newName}
+          industry={newIndustry}
+          onName={setNewName}
+          onIndustry={setNewIndustry}
+          onClose={() => {
+            setShowSheet(false);
+            setBizError(null);
+          }}
+          onSubmit={handleCreateBusiness}
+          submitting={creating}
+          error={bizError}
+        />
+      )}
+    </div>
+  );
+}
+
+function BusinessSheet(props: {
+  name: string;
+  industry: Industry;
+  onName: (v: string) => void;
+  onIndustry: (v: Industry) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      onClick={props.onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(11,16,24,0.45)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          background: PAPER,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          padding: '24px 24px 32px',
+          boxShadow: '0 -16px 40px rgba(11,16,24,0.2)',
+        }}
+      >
+        <p style={{ fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, margin: 0 }}>
+          New Business
+        </p>
+        <h2 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: '1.5rem', margin: '8px 0 20px', color: INK }}>
+          Create business account
+        </h2>
+
+        <label style={{ display: 'block', marginBottom: 16 }}>
+          <span style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, display: 'block', marginBottom: 6 }}>
+            Business name
+          </span>
+          <input
+            value={props.name}
+            onChange={(e) => props.onName(e.target.value)}
+            placeholder="Acme Co."
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: 12,
+              border: `1px solid ${BORDER}`,
+              background: SURFACE,
+              fontFamily: SERIF,
+              fontSize: '1rem',
+              color: INK,
+              boxSizing: 'border-box',
+            }}
+          />
+        </label>
+
+        <div style={{ marginBottom: 20 }}>
+          <span style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, display: 'block', marginBottom: 8 }}>
+            Industry
+          </span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {INDUSTRIES.map((ind) => {
+              const active = props.industry === ind.value;
+              return (
+                <button
+                  key={ind.value}
+                  type="button"
+                  onClick={() => props.onIndustry(ind.value)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 999,
+                    border: active ? `1px solid ${ACCENT}` : `1px solid ${BORDER}`,
+                    background: active ? ACCENT : PAPER,
+                    color: active ? PAPER : INK,
+                    fontFamily: MONO,
+                    fontSize: '0.7rem',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {ind.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {props.error && (
+          <p style={{ fontFamily: SERIF, fontSize: '0.85rem', color: '#b91c1c', margin: '0 0 12px' }}>{props.error}</p>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={props.onClose}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              borderRadius: 999,
+              border: `1px solid rgba(11,16,24,0.15)`,
+              background: PAPER,
+              color: INK,
+              fontFamily: 'inherit',
+              fontWeight: 500,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={props.onSubmit}
+            disabled={props.submitting}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              borderRadius: 999,
+              border: 'none',
+              background: ACCENT,
+              color: PAPER,
+              fontFamily: 'inherit',
+              fontWeight: 500,
+              fontSize: '0.875rem',
+              cursor: props.submitting ? 'wait' : 'pointer',
+              opacity: props.submitting ? 0.7 : 1,
+            }}
+          >
+            {props.submitting ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
