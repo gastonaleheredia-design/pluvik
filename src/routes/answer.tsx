@@ -30,6 +30,130 @@ import {
 } from '../lib/severeWeatherInterpreter';
 import { getSevereContext } from '../lib/getSevereContext.functions';
 
+/* ---------- Severe-weather intercept screen (red, minimal) ---------- */
+
+function SevereInterceptScreen({
+  loading,
+  answer,
+  question,
+  onBack,
+}: {
+  loading: boolean;
+  answer: SevereAnswer | null;
+  question: string;
+  onBack: () => void;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#7f1d1d',
+        color: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '56px 22px 32px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          marginBottom: 20,
+          alignSelf: 'flex-start',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.6rem',
+          letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.75)',
+          textTransform: 'uppercase',
+        }}
+      >
+        ← BACK
+      </button>
+
+      <div
+        style={{
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.62rem',
+          letterSpacing: '0.2em',
+          fontWeight: 700,
+          color: '#fecaca',
+          marginBottom: '14px',
+        }}
+      >
+        {answer?.label ?? 'EMERGENCY · ACTIVE'}
+      </div>
+
+      <h1
+        style={{
+          fontFamily: 'Fraunces, serif',
+          fontWeight: 400,
+          fontSize: 'clamp(1.4rem, 4.5vw, 1.9rem)',
+          lineHeight: 1.15,
+          letterSpacing: '-0.015em',
+          color: '#ffffff',
+          margin: 0,
+          marginBottom: '20px',
+          opacity: 0.92,
+        }}
+      >
+        {question}
+      </h1>
+
+      <div style={{ flex: 1 }}>
+        {loading ? (
+          <p
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              fontSize: '1.05rem',
+              color: 'rgba(255,255,255,0.85)',
+            }}
+          >
+            Reading the latest warning…
+          </p>
+        ) : (
+          <p
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: 'clamp(1.1rem, 3.2vw, 1.4rem)',
+              lineHeight: 1.4,
+              color: '#ffffff',
+              margin: 0,
+            }}
+          >
+            {answer?.message}
+          </p>
+        )}
+      </div>
+
+      <a
+        href="/?radar=1"
+        style={{
+          display: 'block',
+          width: '100%',
+          padding: '16px',
+          backgroundColor: '#ffffff',
+          color: '#7f1d1d',
+          borderRadius: 12,
+          textAlign: 'center',
+          textDecoration: 'none',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontWeight: 700,
+          fontSize: '0.78rem',
+          letterSpacing: '0.16em',
+          marginTop: '24px',
+        }}
+      >
+        VIEW RADAR →
+      </a>
+    </div>
+  );
+}
+
 type WeatherAnswer = ExtendedWeatherAnswer;
 
 /**
