@@ -527,6 +527,7 @@ export type Database = {
           current_confidence: string | null
           current_forecast_stage: string | null
           current_maybe_explanation: Json | null
+          current_mode: string | null
           current_percentage: number | null
           current_summary: string | null
           current_verdict: string | null
@@ -544,6 +545,7 @@ export type Database = {
           last_significant_change_at: string | null
           lat: number | null
           lon: number | null
+          next_refresh_at: string | null
           outcome_recorded: boolean
           question: string
           resolved_address: string | null
@@ -562,6 +564,7 @@ export type Database = {
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_maybe_explanation?: Json | null
+          current_mode?: string | null
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
@@ -579,6 +582,7 @@ export type Database = {
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
+          next_refresh_at?: string | null
           outcome_recorded?: boolean
           question: string
           resolved_address?: string | null
@@ -597,6 +601,7 @@ export type Database = {
           current_confidence?: string | null
           current_forecast_stage?: string | null
           current_maybe_explanation?: Json | null
+          current_mode?: string | null
           current_percentage?: number | null
           current_summary?: string | null
           current_verdict?: string | null
@@ -614,6 +619,7 @@ export type Database = {
           last_significant_change_at?: string | null
           lat?: number | null
           lon?: number | null
+          next_refresh_at?: string | null
           outcome_recorded?: boolean
           question?: string
           resolved_address?: string | null
