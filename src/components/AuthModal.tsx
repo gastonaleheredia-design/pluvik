@@ -234,18 +234,32 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           style={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             marginBottom: '20px',
           }}
         >
-          <div
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '1.4rem',
-              fontWeight: 500,
-            }}
-          >
-            {t('auth.title')}
+          <div>
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.68rem',
+                letterSpacing: '0.22em',
+                color: '#c2410c',
+                textTransform: 'uppercase',
+                marginBottom: 6,
+              }}
+            >
+              Pluvik
+            </div>
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '1.5rem',
+                fontWeight: 500,
+              }}
+            >
+              Join Pluvik
+            </div>
           </div>
           <button
             onClick={onClose}
