@@ -676,6 +676,27 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
         )}
         </>
         )}
+        {/* Continue as guest — always available, dismisses the modal */}
+        {!signupSent && (
+          <button
+            onClick={onClose}
+            style={{
+              width: '100%',
+              marginTop: 14,
+              padding: '10px',
+              background: 'none',
+              border: 'none',
+              color: '#6b7280',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+            }}
+          >
+            Continue as guest
+          </button>
+        )}
       </div>
     </div>
   );
