@@ -22,6 +22,7 @@ export interface GroupEvent {
   question: string | null;
   location_label: string | null;
   event_date: string | null;
+  event_end: string | null;
   verdict: string | null;
   confidence: string | null;
   forecast_stage: string | null;
