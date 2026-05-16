@@ -1063,10 +1063,14 @@ function HomePage() {
                   gap: 8, maxWidth: 420,
                 }}>
                   {briefing.next_rain_caption && (
-                    <span style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'default' }}>
+                    <button
+                      type="button"
+                      onClick={() => setRainSheetOpen(true)}
+                      style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'pointer' }}
+                    >
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                       {briefing.next_rain_caption}
-                    </span>
+                    </button>
                   )}
                   {showRadarChip && (
                     <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: INK }}>
