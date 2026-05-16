@@ -1547,8 +1547,11 @@ function AnswerPage() {
 
           <div style={{ flex: 1 }} />
 
-          {/* Why? + Save */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Three action buttons: Why? / Save & Track / + Group Event */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, flexWrap: 'wrap' as const,
+          }}>
             {isClimate ? (
               <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
                 NO FORECAST YET
@@ -1559,36 +1562,12 @@ function AnswerPage() {
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.75rem', letterSpacing: '0.1em', color: ACCENT,
+                  fontSize: '0.85rem', letterSpacing: '0.08em', color: ACCENT,
                 }}
               >
                 {t('answer.why', { defaultValue: 'Why?' })} →
               </button>
             )}
-            <button
-              onClick={() => {
-                const dateLabel = eventAtIso
-                  ? new Date(eventAtIso).toLocaleDateString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                    })
-                  : new Date().toLocaleDateString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                    });
-                void shareForecast({
-                  verdictWord: String(verdictWord),
-                  summary: verdictSentence || directAnswer,
-                  location: contextLine || resolvedAddress,
-                  dateLabel,
-                });
-              }}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.65rem', letterSpacing: '0.18em', color: ACCENT,
-              }}
-            >
-              {t('answer.share', { defaultValue: 'SHARE' })}
-            </button>
             <button
               onClick={handleSaveTrack}
               disabled={saving}
@@ -1596,31 +1575,29 @@ function AnswerPage() {
                 background: 'none', border: 'none', cursor: saving ? 'default' : 'pointer', padding: 0,
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                 fontSize: '0.65rem', letterSpacing: '0.18em',
-                color: saving ? MUTED : INK,
+                color: saving ? MUTED : MUTED,
               }}
             >
-              {saving ? '…' : saveCtaLabel}
+              {saving ? '…' : (saveCtaLabel || 'SAVE & TRACK')}
             </button>
-          </div>
-        </div>
-        {answer && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, paddingBottom: 24 }}>
             <button
               onClick={() => {
                 if (user) setShowCreateGroup(true);
                 else setShowAuthModal(true);
               }}
               style={{
-                background: 'none', border: `1px solid ${INK}`, borderRadius: 999,
-                padding: '10px 18px', cursor: 'pointer',
+                background: 'none',
+                border: `1px solid ${INK}22`,
+                borderRadius: 999,
+                padding: '8px 14px', cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem', letterSpacing: '0.14em', color: INK,
+                fontSize: '0.62rem', letterSpacing: '0.16em', color: MUTED,
               }}
             >
-              + CREATE GROUP EVENT
+              + GROUP EVENT
             </button>
           </div>
-        )}
+        </div>
         {showAuthModal && (
           <AuthModal
             onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
