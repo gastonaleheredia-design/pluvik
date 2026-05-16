@@ -1286,48 +1286,6 @@ function HomePage() {
         <div
           style={{
             display: 'flex',
-            gap: 8,
-            overflowX: 'auto',
-            padding: '0 0 10px',
-            marginBottom: 4,
-            WebkitOverflowScrolling: 'touch',
-            scrollbarWidth: 'none',
-          }}
-        >
-          {OCCASIONS.map((o) => {
-            const active = selectedOccasion === o.key;
-            return (
-              <button
-                key={o.key}
-                type="button"
-                onClick={() => setSelectedOccasion(active ? null : o.key)}
-                aria-pressed={active}
-                style={{
-                  flexShrink: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 14px',
-                  borderRadius: 999,
-                  background: active ? 'rgba(194,65,12,0.08)' : '#fff',
-                  border: `1px solid ${active ? ACCENT : 'rgba(11,16,24,0.1)'}`,
-                  color: active ? ACCENT : INK,
-                  fontFamily: 'Fraunces, serif',
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                  transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>{o.emoji}</span>
-                <span>{o.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          style={{
-            display: 'flex',
             alignItems: 'center',
             gap: '8px',
             backgroundColor: '#fff',
