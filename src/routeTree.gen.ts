@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as HelpRouteImport } from './routes/help'
@@ -20,6 +21,7 @@ import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProfileUsernameRouteImport } from './routes/profile.$username'
 import { Route as EventIdRouteImport } from './routes/event.$id'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
@@ -40,6 +42,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -82,6 +89,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileUsernameRoute = ProfileUsernameRouteImport.update({
+  id: '/$username',
+  path: '/$username',
+  getParentRoute: () => ProfileRoute,
+} as any)
 const EventIdRoute = EventIdRouteImport.update({
   id: '/event/$id',
   path: '/event/$id',
@@ -123,12 +135,14 @@ export interface FileRoutesByFullPath {
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
+  '/profile/$username': typeof ProfileUsernameRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -142,12 +156,14 @@ export interface FileRoutesByTo {
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
+  '/profile/$username': typeof ProfileUsernameRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -162,12 +178,14 @@ export interface FileRoutesById {
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
+  '/profile/$username': typeof ProfileUsernameRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -183,12 +201,14 @@ export interface FileRouteTypes {
     | '/help'
     | '/onboarding'
     | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/settings'
     | '/terms'
     | '/alert/$id'
     | '/checkout/return'
     | '/event/$id'
+    | '/profile/$username'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -202,12 +222,14 @@ export interface FileRouteTypes {
     | '/help'
     | '/onboarding'
     | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/settings'
     | '/terms'
     | '/alert/$id'
     | '/checkout/return'
     | '/event/$id'
+    | '/profile/$username'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -221,12 +243,14 @@ export interface FileRouteTypes {
     | '/help'
     | '/onboarding'
     | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/settings'
     | '/terms'
     | '/alert/$id'
     | '/checkout/return'
     | '/event/$id'
+    | '/profile/$username'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -241,6 +265,7 @@ export interface RootRouteChildren {
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
+  ProfileRoute: typeof ProfileRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   TermsRoute: typeof TermsRoute
@@ -272,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -330,6 +362,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile/$username': {
+      id: '/profile/$username'
+      path: '/$username'
+      fullPath: '/profile/$username'
+      preLoaderRoute: typeof ProfileUsernameRouteImport
+      parentRoute: typeof ProfileRoute
+    }
     '/event/$id': {
       id: '/event/$id'
       path: '/event/$id'
@@ -387,6 +426,17 @@ const CheckoutRouteWithChildren = CheckoutRoute._addFileChildren(
   CheckoutRouteChildren,
 )
 
+interface ProfileRouteChildren {
+  ProfileUsernameRoute: typeof ProfileUsernameRoute
+}
+
+const ProfileRouteChildren: ProfileRouteChildren = {
+  ProfileUsernameRoute: ProfileUsernameRoute,
+}
+
+const ProfileRouteWithChildren =
+  ProfileRoute._addFileChildren(ProfileRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnswerRoute: AnswerRoute,
@@ -396,6 +446,7 @@ const rootRouteChildren: RootRouteChildren = {
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
+  ProfileRoute: ProfileRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   TermsRoute: TermsRoute,
@@ -408,3 +459,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
