@@ -218,10 +218,7 @@ export function GroupEventView({ event: initial }: { event: GroupEvent }) {
   }
 
   const eventDateText = event.event_date
-    ? new Date(event.event_date).toLocaleString(undefined, {
-        weekday: 'short', month: 'short', day: 'numeric',
-        hour: 'numeric', minute: '2-digit',
-      })
+    ? formatEventDateRange(event.event_date, event.event_end)
     : null;
 
   return (
