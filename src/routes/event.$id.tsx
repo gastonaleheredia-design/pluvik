@@ -126,6 +126,8 @@ function EventPage() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [stationOpen, setStationOpen] = useState(false);
+  const [participants, setParticipants] = useState<Array<{ id: string; initials: string }>>([]);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
