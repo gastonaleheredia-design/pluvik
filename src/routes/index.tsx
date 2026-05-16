@@ -18,6 +18,7 @@ import { QuestionChips } from '../components/QuestionChips';
 import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
+import { notifySevereWeather } from '../lib/severeWeatherPush';
 import { formatEventDateRange } from '../lib/formatEventDateRange';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 import { AuthModal } from '../components/AuthModal';
