@@ -163,6 +163,8 @@ export interface HomeBriefing {
   next_hour_prob?: number | null;
   /** How confident the headline word is. Drives "starting" vs "possible" copy. */
   confidence?: 'high' | 'medium' | 'low';
+  /** Hourly rain probability (%) for the next 48 hours, paired with ISO time strings. */
+  rain_hours_48?: Array<{ time: string; prob: number }>;
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
