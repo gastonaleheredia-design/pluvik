@@ -612,12 +612,19 @@ function SettingsPage() {
             <span style={styles.aboutLabel}>Version</span>
             <span style={styles.aboutValue}>{APP_VERSION}</span>
           </div>
-          <div style={styles.aboutRow}>
+          <div style={styles.aboutRowLast}>
             <span style={styles.aboutLabel}>Help</span>
             <Link to="/help" style={styles.aboutLink}>
               Open
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* LEGAL */}
+      <section style={styles.section}>
+        <p style={styles.sectionLabel}>Legal</p>
+        <div style={styles.card}>
           <div style={styles.aboutRow}>
             <span style={styles.aboutLabel}>Privacy Policy</span>
             <Link to="/privacy" style={styles.aboutLink}>
