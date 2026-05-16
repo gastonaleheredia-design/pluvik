@@ -71,6 +71,30 @@ export const Route = createFileRoute('/')({
   component: HomePage,
 });
 
+type FriendEvent = {
+  id: string;
+  title: string | null;
+  question: string | null;
+  activity_type: string | null;
+  verdict: string | null;
+  event_date: string | null;
+  creator_username: string;
+};
+
+const ACTIVITY_EMOJI: Record<string, string> = {
+  camping: '🏕', wedding: '💒', sports: '⚽', party: '🎉', festival: '🎪',
+  construction: '🏗', running: '🏃', boating: '⛵', graduation: '🎓',
+  cookout: '🍔', other: '🎭',
+};
+
+function friendVerdictColor(v: string | null | undefined): string {
+  const s = (v || '').toUpperCase();
+  if (s.includes('CLEAR') || s.includes('GO')) return '#15803d';
+  if (s.includes('LIKELY') || s.includes('SHELTER') || s.includes('CANCEL')) return '#b91c1c';
+  if (s) return '#c2410c';
+  return '#6b6b6b';
+}
+
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
