@@ -8,7 +8,7 @@ export function BottomNav() {
   const { t } = useTranslation();
   const location = useLocation();
   const currentPath = location.pathname;
-  const { user } = useAuth();
+  const { user, tier } = useAuth();
   const [hasUnseen, setHasUnseen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -62,6 +62,7 @@ export function BottomNav() {
   const items = [
     { to: '/', label: t('nav.home'), key: 'home' },
     { to: '/dashboard', label: t('nav.tracking'), key: 'tracking' },
+    ...(tier === 'pro' ? [{ to: '/bulk', label: 'BULK', key: 'bulk' }] : []),
     { to: '/settings', label: t('nav.settings'), key: 'settings' },
   ] as const;
 
