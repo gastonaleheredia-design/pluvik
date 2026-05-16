@@ -679,6 +679,49 @@ function HomePage() {
         paddingBottom: '96px',
       }}
     >
+      {/* Avatar — top right entry point to account */}
+      <button
+        type="button"
+        onClick={() => {
+          if (user) navigate({ to: '/profile' });
+          else setShowAuthModal(true);
+        }}
+        aria-label={user ? 'Open profile' : 'Sign in'}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          overflow: 'hidden',
+          background: user ? ACCENT : '#e8e0d5',
+          color: user ? '#fff' : MUTED,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          zIndex: 10,
+          boxShadow: '0 1px 3px rgba(11,16,24,0.08)',
+        }}
+      >
+        {user && avatarUrl ? (
+          <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : user ? (
+          (displayName || user.email || '?').trim().charAt(0).toUpperCase()
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        )}
+      </button>
       {/* Tiny address tag, top */}
       {/* HERO — verdict word + sentence + next-rain caption */}
       <div
