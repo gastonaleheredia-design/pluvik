@@ -499,7 +499,7 @@ export function ProfileScreen({ username }: ProfileScreenProps) {
                   </span>
                 )}
                 <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: MUTED }}>
-                  {e.event_date ? new Date(e.event_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                  {formatEventDateRange(e.event_date, e.event_end, { short: true })}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: MUTED, marginLeft: 'auto' }}>
                   👥 {participantCounts[e.id] ?? 0}
