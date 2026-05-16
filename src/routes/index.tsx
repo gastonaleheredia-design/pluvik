@@ -24,8 +24,10 @@ const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
 
-// Free tier monthly question limit (placeholder — adjust later).
-const FREE_QUESTION_LIMIT = 10;
+// Free tier DAILY question limit. After the 1st question they get the full
+// answer; questions 2 and 3 get the limited answer; the 4th is blocked
+// until next local midnight.
+const FREE_DAILY_LIMIT = 3;
 
 interface Occasion {
   key: string;
@@ -76,7 +78,8 @@ function HomePage() {
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [questionCount, setQuestionCount] = useState(0);
+  const [dailyCount, setDailyCount] = useState(0);
+  const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [isFirstOpen, setIsFirstOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -115,36 +118,28 @@ function HomePage() {
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load monthly question count for the signed-in user; reset to 0 if the
-  // stored reset date is from a previous month.
+  // Load daily question count for the signed-in user from user_profiles.
+  // Reset to 0 if last_question_date is not today.
   useEffect(() => {
-    if (!user) { setQuestionCount(0); return; }
+    if (!user) { setDailyCount(0); return; }
     let cancelled = false;
     (async () => {
       const { data } = await supabase
-        .from('profiles')
-        .select('monthly_question_count, question_count_reset_at')
+        .from('user_profiles')
+        .select('daily_question_count, last_question_date')
         .eq('id', user.id)
         .maybeSingle();
       if (cancelled || !data) return;
-      const now = new Date();
-      const resetAt = data.question_count_reset_at
-        ? new Date(data.question_count_reset_at as string)
-        : null;
-      const inPreviousMonth =
-        !resetAt ||
-        resetAt.getUTCFullYear() < now.getUTCFullYear() ||
-        (resetAt.getUTCFullYear() === now.getUTCFullYear() &&
-          resetAt.getUTCMonth() < now.getUTCMonth());
-      if (inPreviousMonth) {
-        const today = now.toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      const sameDay = data.last_question_date === today;
+      if (!sameDay) {
         await supabase
-          .from('profiles')
-          .update({ monthly_question_count: 0, question_count_reset_at: today })
+          .from('user_profiles')
+          .update({ daily_question_count: 0, last_question_date: today })
           .eq('id', user.id);
-        setQuestionCount(0);
+        setDailyCount(0);
       } else {
-        setQuestionCount((data.monthly_question_count as number) ?? 0);
+        setDailyCount((data.daily_question_count as number) ?? 0);
       }
     })();
     return () => { cancelled = true; };
@@ -482,10 +477,11 @@ function HomePage() {
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
-    // Free-tier monthly limit gate. Pro users (and admin emails, which are
-    // mapped to tier='pro' in auth) bypass entirely.
-    if (user && tier !== 'pro' && questionCount >= FREE_QUESTION_LIMIT) {
-      setShowUpgrade(true);
+    // Free-tier daily gate. Pro users (and admin emails, mapped to
+    // tier='pro' in auth) bypass entirely.
+    const isFree = user && tier !== 'pro';
+    if (isFree && dailyCount >= FREE_DAILY_LIMIT) {
+      setShowCountdown(true);
       return;
     }
     let finalPlace = pickedPlace;
@@ -514,15 +510,10 @@ function HomePage() {
         if (geo) finalPlace = geo;
       }
     }
-    // Increment monthly question count for signed-in free users (fire and forget).
-    if (user && tier !== 'pro') {
-      const next = questionCount + 1;
-      setQuestionCount(next);
-      void supabase
-        .from('profiles')
-        .update({ monthly_question_count: next })
-        .eq('id', user.id);
-    }
+    // Increment is now performed in /answer once the answer succeeds.
+    // Locally bump for immediate UI/gate consistency.
+    const limitedAnswer = isFree && dailyCount >= 1;
+    if (isFree) setDailyCount((c) => c + 1);
     navigate({
       to: '/answer',
       search: {
@@ -534,6 +525,7 @@ function HomePage() {
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
         intent,
         placeSource: finalPlace ? 'question' : 'active_address',
+        limitedAnswer,
       },
     });
   };
@@ -1308,6 +1300,12 @@ function HomePage() {
         />
       )}
       {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
+      {showCountdown && (
+        <DailyLimitCountdown
+          onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
+          onClose={() => setShowCountdown(false)}
+        />
+      )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
         <AlertSheet
           key={`${selectedAddress.lat.toFixed(4)}|${selectedAddress.lon.toFixed(4)}`}
@@ -1323,6 +1321,119 @@ function HomePage() {
           onClose={() => setSheetMode('closed')}
         />
       )}
+    </div>
+  );
+}
+
+function DailyLimitCountdown({
+  onUpgrade,
+  onClose,
+}: {
+  onUpgrade: () => void;
+  onClose: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const [notifyOn, setNotifyOn] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('pluvik-notify-daily-unlock') === 'true';
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const midnight = (() => {
+    const d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  })();
+  const msLeft = Math.max(0, midnight - now);
+  const hours = Math.floor(msLeft / 3_600_000);
+  const mins = Math.floor((msLeft % 3_600_000) / 60_000);
+
+  const handleNotify = () => {
+    try { localStorage.setItem('pluvik-notify-daily-unlock', 'true'); } catch {}
+    setNotifyOn(true);
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: PAGE_BG, color: INK,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '40px 28px',
+        fontFamily: 'Inter, sans-serif',
+        textAlign: 'center',
+      }}
+    >
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        style={{
+          position: 'absolute', top: 20, right: 20,
+          background: 'transparent', border: 'none', color: MUTED,
+          fontSize: 24, cursor: 'pointer',
+        }}
+      >
+        ×
+      </button>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif', fontSize: 32,
+        fontWeight: 500, letterSpacing: '-0.02em', marginBottom: 64,
+      }}>
+        pluvik
+      </div>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif',
+        fontSize: 88, lineHeight: 1, color: ACCENT,
+        letterSpacing: '-0.03em', fontWeight: 500,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {String(hours).padStart(2, '0')}<span style={{ color: INK, opacity: 0.35 }}>:</span>{String(mins).padStart(2, '0')}
+      </div>
+      <div style={{
+        fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+        letterSpacing: '0.18em', color: MUTED, marginTop: 12,
+        textTransform: 'uppercase',
+      }}>
+        Hours · Minutes
+      </div>
+      <div style={{
+        fontFamily: 'Fraunces, Georgia, serif', fontSize: 19,
+        lineHeight: 1.45, color: INK, marginTop: 48, maxWidth: 340,
+      }}>
+        You've asked your questions for now. Next question unlocks at midnight.
+      </div>
+      <div style={{ marginTop: 56, width: '100%', maxWidth: 340 }}>
+        <button
+          onClick={onUpgrade}
+          style={{
+            width: '100%', background: ACCENT, color: PAGE_BG,
+            border: 'none', padding: '16px 24px',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            cursor: 'pointer', fontWeight: 600, borderRadius: 0,
+          }}
+        >
+          Get Pro — Ask Anytime
+        </button>
+        <button
+          onClick={handleNotify}
+          disabled={notifyOn}
+          style={{
+            width: '100%', background: 'transparent', color: MUTED,
+            border: 'none', padding: '18px 24px', marginTop: 8,
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            cursor: notifyOn ? 'default' : 'pointer',
+          }}
+        >
+          {notifyOn ? '✓ We\u2019ll notify you' : 'Notify me when it unlocks'}
+        </button>
+      </div>
     </div>
   );
 }
