@@ -432,6 +432,12 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   // visual state and gates the silent auto-prompt on first open.
   const [precise, setPrecise] = useState<boolean>(false);
 
+  // FUTURE tab state — HRRR forecast frames overlaid on the same basemap.
+  const [view, setView] = useState<"radar" | "future">("radar");
+  const [forecastHour, setForecastHour] = useState<number>(1);
+  const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
+  const [forecastLoading, setForecastLoading] = useState<boolean>(false);
+
   // Close every floating panel/tool — used when opening a new one so they
   // don't stack on top of each other.
   const closeAllPanels = useCallback(() => {
