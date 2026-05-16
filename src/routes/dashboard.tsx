@@ -737,7 +737,13 @@ function DashboardPage() {
 
                 {/* Stage badge + archived state */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <StageBadge stage={stage as ForecastStage} />
+                  <StageBadge
+                    stage={
+                      (event.current_mode === 'severe' || event.current_mode === 'hurricane'
+                        ? 'live'
+                        : (stage as ForecastStage))
+                    }
+                  />
                   {isArchived && (
                     <span
                       style={{
