@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
@@ -67,6 +67,166 @@ const ACCENT = '#c2410c';
 const GOOD = '#15803d';
 const WARN = '#b45309';
 const BAD = '#b91c1c';
+
+/**
+ * Wrap a tracking card in a swipe-left gesture that reveals Archive /
+ * Delete actions on the right. Tapping elsewhere on the screen returns
+ * the card to its resting position. The card itself is rendered as
+ * `children` so the existing Link/markup stays intact.
+ */
+function SwipeableEventCard({
+  children,
+  onDelete,
+  onArchive,
+  showArchive,
+}: {
+  children: React.ReactNode;
+  onDelete: () => void;
+  onArchive: () => void;
+  showArchive: boolean;
+}) {
+  const [offset, setOffset] = useState(0);
+  const [open, setOpen] = useState(false);
+  const startX = useRef<number | null>(null);
+  const moved = useRef(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const revealWidth = showArchive ? 168 : 96;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setOffset(0);
+      }
+    };
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('touchstart', onDocDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('touchstart', onDocDown);
+    };
+  }, [open]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    startX.current = e.touches[0].clientX;
+    moved.current = false;
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startX.current == null) return;
+    const dx = e.touches[0].clientX - startX.current;
+    if (Math.abs(dx) > 6) moved.current = true;
+    // Allow only left-swipe (negative dx). If already open, allow right-swipe to close.
+    const base = open ? -revealWidth : 0;
+    const next = Math.min(0, Math.max(-revealWidth - 20, base + dx));
+    setOffset(next);
+  };
+  const onTouchEnd = () => {
+    if (startX.current == null) return;
+    startX.current = null;
+    if (offset < -revealWidth / 2) {
+      setOpen(true);
+      setOffset(-revealWidth);
+    } else {
+      setOpen(false);
+      setOffset(0);
+    }
+  };
+  // If a tap happened on the card while open, swallow the click that would
+  // otherwise follow the Link navigation.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (open || moved.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (open) {
+        setOpen(false);
+        setOffset(0);
+      }
+    }
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', marginBottom: '14px' }}>
+      {/* Action buttons sitting behind the card */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 14, // matches marginBottom so buttons align with card
+          display: 'flex',
+          alignItems: 'stretch',
+          borderRadius: '16px',
+          overflow: 'hidden',
+        }}
+      >
+        {showArchive && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onArchive();
+              setOpen(false);
+              setOffset(0);
+            }}
+            style={{
+              width: '80px',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: '#6b6357',
+              color: '#fff',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.7rem',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}
+          >
+            Archive
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (confirm('Delete this plan?')) onDelete();
+            setOpen(false);
+            setOffset(0);
+          }}
+          style={{
+            width: '88px',
+            border: 'none',
+            cursor: 'pointer',
+            backgroundColor: '#b91c1c',
+            color: '#fff',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.7rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}
+        >
+          Delete
+        </button>
+      </div>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClickCapture={onClickCapture}
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: startX.current == null ? 'transform 200ms ease' : 'none',
+          touchAction: 'pan-y',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function verdictColor(word: string | null | undefined): string {
   if (!word) return INK;
