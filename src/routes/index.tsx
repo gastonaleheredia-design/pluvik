@@ -19,6 +19,7 @@ import type { TimeRange } from '../components/TimeEditorSheet';
 import { extractVenueCandidate, geocodeVenueNear, type GeocodedPlace } from '../lib/geocodeVenue';
 import { extractSportsVenue } from '../lib/sportsVenues';
 import { UpgradeSheet } from '../components/UpgradeSheet';
+import { AuthModal } from '../components/AuthModal';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const PREFILL_KEY = 'pluvik-prefill-question';
@@ -87,6 +88,9 @@ function HomePage() {
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
   const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
