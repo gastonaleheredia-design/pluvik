@@ -1237,7 +1237,7 @@ function HomePage() {
                         fontSize: '0.82rem',
                         color: '#6b6b6b',
                       }}>
-                        {new Date(e.event_date).toLocaleDateString()}
+                        {formatEventDateRange(e.event_date, e.event_end)}
                       </span>
                     )}
                     {dayLabel && (
