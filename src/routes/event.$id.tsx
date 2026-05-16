@@ -563,13 +563,90 @@ function EventPage() {
           </div>
         )}
 
-        {/* Live MRMS radar — only when current stage is `live` and we have coordinates. */}
-        {!event.archived_at &&
-          snapshots[0]?.stage === 'live' &&
-          typeof event.lat === 'number' &&
-          typeof event.lon === 'number' && (
-            <LiveRadarMap lat={event.lat} lon={event.lon} />
-          )}
+        {/* Live MRMS radar — only for severe/hurricane modes, or when the
+            event is within 2 hours AND we're already in the live nowcast
+            stage (which implies active precipitation nearby). Standard
+            "will it rain tomorrow?" events skip the radar entirely. */}
+        {(() => {
+          const isSevere =
+            event.current_mode === 'severe' || event.current_mode === 'hurricane';
+          const hoursToEvent = event.event_at
+            ? (new Date(event.event_at).getTime() - Date.now()) / 3_600_000
+            : Infinity;
+          const livePrecipNearby =
+            snapshots[0]?.stage === 'live' && hoursToEvent <= 2 && hoursToEvent >= -1;
+          const showRadar =
+            !event.archived_at &&
+            (isSevere || livePrecipNearby) &&
+            typeof event.lat === 'number' &&
+            typeof event.lon === 'number';
+          if (showRadar) {
+            return <LiveRadarMap lat={event.lat as number} lon={event.lon as number} />;
+          }
+          const factorSource = [
+            event.current_summary ?? '',
+            snapshots[0]?.summary ?? '',
+            snapshots[0]?.mainThreat ?? '',
+            event.question ?? '',
+          ].join(' ');
+          const factors = deriveSecondaryFactors(factorSource);
+          if (factors.length === 0) return null;
+          return (
+            <div style={{ marginBottom: '20px' }}>
+              <div
+                style={{
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: MUTED,
+                  marginBottom: '10px',
+                }}
+              >
+                Also worth knowing
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: '8px',
+                }}
+              >
+                {factors.map((f) => (
+                  <div
+                    key={f.factor}
+                    style={{
+                      backgroundColor: 'rgba(11,16,24,0.04)',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      gap: '10px',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{pickFactorIcon(f.factor)}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                          fontSize: '0.58rem',
+                          letterSpacing: '0.12em',
+                          textTransform: 'uppercase',
+                          color: MUTED,
+                        }}
+                      >
+                        {f.factor}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', lineHeight: 1.35, color: INK }}>
+                        {f.note}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Current forecast card */}
         <div
