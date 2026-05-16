@@ -8,6 +8,8 @@ import { BottomNav } from '../components/BottomNav';
 import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
 import { StageBadge } from '../components/StageBadge';
 import type { ForecastStage } from '../lib/forecastStage';
+import { synthesizeEventTitle } from '../lib/synthesizeEventTitle';
+import { formatEventDateRange } from '../lib/formatEventDateRange';
 
 interface TrackedEvent {
   id: string;
@@ -21,6 +23,7 @@ interface TrackedEvent {
   created_at: string;
   archived_at?: string | null;
   event_at?: string | null;
+  event_end?: string | null;
   current_forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live' | null;
   last_significant_change_at?: string | null;
   user_seen_change_at?: string | null;
@@ -83,6 +86,24 @@ function formatEventDate(iso: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Return one row per day spanned by [start, end] inclusive (whole days),
+ * capped at 7 entries so a card never gets dominated by the breakdown.
+ */
+function enumerateDays(startIso: string, endIso: string): Date[] {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return [];
+  const days: Date[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor.getTime() <= last.getTime() && days.length < 7) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 }
 
 function shortLocation(addr: string): string {
@@ -755,23 +776,25 @@ function DashboardPage() {
                   )
                 )}
 
-                {/* Question — truncated to one line */}
+                {/* Synthesized title — short, scannable */}
                 <div
                   title={event.question}
                   style={{
                     fontFamily: 'Fraunces, serif',
-                    fontSize: '0.95rem',
+                    fontSize: '1rem',
                     color: INK,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                    lineHeight: 1.3,
                     paddingRight: '32px',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
                   }}
                 >
-                  {event.question}
+                  {synthesizeEventTitle(event.question)}
                 </div>
 
-                {/* Location · event date */}
+                {/* Location · date range */}
                 <div
                   style={{
                     fontFamily: 'JetBrains Mono, ui-monospace, monospace',
@@ -788,10 +811,76 @@ function DashboardPage() {
                   {event.event_at && (
                     <>
                       <span style={{ opacity: 0.5 }}>·</span>
-                      <span>{formatEventDate(event.event_at)}</span>
+                      <span>
+                        {event.event_end
+                          ? formatEventDateRange(event.event_at, event.event_end, { short: true })
+                          : formatEventDate(event.event_at)}
+                      </span>
                     </>
                   )}
                 </div>
+
+                {/* Multi-day breakdown — one compact row per day */}
+                {event.event_at && event.event_end && (() => {
+                  const days = enumerateDays(event.event_at, event.event_end);
+                  if (days.length < 2) return null;
+                  const pct = typeof event.current_percentage === 'number'
+                    ? event.current_percentage
+                    : null;
+                  const verdictText = displayWord === 'MAYBE' ? 'CAUTION' : displayWord;
+                  const verdColor = verdictColor(verdictText ?? '');
+                  return (
+                    <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {days.map((d, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '64px 1fr 80px 38px',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                            fontSize: '0.62rem',
+                            letterSpacing: '0.1em',
+                            textTransform: 'uppercase',
+                            color: MUTED,
+                            paddingTop: i === 0 ? '6px' : 0,
+                            borderTop: i === 0 ? `1px solid ${INK}10` : 'none',
+                          }}
+                        >
+                          <span>
+                            {d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}
+                          </span>
+                          <div
+                            style={{
+                              height: '4px',
+                              borderRadius: '2px',
+                              backgroundColor: `${INK}10`,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${pct ?? 0}%`,
+                                height: '100%',
+                                backgroundColor: verdColor,
+                              }}
+                            />
+                          </div>
+                          {verdictText && (
+                            <span style={{ color: verdColor, fontWeight: 700, textAlign: 'right' }}>
+                              {verdictText}
+                            </span>
+                          )}
+                          {!verdictText && <span />}
+                          <span style={{ textAlign: 'right', color: INK }}>
+                            {pct != null ? `${pct}%` : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* One number / tendency line */}
                 {pctLine && (
@@ -837,47 +926,7 @@ function DashboardPage() {
                   </div>
                 )}
 
-                {/* Why MAYBE block — only on uncertain answers with rationale */}
-                {displayWord === 'MAYBE' && event.current_maybe_explanation && (
-                  <div
-                    style={{
-                      marginTop: '10px',
-                      paddingTop: '10px',
-                      borderTop: `1px solid ${INK}10`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '0.6rem',
-                        letterSpacing: '0.14em',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        color: ACCENT,
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Why maybe
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '0.85rem',
-                        lineHeight: 1.4,
-                        color: INK,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 5,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {event.current_maybe_explanation.afd_quote}{' '}
-                      {event.current_maybe_explanation.model_reconciliation}{' '}
-                      <span style={{ color: MUTED }}>
-                        {event.current_maybe_explanation.why_uncertain}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* Why MAYBE long-form rationale lives on the detail view ("Why?") — not on the tracking card. */}
               </div>
             </Link>
           );
