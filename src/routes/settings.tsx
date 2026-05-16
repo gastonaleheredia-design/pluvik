@@ -252,6 +252,110 @@ function SettingsPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [notifOn, setNotifOn] = useState(true);
 
+  // Business state (Pro only)
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [bizLoading, setBizLoading] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newIndustry, setNewIndustry] = useState<Industry>('construction');
+  const [creating, setCreating] = useState(false);
+  const [bizError, setBizError] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  const isPro = tier === 'pro';
+
+  useEffect(() => {
+    if (!user || !isPro) {
+      setBusiness(null);
+      setMembers([]);
+      return;
+    }
+    let cancelled = false;
+    setBizLoading(true);
+    (async () => {
+      const { data: biz } = await supabase
+        .from('business_profiles')
+        .select('id, business_name, industry')
+        .eq('owner_user_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setBusiness(biz ?? null);
+      if (biz) {
+        const { data: mem } = await supabase
+          .from('team_members')
+          .select('id, invited_email, role, accepted_at')
+          .eq('business_id', biz.id)
+          .order('created_at', { ascending: true });
+        if (!cancelled) setMembers(mem ?? []);
+      } else {
+        setMembers([]);
+      }
+      setBizLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isPro]);
+
+  const handleCreateBusiness = async () => {
+    if (!user) return;
+    const name = newName.trim();
+    if (!name) {
+      setBizError('Business name is required.');
+      return;
+    }
+    setCreating(true);
+    setBizError(null);
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .insert({ owner_user_id: user.id, business_name: name, industry: newIndustry })
+      .select('id, business_name, industry')
+      .single();
+    if (error || !data) {
+      setBizError(error?.message ?? 'Could not create business.');
+      setCreating(false);
+      return;
+    }
+    await supabase.from('team_members').insert({
+      business_id: data.id,
+      user_id: user.id,
+      role: 'owner',
+      accepted_at: new Date().toISOString(),
+    });
+    setBusiness(data);
+    setShowSheet(false);
+    setNewName('');
+    setNewIndustry('construction');
+    setCreating(false);
+  };
+
+  const handleInvite = async () => {
+    if (!business) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteError('Enter a valid email.');
+      return;
+    }
+    setInviting(true);
+    setInviteError(null);
+    const { data, error } = await supabase
+      .from('team_members')
+      .insert({ business_id: business.id, role: 'member', invited_email: email })
+      .select('id, invited_email, role, accepted_at')
+      .single();
+    if (error || !data) {
+      setInviteError(error?.message ?? 'Could not send invite.');
+      setInviting(false);
+      return;
+    }
+    setMembers((m) => [...m, data]);
+    setInviteEmail('');
+    setInviting(false);
+  };
+
   useEffect(() => {
     try {
       const v = localStorage.getItem(NOTIF_KEY);
