@@ -456,6 +456,30 @@ function AnswerPage() {
     return () => clearInterval(interval);
   }, [status, loadingPhrases.length]);
 
+  // Increment daily question count in user_profiles on every successful
+  // answer. Resets the counter when last_question_date is not today.
+  useEffect(() => {
+    if (status !== 'success') return;
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('daily_question_count, last_question_date')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const sameDay = data.last_question_date === today;
+      const next = (sameDay ? (data.daily_question_count ?? 0) : 0) + 1;
+      await supabase
+        .from('user_profiles')
+        .update({ daily_question_count: next, last_question_date: today })
+        .eq('id', user.id);
+    })();
+    return () => { cancelled = true; };
+  }, [status, user]);
+
   useEffect(() => {
     if (!question || !address) {
       navigate({ to: '/' });
