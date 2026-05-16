@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { BottomNav } from '../components/BottomNav';
 import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
+import { StageBadge } from '../components/StageBadge';
+import type { ForecastStage } from '../lib/forecastStage';
 
 interface TrackedEvent {
   id: string;
@@ -57,6 +59,36 @@ const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
+const GOOD = '#15803d';
+const WARN = '#b45309';
+const BAD = '#b91c1c';
+
+function verdictColor(word: string | null | undefined): string {
+  if (!word) return INK;
+  const w = word.toUpperCase();
+  if (['UNLIKELY', 'NO', 'GO', 'YES', 'SAFE', 'ALL CLEAR', 'LEAN NO'].includes(w)) return GOOD;
+  if (['LIKELY', 'SHELTER', 'SHELTER NOW', 'NO-GO', 'LEAN YES', 'LEAN GO'].includes(w)) return BAD;
+  return WARN; // POSSIBLE, CAUTION, MAYBE, WAIT, WATCH, etc.
+}
+
+function formatEventDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function shortLocation(addr: string): string {
+  const parts = addr.split(',').map((p) => p.trim()).filter(Boolean);
+  return parts.slice(0, 2).join(', ');
+}
 
 function relTime(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -540,24 +572,6 @@ function DashboardPage() {
           const isClimate = stage === 'climate';
           const isOutlook = stage === 'outlook';
           const isModelTrend = stage === 'model_trend';
-          const isPastDue =
-            !!event.event_at &&
-            new Date(event.event_at).getTime() < Date.now() &&
-            !event.archived_at;
-          const stageBadge: string =
-            isPastDue ? 'WINDING DOWN'
-            : stage === 'climate' ? 'TOO FAR OUT · TRACKING'
-            : stage === 'outlook' ? 'LONG-RANGE TREND'
-            : stage === 'model_trend' ? 'EARLY SIGNAL'
-            : stage === 'live' ? 'HAPPENING NOW'
-            : stage === 'short_range' ? 'COMING UP'
-            : 'TRACKING';
-          // Visual tier: muted for "still far out, just watching",
-          // accent for "real / imminent".
-          const mutedBadge =
-            stageBadge === 'TRACKING' ||
-            stageBadge === 'TOO FAR OUT · TRACKING' ||
-            stageBadge === 'LONG-RANGE TREND';
           const isRainQ = isRainYesNoQuestion(event.question);
           // For rain yes/no questions, answer the question literally instead
           // of mashing the plan verdict ("NO") into the headline next to a
@@ -668,95 +682,116 @@ function DashboardPage() {
                   ×
                 </button>
 
-                {/* Lifecycle pill — always present so every card has a label */}
-                <div
-                  data-stage={stage}
-                  data-badge={stageBadge}
-                  aria-label={`Tracking stage: ${stageBadge}`}
-                  style={{
-                    display: 'inline-block',
-                    alignSelf: 'flex-start',
-                    fontSize: '0.62rem',
-                    letterSpacing: '0.1em',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    color: allClear
-                      ? '#15803d'
-                      : isArchived || mutedBadge
-                      ? MUTED
-                      : ACCENT,
-                    backgroundColor: allClear
-                      ? '#15803d14'
-                      : isArchived || mutedBadge
-                      ? INK + '0d'
-                      : ACCENT + '14',
-                    padding: '3px 10px',
-                    borderRadius: '100px',
-                  }}
-                >
-                  {allClear ? 'All clear' : isArchived ? 'Tracking ended' : (stageBadge || 'TRACKING')}
+                {hasUnseenChange && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '14px',
+                      right: '44px',
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.6rem',
+                      letterSpacing: '0.14em',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      color: PAGE_BG,
+                      backgroundColor: ACCENT,
+                      padding: '3px 8px',
+                      borderRadius: '100px',
+                    }}
+                  >
+                    New
+                  </span>
+                )}
+
+                {/* Stage badge + archived state */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <StageBadge stage={stage as ForecastStage} />
+                  {isArchived && (
+                    <span
+                      style={{
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.58rem',
+                        letterSpacing: '0.12em',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        color: allClear ? GOOD : MUTED,
+                        backgroundColor: (allClear ? GOOD : INK) + '14',
+                        padding: '3px 8px',
+                        borderRadius: '100px',
+                      }}
+                    >
+                      {allClear ? 'All clear' : 'Tracking ended'}
+                    </span>
+                  )}
                 </div>
 
-                {/* Event name */}
+                {/* Verdict word — large, color-coded */}
+                {displayWord ? (
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontWeight: 500,
+                      fontSize: 'clamp(2rem, 8vw, 2.8rem)',
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      color: verdictColor(displayWord === 'MAYBE' ? 'CAUTION' : displayWord),
+                    }}
+                  >
+                    {displayWord === 'MAYBE' ? 'CAUTION' : displayWord}
+                  </div>
+                ) : (
+                  isClimate && (
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontStyle: 'italic',
+                        fontSize: '1.05rem',
+                        color: MUTED,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      Too far out for a verdict — tracking.
+                    </div>
+                  )
+                )}
+
+                {/* Question — truncated to one line */}
                 <div
+                  title={event.question}
                   style={{
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: '0.85rem',
+                    fontFamily: 'Fraunces, serif',
+                    fontSize: '0.95rem',
                     color: INK,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                     paddingRight: '32px',
                   }}
                 >
                   {event.question}
                 </div>
 
-                {/* Verdict word */}
-                {displayWord && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontWeight: 400,
-                      fontSize: isModelTrend ? 'clamp(1.7rem, 7vw, 2.2rem)' : 'clamp(2.2rem, 9vw, 3rem)',
-                      lineHeight: 0.95,
-                      letterSpacing: '-0.02em',
-                      color: INK,
-                    }}
-                  >
-                    {displayWord === 'MAYBE' ? 'CAUTION' : displayWord}
-                  </div>
-                )}
-                {isClimate && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontStyle: 'italic',
-                      fontSize: '1rem',
-                      color: MUTED,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {event.current_summary && event.current_summary.trim().length > 0
-                      ? event.current_summary
-                      : 'Too far out for a forecast — we will sharpen this as the date gets closer.'}
-                  </div>
-                )}
-                {isOutlook && event.current_summary && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontStyle: 'italic',
-                      fontSize: '0.95rem',
-                      color: MUTED,
-                      lineHeight: 1.4,
-                      marginTop: '4px',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {event.current_summary}
-                  </div>
-                )}
+                {/* Location · event date */}
+                <div
+                  style={{
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.62rem',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: MUTED,
+                    display: 'flex',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span>📍 {shortLocation(event.address)}</span>
+                  {event.event_at && (
+                    <>
+                      <span style={{ opacity: 0.5 }}>·</span>
+                      <span>{formatEventDate(event.event_at)}</span>
+                    </>
+                  )}
+                </div>
 
                 {/* One number / tendency line */}
                 {pctLine && (
@@ -784,23 +819,6 @@ function DashboardPage() {
                   >
                     Updated {relTime(latest.created_at)}
                     {previousVerdict ? ` · was ${previousVerdict}` : ''}
-                    {hasUnseenChange && (
-                      <span
-                        style={{
-                          marginLeft: '8px',
-                          padding: '2px 8px',
-                          borderRadius: '100px',
-                          backgroundColor: ACCENT + '1a',
-                          color: ACCENT,
-                          fontWeight: 700,
-                          letterSpacing: '0.1em',
-                          textTransform: 'uppercase',
-                          fontSize: '0.6rem',
-                        }}
-                      >
-                        Updated
-                      </span>
-                    )}
                   </div>
                 )}
 
