@@ -300,6 +300,10 @@ function EventPage() {
     );
   }
 
+  if (groupChecked && groupEvent) {
+    return <GroupEventView event={groupEvent} />;
+  }
+
   if (!event) {
     return (
       <div
