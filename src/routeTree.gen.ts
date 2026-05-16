@@ -24,6 +24,7 @@ import { Route as EventIdRouteImport } from './routes/event.$id'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -100,6 +101,12 @@ const ApiPublicRefreshEventsRoute = ApiPublicRefreshEventsRouteImport.update({
   path: '/api/public/refresh-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -134,6 +142,7 @@ export interface FileRoutesByTo {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -152,6 +161,7 @@ export interface FileRoutesById {
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   id:
     | '__root__'
     | '/'
@@ -205,6 +217,7 @@ export interface FileRouteTypes {
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -223,6 +236,7 @@ export interface RootRouteChildren {
   EventIdRoute: typeof EventIdRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
   ApiPublicSweepEventsRoute: typeof ApiPublicSweepEventsRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -332,6 +346,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicRefreshEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -351,7 +372,18 @@ const rootRouteChildren: RootRouteChildren = {
   EventIdRoute: EventIdRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
   ApiPublicSweepEventsRoute: ApiPublicSweepEventsRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
