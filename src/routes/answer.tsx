@@ -2069,6 +2069,21 @@ function AnswerPage() {
             </button>
           </div>
         </div>
+        {answer && user && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, paddingBottom: 24 }}>
+            <button
+              onClick={() => setShowCreateGroup(true)}
+              style={{
+                background: 'none', border: `1px solid ${INK}`, borderRadius: 999,
+                padding: '10px 18px', cursor: 'pointer',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem', letterSpacing: '0.14em', color: INK,
+              }}
+            >
+              + CREATE GROUP EVENT
+            </button>
+          </div>
+        )}
         {showAuthModal && (
           <AuthModal
             onSuccess={() => { setShowAuthModal(false); saveAndTrack(); }}
@@ -2081,6 +2096,22 @@ function AnswerPage() {
             ink={INK}
             muted={MUTED}
             onClose={() => setShowUpgradeSheet(false)}
+          />
+        )}
+        {answer && (
+          <CreateGroupEventSheet
+            open={showCreateGroup}
+            onClose={() => setShowCreateGroup(false)}
+            question={question}
+            address={resolvedAddress}
+            lat={coords?.lat ?? null}
+            lon={coords?.lon ?? null}
+            eventAtIso={
+              (answer as WeatherAnswer & { event_at?: string | null }).event_at ?? eventAtIso ?? null
+            }
+            verdict={answer.verdict ?? null}
+            confidence={answer.confidence ?? null}
+            forecastStage={(answer as WeatherAnswer & { forecast_stage?: string | null }).forecast_stage ?? null}
           />
         )}
       </>
