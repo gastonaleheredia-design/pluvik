@@ -394,6 +394,7 @@ function AnswerPage() {
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
   // Detected place override from the question text. Computed synchronously so
   // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
