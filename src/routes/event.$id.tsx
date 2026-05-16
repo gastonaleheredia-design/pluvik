@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { EventTimeline, type TimelineSnapshot } from '../components/EventTimeline';
 import { LiveRadarMap } from '../components/LiveRadarMap';
+import { GroupEventView, type GroupEvent } from '../components/GroupEventView';
 import { askWeather } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
@@ -62,6 +63,8 @@ function EventPage() {
   const { id } = Route.useParams();
 
   const [event, setEvent] = useState<TrackedEvent | null>(null);
+  const [groupEvent, setGroupEvent] = useState<GroupEvent | null>(null);
+  const [groupChecked, setGroupChecked] = useState(false);
   const [snapshots, setSnapshots] = useState<TimelineSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -75,6 +78,27 @@ function EventPage() {
   useEffect(() => {
     if (!user || !id) return;
 
+    // First, see if this id corresponds to a group weather_event. If so,
+    // render the group view and skip the legacy tracked_events flow.
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('weather_events')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setGroupEvent(data as unknown as GroupEvent);
+        setGroupChecked(true);
+        setLoading(false);
+        return;
+      }
+      setGroupChecked(true);
+      loadTrackedEvent();
+    })();
+
+    function loadTrackedEvent() {
     Promise.all([
       supabase
         .from('tracked_events')
@@ -101,6 +125,9 @@ function EventPage() {
           .then(() => {});
       }
     });
+    }
+
+    return () => { cancelled = true; };
   }, [user, id]);
 
   const handleSaveEdit = async () => {
