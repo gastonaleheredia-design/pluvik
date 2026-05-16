@@ -1307,6 +1307,7 @@ function HomePage() {
           onClose={() => setWhyOpen(false)}
         />
       )}
+      {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
         <AlertSheet
           key={`${selectedAddress.lat.toFixed(4)}|${selectedAddress.lon.toFixed(4)}`}
