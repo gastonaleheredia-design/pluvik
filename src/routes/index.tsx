@@ -1184,6 +1184,117 @@ function HomePage() {
         </div>
       )}
 
+      {/* FRIENDS' EVENTS — events from people you follow */}
+      {user && friendEvents.length > 0 && (
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{
+            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#6b6b6b',
+            margin: '0 0 10px',
+          }}>
+            Friends' events
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {friendEvents.map((e) => {
+              const emoji = e.activity_type ? (ACTIVITY_EMOJI[e.activity_type] ?? '📅') : '📅';
+              const daysLeft = e.event_date
+                ? Math.ceil((new Date(e.event_date).getTime() - Date.now()) / 86400000)
+                : null;
+              const dayLabel = daysLeft == null ? null
+                : daysLeft <= 0 ? 'Today'
+                : daysLeft === 1 ? 'Tomorrow'
+                : `In ${daysLeft} days`;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => navigate({ to: '/event/$id', params: { id: e.id } })}
+                  style={{
+                    textAlign: 'left',
+                    background: '#fff',
+                    border: '1px solid rgba(11,16,24,0.08)',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    color: '#0b1018',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{emoji}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontFamily: '"Fraunces", Georgia, serif',
+                        fontSize: '1rem',
+                        color: '#0b1018',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {e.title || e.question || 'Event'}
+                      </div>
+                      <div style={{
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: '#6b6b6b',
+                        marginTop: 3,
+                      }}>
+                        @{e.creator_username} is hosting
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginTop: 8,
+                    flexWrap: 'wrap',
+                  }}>
+                    {e.verdict && (
+                      <span style={{
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.62rem',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        color: friendVerdictColor(e.verdict),
+                      }}>
+                        {e.verdict}
+                      </span>
+                    )}
+                    {e.event_date && (
+                      <span style={{
+                        fontFamily: '"Fraunces", Georgia, serif',
+                        fontSize: '0.82rem',
+                        color: '#6b6b6b',
+                      }}>
+                        {new Date(e.event_date).toLocaleDateString()}
+                      </span>
+                    )}
+                    {dayLabel && (
+                      <span style={{
+                        marginLeft: 'auto',
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: '#c2410c',
+                      }}>
+                        {dayLabel}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Thin question input pinned near bottom */}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
