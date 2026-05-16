@@ -23,6 +23,22 @@ const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
 
+interface Occasion {
+  key: string;
+  emoji: string;
+  label: string;
+  contextSuffix: string;
+}
+
+const OCCASIONS: Occasion[] = [
+  { key: 'construction', emoji: '🏗', label: 'Construction', contextSuffix: 'construction activity' },
+  { key: 'running',      emoji: '🏃', label: 'Running',      contextSuffix: 'going for a run' },
+  { key: 'boating',      emoji: '⛵', label: 'Boating',      contextSuffix: 'boating' },
+  { key: 'wedding',      emoji: '💒', label: 'Wedding',      contextSuffix: 'an outdoor wedding' },
+  { key: 'event',        emoji: '🎉', label: 'Event',        contextSuffix: 'an outdoor event' },
+  { key: 'game_day',     emoji: '🏈', label: 'Game Day',     contextSuffix: 'a game day' },
+];
+
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
