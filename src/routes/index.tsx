@@ -170,6 +170,57 @@ function HomePage() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Friends' events: events created by followed users where current user is a participant.
+  useEffect(() => {
+    if (!user) { setFriendEvents([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: followRows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
+      const followedIds = (followRows ?? []).map((r) => r.following_id as string);
+      if (followedIds.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const { data: partRows } = await supabase
+        .from('event_participants')
+        .select('event_id')
+        .eq('user_id', user.id);
+      const partIds = Array.from(new Set((partRows ?? []).map((r) => r.event_id as string)));
+      if (partIds.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const { data: evs } = await supabase
+        .from('weather_events')
+        .select('id, title, question, activity_type, verdict, event_date, creator_id, status')
+        .in('id', partIds)
+        .in('creator_id', followedIds)
+        .neq('status', 'canceled')
+        .order('event_date', { ascending: true })
+        .limit(3);
+      const events = evs ?? [];
+      if (events.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const creatorIds = Array.from(new Set(events.map((e) => e.creator_id as string)));
+      const { data: profs } = await supabase
+        .from('user_profiles')
+        .select('id, username')
+        .in('id', creatorIds);
+      const usernameById = new Map((profs ?? []).map((p) => [p.id as string, p.username as string]));
+
+      if (cancelled) return;
+      setFriendEvents(events.map((e) => ({
+        id: e.id as string,
+        title: e.title as string | null,
+        question: e.question as string | null,
+        activity_type: e.activity_type as string | null,
+        verdict: e.verdict as string | null,
+        event_date: e.event_date as string | null,
+        creator_username: usernameById.get(e.creator_id as string) ?? 'friend',
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
   // Consume any question prefilled by onboarding step 3.
   useEffect(() => {
     if (typeof window === 'undefined') return;
