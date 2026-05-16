@@ -89,7 +89,7 @@ function BulkPage() {
   const { address: selectedAddress } = useAddress();
   const { tempUnit, windUnit, timeFormat } = usePreferences();
 
-  const defaultLocation = selectedAddress?.address ?? '';
+  const defaultLocation = selectedAddress?.label ?? '';
   const [rows, setRows] = useState<Row[]>(() => [newRow(defaultLocation), newRow(defaultLocation)]);
   const [results, setResults] = useState<Record<string, RowResult> | null>(null);
   const [running, setRunning] = useState(false);
