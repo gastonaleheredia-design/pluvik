@@ -391,7 +391,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer, severe } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -407,6 +407,11 @@ function AnswerPage() {
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+
+  // Severe-weather intercept state (parallel to the normal pipeline).
+  const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
+  const [severeLoading, setSevereLoading] = useState<boolean>(false);
+  const fetchSevereContext = useServerFn(getSevereContext);
 
   // Detected place override from the question text. Computed synchronously so
   // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
