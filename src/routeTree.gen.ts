@@ -14,6 +14,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as BulkRouteImport } from './routes/bulk'
 import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventIdRouteImport } from './routes/event.$id'
@@ -44,6 +45,11 @@ const HelpRoute = HelpRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BulkRoute = BulkRouteImport.update({
+  id: '/bulk',
+  path: '/bulk',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnswerRoute = AnswerRouteImport.update({
@@ -80,6 +86,7 @@ const ApiPublicRefreshEventsRoute = ApiPublicRefreshEventsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/answer': typeof AnswerRoute
+  '/bulk': typeof BulkRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/answer': typeof AnswerRoute
+  '/bulk': typeof BulkRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/answer': typeof AnswerRoute
+  '/bulk': typeof BulkRoute
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/answer'
+    | '/bulk'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/answer'
+    | '/bulk'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/answer'
+    | '/bulk'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnswerRoute: typeof AnswerRoute
+  BulkRoute: typeof BulkRoute
   DashboardRoute: typeof DashboardRoute
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bulk': {
+      id: '/bulk'
+      path: '/bulk'
+      fullPath: '/bulk'
+      preLoaderRoute: typeof BulkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/answer': {
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnswerRoute: AnswerRoute,
+  BulkRoute: BulkRoute,
   DashboardRoute: DashboardRoute,
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
