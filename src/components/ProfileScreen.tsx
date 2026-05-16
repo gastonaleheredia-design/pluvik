@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { BottomNav } from './BottomNav';
 import { AuthModal } from './AuthModal';
+import { formatEventDateRange } from '@/lib/formatEventDateRange';
 
 const PAPER = '#faf7f0';
 const INK = '#0b1018';
