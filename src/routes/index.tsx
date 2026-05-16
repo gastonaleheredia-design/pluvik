@@ -87,6 +87,7 @@ function friendVerdictColor(v: string | null | undefined): string {
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
+  const { focus: focusFlag } = useSearch({ from: '/' });
   const { address: selectedAddress, setAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
