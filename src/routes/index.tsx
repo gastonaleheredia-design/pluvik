@@ -1407,6 +1407,12 @@ function HomePage() {
           onClose={() => setSheetMode('closed')}
         />
       )}
+      {rainSheetOpen && (
+        <RainWindowSheet
+          hours={briefing?.rain_hours_48 ?? []}
+          onClose={() => setRainSheetOpen(false)}
+        />
+      )}
     </div>
   );
 }
