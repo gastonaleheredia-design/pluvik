@@ -15,6 +15,7 @@ import { I18nextProvider } from "react-i18next";
 import { AuthProvider } from "../lib/auth";
 import { AddressProvider } from "../lib/addressContext";
 import { PreferencesProvider } from "../lib/preferencesContext";
+import { UsernameSetupModal } from "../components/UsernameSetupModal";
 import { Toaster } from "sonner";
 
 function NotFoundComponent() {
@@ -149,6 +150,7 @@ function RootComponent() {
           <PreferencesProvider>
             <AuthProvider>
               <Outlet />
+              <UsernameSetupModal />
             </AuthProvider>
           </PreferencesProvider>
         </AddressProvider>
