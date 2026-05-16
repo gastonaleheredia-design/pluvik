@@ -71,6 +71,30 @@ export const Route = createFileRoute('/')({
   component: HomePage,
 });
 
+type FriendEvent = {
+  id: string;
+  title: string | null;
+  question: string | null;
+  activity_type: string | null;
+  verdict: string | null;
+  event_date: string | null;
+  creator_username: string;
+};
+
+const ACTIVITY_EMOJI: Record<string, string> = {
+  camping: '🏕', wedding: '💒', sports: '⚽', party: '🎉', festival: '🎪',
+  construction: '🏗', running: '🏃', boating: '⛵', graduation: '🎓',
+  cookout: '🍔', other: '🎭',
+};
+
+function friendVerdictColor(v: string | null | undefined): string {
+  const s = (v || '').toUpperCase();
+  if (s.includes('CLEAR') || s.includes('GO')) return '#15803d';
+  if (s.includes('LIKELY') || s.includes('SHELTER') || s.includes('CANCEL')) return '#b91c1c';
+  if (s) return '#c2410c';
+  return '#6b6b6b';
+}
+
 function HomePage() {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
@@ -91,6 +115,7 @@ function HomePage() {
   };
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [recordElapsed, setRecordElapsed] = useState(0);
@@ -141,6 +166,57 @@ function HomePage() {
       } else {
         setDailyCount((data.daily_question_count as number) ?? 0);
       }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Friends' events: events created by followed users where current user is a participant.
+  useEffect(() => {
+    if (!user) { setFriendEvents([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: followRows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
+      const followedIds = (followRows ?? []).map((r) => r.following_id as string);
+      if (followedIds.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const { data: partRows } = await supabase
+        .from('event_participants')
+        .select('event_id')
+        .eq('user_id', user.id);
+      const partIds = Array.from(new Set((partRows ?? []).map((r) => r.event_id as string)));
+      if (partIds.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const { data: evs } = await supabase
+        .from('weather_events')
+        .select('id, title, question, activity_type, verdict, event_date, creator_id, status')
+        .in('id', partIds)
+        .in('creator_id', followedIds)
+        .neq('status', 'canceled')
+        .order('event_date', { ascending: true })
+        .limit(3);
+      const events = evs ?? [];
+      if (events.length === 0) { if (!cancelled) setFriendEvents([]); return; }
+
+      const creatorIds = Array.from(new Set(events.map((e) => e.creator_id as string)));
+      const { data: profs } = await supabase
+        .from('user_profiles')
+        .select('id, username')
+        .in('id', creatorIds);
+      const usernameById = new Map((profs ?? []).map((p) => [p.id as string, p.username as string]));
+
+      if (cancelled) return;
+      setFriendEvents(events.map((e) => ({
+        id: e.id as string,
+        title: e.title as string | null,
+        question: e.question as string | null,
+        activity_type: e.activity_type as string | null,
+        verdict: e.verdict as string | null,
+        event_date: e.event_date as string | null,
+        creator_username: usernameById.get(e.creator_id as string) ?? 'friend',
+      })));
     })();
     return () => { cancelled = true; };
   }, [user]);
@@ -1105,6 +1181,117 @@ function HomePage() {
               {label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* FRIENDS' EVENTS — events from people you follow */}
+      {user && friendEvents.length > 0 && (
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{
+            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#6b6b6b',
+            margin: '0 0 10px',
+          }}>
+            Friends' events
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {friendEvents.map((e) => {
+              const emoji = e.activity_type ? (ACTIVITY_EMOJI[e.activity_type] ?? '📅') : '📅';
+              const daysLeft = e.event_date
+                ? Math.ceil((new Date(e.event_date).getTime() - Date.now()) / 86400000)
+                : null;
+              const dayLabel = daysLeft == null ? null
+                : daysLeft <= 0 ? 'Today'
+                : daysLeft === 1 ? 'Tomorrow'
+                : `In ${daysLeft} days`;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => navigate({ to: '/event/$id', params: { id: e.id } })}
+                  style={{
+                    textAlign: 'left',
+                    background: '#fff',
+                    border: '1px solid rgba(11,16,24,0.08)',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    color: '#0b1018',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{emoji}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontFamily: '"Fraunces", Georgia, serif',
+                        fontSize: '1rem',
+                        color: '#0b1018',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {e.title || e.question || 'Event'}
+                      </div>
+                      <div style={{
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: '#6b6b6b',
+                        marginTop: 3,
+                      }}>
+                        @{e.creator_username} is hosting
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginTop: 8,
+                    flexWrap: 'wrap',
+                  }}>
+                    {e.verdict && (
+                      <span style={{
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.62rem',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        color: friendVerdictColor(e.verdict),
+                      }}>
+                        {e.verdict}
+                      </span>
+                    )}
+                    {e.event_date && (
+                      <span style={{
+                        fontFamily: '"Fraunces", Georgia, serif',
+                        fontSize: '0.82rem',
+                        color: '#6b6b6b',
+                      }}>
+                        {new Date(e.event_date).toLocaleDateString()}
+                      </span>
+                    )}
+                    {dayLabel && (
+                      <span style={{
+                        marginLeft: 'auto',
+                        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: '#c2410c',
+                      }}>
+                        {dayLabel}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
