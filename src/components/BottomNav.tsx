@@ -11,6 +11,18 @@ export function BottomNav() {
   const { user, tier } = useAuth();
   const [hasUnseen, setHasUnseen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [hasBusiness, setHasBusiness] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setHasBusiness(false);
+      return;
+    }
+    supabase
+      .from('business_profiles')
+      .select('id', { count: 'exact', head: true })
+      .then(({ count }) => setHasBusiness((count ?? 0) > 0));
+  }, [user, currentPath]);
 
   useEffect(() => {
     if (!user) {
@@ -63,6 +75,7 @@ export function BottomNav() {
     { to: '/', label: t('nav.home'), key: 'home' },
     { to: '/dashboard', label: t('nav.tracking'), key: 'tracking' },
     ...(tier === 'pro' ? [{ to: '/bulk', label: 'BULK', key: 'bulk' }] : []),
+    ...(hasBusiness ? [{ to: '/business', label: 'TEAM', key: 'business' }] : []),
     { to: '/settings', label: t('nav.settings'), key: 'settings' },
   ] as const;
 

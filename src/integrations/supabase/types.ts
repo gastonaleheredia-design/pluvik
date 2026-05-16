@@ -459,6 +459,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_team_tracked_events: {
+        Args: never
+        Returns: {
+          address: string
+          archived_at: string
+          asker_email: string
+          business_id: string
+          business_name: string
+          created_at: string
+          current_forecast_stage: string
+          current_verdict_sentence: string
+          current_verdict_word: string
+          event_at: string
+          id: string
+          is_active: boolean
+          question: string
+          resolved_address: string
+          user_id: string
+        }[]
+      }
       get_user_tier: { Args: { user_id: string }; Returns: string }
       is_business_member: {
         Args: { _business_id: string; _user_id: string }
