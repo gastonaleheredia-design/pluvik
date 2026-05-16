@@ -24,8 +24,10 @@ const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
 
-// Free tier monthly question limit (placeholder — adjust later).
-const FREE_QUESTION_LIMIT = 10;
+// Free tier DAILY question limit. After the 1st question they get the full
+// answer; questions 2 and 3 get the limited answer; the 4th is blocked
+// until next local midnight.
+const FREE_DAILY_LIMIT = 3;
 
 interface Occasion {
   key: string;
@@ -76,7 +78,8 @@ function HomePage() {
   const { user, tier, loading: authLoading } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [questionCount, setQuestionCount] = useState(0);
+  const [dailyCount, setDailyCount] = useState(0);
+  const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [isFirstOpen, setIsFirstOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -115,36 +118,28 @@ function HomePage() {
   const lastVoiceAtRef = useRef<number>(0);
   const questionInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load monthly question count for the signed-in user; reset to 0 if the
-  // stored reset date is from a previous month.
+  // Load daily question count for the signed-in user from user_profiles.
+  // Reset to 0 if last_question_date is not today.
   useEffect(() => {
-    if (!user) { setQuestionCount(0); return; }
+    if (!user) { setDailyCount(0); return; }
     let cancelled = false;
     (async () => {
       const { data } = await supabase
-        .from('profiles')
-        .select('monthly_question_count, question_count_reset_at')
+        .from('user_profiles')
+        .select('daily_question_count, last_question_date')
         .eq('id', user.id)
         .maybeSingle();
       if (cancelled || !data) return;
-      const now = new Date();
-      const resetAt = data.question_count_reset_at
-        ? new Date(data.question_count_reset_at as string)
-        : null;
-      const inPreviousMonth =
-        !resetAt ||
-        resetAt.getUTCFullYear() < now.getUTCFullYear() ||
-        (resetAt.getUTCFullYear() === now.getUTCFullYear() &&
-          resetAt.getUTCMonth() < now.getUTCMonth());
-      if (inPreviousMonth) {
-        const today = now.toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      const sameDay = data.last_question_date === today;
+      if (!sameDay) {
         await supabase
-          .from('profiles')
-          .update({ monthly_question_count: 0, question_count_reset_at: today })
+          .from('user_profiles')
+          .update({ daily_question_count: 0, last_question_date: today })
           .eq('id', user.id);
-        setQuestionCount(0);
+        setDailyCount(0);
       } else {
-        setQuestionCount((data.monthly_question_count as number) ?? 0);
+        setDailyCount((data.daily_question_count as number) ?? 0);
       }
     })();
     return () => { cancelled = true; };
@@ -482,10 +477,11 @@ function HomePage() {
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
-    // Free-tier monthly limit gate. Pro users (and admin emails, which are
-    // mapped to tier='pro' in auth) bypass entirely.
-    if (user && tier !== 'pro' && questionCount >= FREE_QUESTION_LIMIT) {
-      setShowUpgrade(true);
+    // Free-tier daily gate. Pro users (and admin emails, mapped to
+    // tier='pro' in auth) bypass entirely.
+    const isFree = user && tier !== 'pro';
+    if (isFree && dailyCount >= FREE_DAILY_LIMIT) {
+      setShowCountdown(true);
       return;
     }
     let finalPlace = pickedPlace;
@@ -514,15 +510,10 @@ function HomePage() {
         if (geo) finalPlace = geo;
       }
     }
-    // Increment monthly question count for signed-in free users (fire and forget).
-    if (user && tier !== 'pro') {
-      const next = questionCount + 1;
-      setQuestionCount(next);
-      void supabase
-        .from('profiles')
-        .update({ monthly_question_count: next })
-        .eq('id', user.id);
-    }
+    // Increment is now performed in /answer once the answer succeeds.
+    // Locally bump for immediate UI/gate consistency.
+    const limitedAnswer = isFree && dailyCount >= 1;
+    if (isFree) setDailyCount((c) => c + 1);
     navigate({
       to: '/answer',
       search: {
@@ -534,6 +525,7 @@ function HomePage() {
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
         intent,
         placeSource: finalPlace ? 'question' : 'active_address',
+        limitedAnswer,
       },
     });
   };
