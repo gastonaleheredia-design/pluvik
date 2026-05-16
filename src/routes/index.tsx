@@ -21,7 +21,6 @@ import { extractSportsVenue } from '../lib/sportsVenues';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
-const FIRST_OPEN_KEY = 'pluvik-first-open-done';
 const PREFILL_KEY = 'pluvik-prefill-question';
 const HOME_SESSIONS_KEY = 'pluvik-home-sessions';
 const HOME_SESSIONS_CHIP_LIMIT = 5;
@@ -91,14 +90,6 @@ function HomePage() {
   const [dailyCount, setDailyCount] = useState(0);
   const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
-  const [isFirstOpen, setIsFirstOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return !localStorage.getItem(FIRST_OPEN_KEY);
-  });
-  const dismissFirstOpen = () => {
-    try { localStorage.setItem(FIRST_OPEN_KEY, 'true'); } catch {}
-    setIsFirstOpen(false);
-  };
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
@@ -684,112 +675,6 @@ function HomePage() {
         paddingBottom: '96px',
       }}
     >
-      {isFirstOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: PAGE_BG,
-            zIndex: 50,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
-            gap: '32px',
-          }}
-        >
-          <div style={{
-            fontFamily: 'Fraunces, serif',
-            fontSize: '2rem',
-            fontWeight: 400,
-            letterSpacing: '-0.03em',
-            color: INK,
-          }}>
-            plu<span style={{ color: ACCENT }}>vik</span>
-          </div>
-          <div style={{
-            fontFamily: 'Fraunces, serif',
-            fontStyle: 'italic',
-            fontWeight: 300,
-            fontSize: 'clamp(1.3rem, 5vw, 1.6rem)',
-            color: INK,
-            textAlign: 'center',
-            lineHeight: 1.4,
-            maxWidth: 320,
-          }}>
-            What are you planning?
-          </div>
-          <div style={{ width: '100%', maxWidth: 400 }}>
-            <input
-              autoFocus
-              type="text"
-              placeholder="Ask anything about the weather..."
-              value={questionText}
-              onChange={(e) => {
-                dismissFirstOpen();
-                setQuestionText(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && questionText.trim()) {
-                  dismissFirstOpen();
-                  void handleSubmit();
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '16px 20px',
-                fontFamily: 'Fraunces, serif',
-                fontStyle: 'italic',
-                fontSize: '1rem',
-                color: INK,
-                background: '#fff',
-                border: '1.5px solid rgba(11,16,24,0.15)',
-                borderRadius: '100px',
-                outline: 'none',
-                boxShadow: '0 2px 12px rgba(11,16,24,0.06)',
-              }}
-            />
-          </div>
-          <button
-            onClick={() => {
-              dismissFirstOpen();
-              void startRecording();
-            }}
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              background: micState === 'recording' ? ACCENT : 'rgba(11,16,24,0.07)',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.3rem',
-              transition: 'background 0.15s',
-            }}
-          >
-            🎙
-          </button>
-          <button
-            onClick={dismissFirstOpen}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.5rem',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: MUTED,
-              cursor: 'pointer',
-              padding: '8px',
-            }}
-          >
-            Skip → see current conditions
-          </button>
-        </div>
-      )}
       {/* Tiny address tag, top */}
       {/* HERO — verdict word + sentence + next-rain caption */}
       <div
@@ -1300,7 +1185,6 @@ function HomePage() {
             ref={questionInputRef}
             value={questionText}
             onChange={(e) => {
-              if (isFirstOpen) dismissFirstOpen();
               setQuestionText(e.target.value);
             }}
             placeholder={
@@ -1323,7 +1207,6 @@ function HomePage() {
           <button
               type="button"
               onClick={() => {
-                if (isFirstOpen) dismissFirstOpen();
                 toggleMic();
               }}
               disabled={micState === 'transcribing'}
