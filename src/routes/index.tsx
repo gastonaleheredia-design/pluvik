@@ -113,7 +113,7 @@ function HomePage() {
   const [pickedPlace, setPickedPlace] = useState<GeocodedPlace | null>(null);
   const [pickedPlaceManual, setPickedPlaceManual] = useState(false);
   const [placeResolving, setPlaceResolving] = useState(false);
-  const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
+  const [rainSheetOpen, setRainSheetOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -547,10 +547,7 @@ function HomePage() {
     let finalPlace = pickedPlace;
     const finalTime = pickedTime;
     const baseText = questionText.trim();
-    const occasion = OCCASIONS.find((o) => o.key === selectedOccasion);
-    const composedQuestion = occasion
-      ? `${baseText} — ${occasion.contextSuffix}`
-      : baseText;
+    const composedQuestion = baseText;
     const distilled = distillQuestion(composedQuestion);
     const intent = classifyIntent(distilled);
     // Defense-in-depth: if the chip resolver didn't land on a place but
