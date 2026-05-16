@@ -931,21 +931,6 @@ function DashboardPage() {
                   </div>
                 )}
 
-                {/* Auto-archive countdown for active events */}
-                {!isArchived && archivesAtIso && (
-                  <div
-                    style={{
-                      fontSize: '0.65rem',
-                      letterSpacing: '0.06em',
-                      color: MUTED,
-                      opacity: 0.7,
-                      marginTop: '-2px',
-                    }}
-                  >
-                    Auto-archives {relFuture(archivesAtIso)}
-                  </div>
-                )}
-
                 {/* Why MAYBE long-form rationale lives on the detail view ("Why?") — not on the tracking card. */}
               </div>
             </Link>
