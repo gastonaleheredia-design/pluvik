@@ -20,8 +20,166 @@ import type { ForecastIntent } from '../lib/forecastRequest';
 import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage';
 import { buildWindowLabel } from '../lib/windowLabel';
 import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
+import { toast } from 'sonner';
 
 type WeatherAnswer = ExtendedWeatherAnswer;
+
+/**
+ * Render a square share card to a PNG Blob using <canvas>.
+ * Background #faf7f0, accent #c2410c, Fraunces serif heading.
+ */
+async function renderShareCardBlob(opts: {
+  verdictWord: string;
+  summary: string;
+  location: string;
+  dateLabel: string;
+}): Promise<Blob | null> {
+  if (typeof document === 'undefined') return null;
+  const size = 1080;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const PAPER = '#faf7f0';
+  const INK = '#0b1018';
+  const ACCENT = '#c2410c';
+  const MUTED = '#6b6b6b';
+  const PADDING = 80;
+  const MAX_W = size - PADDING * 2;
+
+  // Background
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, size, size);
+
+  // Accent corner bar
+  ctx.fillStyle = ACCENT;
+  ctx.fillRect(PADDING, PADDING, 64, 6);
+
+  // Wordmark
+  ctx.fillStyle = INK;
+  ctx.font = '600 56px Fraunces, Georgia, serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText('pluvik', PADDING, PADDING + 28);
+
+  // Topic label
+  ctx.fillStyle = MUTED;
+  ctx.font = '600 22px "JetBrains Mono", ui-monospace, monospace';
+  ctx.fillText('FORECAST · ' + opts.dateLabel.toUpperCase(), PADDING, PADDING + 110);
+
+  // Verdict word — large Fraunces
+  ctx.fillStyle = ACCENT;
+  ctx.font = '600 220px Fraunces, Georgia, serif';
+  let verdictFontSize = 220;
+  while (
+    verdictFontSize > 90 &&
+    ctx.measureText(opts.verdictWord.toUpperCase()).width > MAX_W
+  ) {
+    verdictFontSize -= 10;
+    ctx.font = `600 ${verdictFontSize}px Fraunces, Georgia, serif`;
+  }
+  const verdictY = size / 2 - verdictFontSize / 2 - 40;
+  ctx.fillText(opts.verdictWord.toUpperCase(), PADDING, verdictY);
+
+  // Summary sentence — wrapped
+  ctx.fillStyle = INK;
+  ctx.font = '400 italic 40px Fraunces, Georgia, serif';
+  const summaryY = verdictY + verdictFontSize + 40;
+  wrapText(ctx, opts.summary, PADDING, summaryY, MAX_W, 54, 4);
+
+  // Footer: location + date
+  ctx.fillStyle = MUTED;
+  ctx.font = '500 26px "JetBrains Mono", ui-monospace, monospace';
+  ctx.fillText(opts.location.toUpperCase(), PADDING, size - PADDING - 32);
+
+  return await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((b) => resolve(b), 'image/png');
+  });
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+) {
+  const words = text.split(/\s+/);
+  let line = '';
+  let lines: string[] = [];
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+    if (lines.length === maxLines) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (lines.length === maxLines) {
+    let last = lines[maxLines - 1];
+    while (ctx.measureText(last + '…').width > maxWidth && last.length > 0) {
+      last = last.slice(0, -1);
+    }
+    lines[maxLines - 1] = last + '…';
+  }
+  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+}
+
+async function shareForecast(opts: {
+  verdictWord: string;
+  summary: string;
+  location: string;
+  dateLabel: string;
+}) {
+  const textVersion =
+    `Pluvik · ${opts.dateLabel}\n` +
+    `${opts.verdictWord.toUpperCase()} — ${opts.summary}\n` +
+    `${opts.location}`;
+
+  try {
+    const blob = await renderShareCardBlob(opts);
+    if (
+      blob &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function'
+    ) {
+      const file = new File([blob], 'pluvik-forecast.png', { type: 'image/png' });
+      const shareData: ShareData = {
+        title: 'Pluvik forecast',
+        text: textVersion,
+      };
+      const canShareFiles =
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [file] });
+      if (canShareFiles) {
+        await navigator.share({ ...shareData, files: [file] });
+        return;
+      }
+      await navigator.share(shareData);
+      return;
+    }
+  } catch (err) {
+    // User cancelled or share failed — fall through to clipboard.
+    if ((err as Error)?.name === 'AbortError') return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(textVersion);
+      toast('Copied to clipboard.');
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  toast('Sharing not supported on this device.');
+}
 
 function UpgradeSheet({
   accent, ink, muted, onClose,
@@ -1767,6 +1925,30 @@ function AnswerPage() {
                 {t('answer.why', { defaultValue: 'Why?' })} →
               </button>
             )}
+            <button
+              onClick={() => {
+                const dateLabel = eventAtIso
+                  ? new Date(eventAtIso).toLocaleDateString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                    })
+                  : new Date().toLocaleDateString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                    });
+                void shareForecast({
+                  verdictWord: String(verdictWord),
+                  summary: verdictSentence || directAnswer,
+                  location: contextLine || resolvedAddress,
+                  dateLabel,
+                });
+              }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.65rem', letterSpacing: '0.18em', color: ACCENT,
+              }}
+            >
+              {t('answer.share', { defaultValue: 'SHARE' })}
+            </button>
             <button
               onClick={handleSaveTrack}
               disabled={saving}
