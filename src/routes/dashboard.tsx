@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { AuthModal } from '../components/AuthModal';
 import { BottomNav } from '../components/BottomNav';
 import { isRainYesNoQuestion, pickHeadlineWord, verdictToPlanLabel } from '../lib/headlineAnswer';
+import { StageBadge } from '../components/StageBadge';
+import type { ForecastStage } from '../lib/forecastStage';
 
 interface TrackedEvent {
   id: string;
@@ -57,6 +59,36 @@ const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
+const GOOD = '#15803d';
+const WARN = '#b45309';
+const BAD = '#b91c1c';
+
+function verdictColor(word: string | null | undefined): string {
+  if (!word) return INK;
+  const w = word.toUpperCase();
+  if (['UNLIKELY', 'NO', 'GO', 'YES', 'SAFE', 'ALL CLEAR', 'LEAN NO'].includes(w)) return GOOD;
+  if (['LIKELY', 'SHELTER', 'SHELTER NOW', 'NO-GO', 'LEAN YES', 'LEAN GO'].includes(w)) return BAD;
+  return WARN; // POSSIBLE, CAUTION, MAYBE, WAIT, WATCH, etc.
+}
+
+function formatEventDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function shortLocation(addr: string): string {
+  const parts = addr.split(',').map((p) => p.trim()).filter(Boolean);
+  return parts.slice(0, 2).join(', ');
+}
 
 function relTime(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
