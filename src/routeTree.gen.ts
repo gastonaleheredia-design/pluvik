@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -24,6 +25,11 @@ import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/terms'
     | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/terms'
     | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/terms'
     | '/alert/$id'
     | '/event/$id'
     | '/api/public/refresh-events'
@@ -206,6 +218,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
+  TermsRoute: typeof TermsRoute
   AlertIdRoute: typeof AlertIdRoute
   EventIdRoute: typeof EventIdRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
@@ -214,6 +227,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -326,6 +346,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
+  TermsRoute: TermsRoute,
   AlertIdRoute: AlertIdRoute,
   EventIdRoute: EventIdRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
