@@ -16,14 +16,17 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BulkRouteImport } from './routes/bulk'
 import { Route as AnswerRouteImport } from './routes/answer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventIdRouteImport } from './routes/event.$id'
+import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -60,6 +63,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutRoute = CheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BusinessRoute = BusinessRouteImport.update({
   id: '/business',
   path: '/business',
@@ -85,6 +93,11 @@ const EventIdRoute = EventIdRouteImport.update({
   path: '/event/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
+  id: '/return',
+  path: '/return',
+  getParentRoute: () => CheckoutRoute,
+} as any)
 const AlertIdRoute = AlertIdRouteImport.update({
   id: '/alert/$id',
   path: '/alert/$id',
@@ -100,12 +113,19 @@ const ApiPublicRefreshEventsRoute = ApiPublicRefreshEventsRouteImport.update({
   path: '/api/public/refresh-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -114,15 +134,18 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -131,9 +154,11 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -141,6 +166,7 @@ export interface FileRoutesById {
   '/answer': typeof AnswerRoute
   '/bulk': typeof BulkRoute
   '/business': typeof BusinessRoute
+  '/checkout': typeof CheckoutRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/help': typeof HelpRoute
   '/onboarding': typeof OnboardingRoute
@@ -149,9 +175,11 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
   '/alert/$id': typeof AlertIdRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -160,6 +188,7 @@ export interface FileRouteTypes {
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -168,15 +197,18 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -185,15 +217,18 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   id:
     | '__root__'
     | '/'
     | '/answer'
     | '/bulk'
     | '/business'
+    | '/checkout'
     | '/dashboard'
     | '/help'
     | '/onboarding'
@@ -202,9 +237,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/alert/$id'
+    | '/checkout/return'
     | '/event/$id'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
+    | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -212,6 +249,7 @@ export interface RootRouteChildren {
   AnswerRoute: typeof AnswerRoute
   BulkRoute: typeof BulkRoute
   BusinessRoute: typeof BusinessRoute
+  CheckoutRoute: typeof CheckoutRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   HelpRoute: typeof HelpRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -223,6 +261,7 @@ export interface RootRouteChildren {
   EventIdRoute: typeof EventIdRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
   ApiPublicSweepEventsRoute: typeof ApiPublicSweepEventsRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -276,6 +315,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/checkout': {
+      id: '/checkout'
+      path: '/checkout'
+      fullPath: '/checkout'
+      preLoaderRoute: typeof CheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/business': {
       id: '/business'
       path: '/business'
@@ -311,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/checkout/return': {
+      id: '/checkout/return'
+      path: '/return'
+      fullPath: '/checkout/return'
+      preLoaderRoute: typeof CheckoutReturnRouteImport
+      parentRoute: typeof CheckoutRoute
+    }
     '/alert/$id': {
       id: '/alert/$id'
       path: '/alert/$id'
@@ -332,14 +385,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicRefreshEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface CheckoutRouteChildren {
+  CheckoutReturnRoute: typeof CheckoutReturnRoute
+}
+
+const CheckoutRouteChildren: CheckoutRouteChildren = {
+  CheckoutReturnRoute: CheckoutReturnRoute,
+}
+
+const CheckoutRouteWithChildren = CheckoutRoute._addFileChildren(
+  CheckoutRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnswerRoute: AnswerRoute,
   BulkRoute: BulkRoute,
   BusinessRoute: BusinessRoute,
+  CheckoutRoute: CheckoutRouteWithChildren,
   DashboardRoute: DashboardRoute,
   HelpRoute: HelpRoute,
   OnboardingRoute: OnboardingRoute,
@@ -351,6 +424,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventIdRoute: EventIdRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
   ApiPublicSweepEventsRoute: ApiPublicSweepEventsRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
