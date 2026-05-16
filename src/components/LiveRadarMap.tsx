@@ -1255,12 +1255,144 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       )}
 
       {/* Top-left: live indicator only */}
-      <div style={pillTopLeft}>
-        <span style={liveDot} />
-        {source === "station" && stationId
-          ? `Live · ${stationId}`
-          : "Live · Mosaic"}
+      {view === "radar" ? (
+        <div style={pillTopLeft}>
+          <span style={liveDot} />
+          {source === "station" && stationId
+            ? `Live · ${stationId}`
+            : "Live · Mosaic"}
+        </div>
+      ) : (
+        <div
+          style={{
+            ...pillTopLeft,
+            backgroundColor: "rgba(120,53,15,0.85)",
+            color: "#fbbf24",
+            borderColor: "rgba(251,191,36,0.55)",
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              backgroundColor: "#fbbf24",
+              marginRight: 6,
+              display: "inline-block",
+            }}
+          />
+          PREDICTED ·{" "}
+          {(() => {
+            const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+            const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
+            return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
+          })()}
+        </div>
+      )}
+
+      {/* RADAR / FUTURE tabs */}
+      <div
+        style={{
+          position: "absolute",
+          top: 12,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "inline-flex",
+          backgroundColor: "rgba(11,16,24,0.78)",
+          border: "1px solid rgba(250,247,240,0.18)",
+          borderRadius: 999,
+          padding: 3,
+          zIndex: 5,
+          fontFamily: "JetBrains Mono, ui-monospace, monospace",
+          fontSize: "0.6rem",
+          letterSpacing: "0.16em",
+        }}
+      >
+        {(["radar", "future"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              backgroundColor: view === v
+                ? (v === "future" ? "#fbbf24" : "#faf7f0")
+                : "transparent",
+              color: view === v
+                ? (v === "future" ? "#451a03" : "#0b1018")
+                : "rgba(250,247,240,0.7)",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
+          >
+            {v === "radar" ? "RADAR" : "FUTURE"}
+          </button>
+        ))}
       </div>
+
+      {/* FUTURE slider + missing-frame message */}
+      {view === "future" && (
+        <div
+          style={{
+            position: "absolute",
+            left: 16,
+            right: 16,
+            bottom: 110,
+            zIndex: 5,
+            backgroundColor: "rgba(11,16,24,0.82)",
+            border: "1px solid rgba(251,191,36,0.35)",
+            borderRadius: 12,
+            padding: "10px 14px 12px",
+            color: "#faf7f0",
+            fontFamily: "JetBrains Mono, ui-monospace, monospace",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "0.58rem",
+              letterSpacing: "0.16em",
+              marginBottom: 6,
+              color: "#fbbf24",
+            }}
+          >
+            <span>HRRR FORECAST · +{forecastHour}H</span>
+            <span style={{ color: "rgba(250,247,240,0.55)" }}>
+              {forecastLoading ? "LOADING…" : `${forecastFrames?.length ?? 0} FRAMES`}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={18}
+            step={1}
+            value={forecastHour}
+            onChange={(e) => setForecastHour(parseInt(e.target.value, 10))}
+            style={{ width: "100%", accentColor: "#fbbf24" }}
+            aria-label="Forecast hour offset"
+          />
+          {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
+            <div
+              style={{
+                marginTop: 8,
+                fontFamily: "Fraunces, serif",
+                fontStyle: "italic",
+                fontSize: "0.85rem",
+                color: "#fde68a",
+              }}
+            >
+              Forecast not yet available
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Right toolbar */}
       <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
