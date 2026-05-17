@@ -47,7 +47,22 @@ function composeNonSevereDetail(
     ? 'Sin lluvia organizada cerca.'
     : 'No organized rain nearby.';
 }
-import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, classifyRadarReturnWord, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
+import {
+  probeImminentStorm,
+  probeNearbyCell,
+  getActiveWarning,
+  checkNearbyRadarReturns,
+  classifyRadarReturnWord,
+  fetchNearestMetar,
+  fetchOverheadDbz,
+  fetchHrrrRapAgreement,
+  type NearbyCellProbe,
+  type ActiveAlert,
+  type NearbyRadarReturns,
+  type MetarObservation,
+  type OverheadRadar,
+  type HrrrRapAgreement,
+} from './metDataFetcher';
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
