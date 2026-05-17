@@ -15,6 +15,7 @@ import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
 import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 import { fetchNearbyStorms } from "@/lib/fetchers/fetchNhcStorm";
+import { fetchRotationSignatureEvents, type RotationEvent } from "@/lib/fetchers/fetchRotationSignatures";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -24,6 +25,12 @@ interface LiveRadarMapProps {
   height?: number | string;
   /** When true, the map is rendered edge-to-edge inside a full-screen sheet. */
   isFullscreen?: boolean;
+  /**
+   * Bucketed alert severity. When `'high'` or `'critical'`, the radar exposes
+   * a `ROT` toggle in the bottom controls and renders the SWDI rotation
+   * signatures overlay (TVS + mesocyclone circles + labels).
+   */
+  severity?: 'critical' | 'high' | 'elevated' | 'low' | 'none';
 }
 
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
@@ -395,7 +402,7 @@ interface MiniCardData {
   phenomena?: string;
 }
 
-export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
+export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none' }: LiveRadarMapProps) {
   const navigate = useNavigate();
   const { setAddress, resumeFollowing } = useAddress();
   const containerRef = useRef<HTMLDivElement | null>(null);
