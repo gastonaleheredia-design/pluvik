@@ -338,6 +338,146 @@ function classifyComprehensive(ctx: ClassifyCtx): ComprehensiveWord {
   return ctx.isDay ? 'SUNNY' : 'CLEAR';
 }
 
+/* ─────────────────────────────────────────────────────────────────────── */
+/* Step 4 — strict METAR + overhead-radar + HRRR/RAP hierarchy             */
+/* ─────────────────────────────────────────────────────────────────────── */
+
+interface MetHierarchyCtx {
+  metar: MetarObservation | null;
+  overhead: OverheadRadar | null;
+  models: HrrrRapAgreement | null;
+  alertEvent: string | null;
+  cloudCover: number;
+  isDay: boolean;
+  windMph: number | null;
+  tempF: number | null;
+  heatIndexF: number | null;
+}
+
+/** NWS wind chill formula (°F), valid for T ≤ 50 °F and V > 3 mph. */
+function windChillF(tempF: number, windMph: number): number | null {
+  if (tempF > 50 || windMph <= 3) return null;
+  const v16 = Math.pow(windMph, 0.16);
+  return Math.round(35.74 + 0.6215 * tempF - 35.75 * v16 + 0.4275 * tempF * v16);
+}
+
+/**
+ * Strict verdict hierarchy:
+ *   A) METAR present weather (truth on the ground)
+ *   B) Overhead radar dBZ at user's exact point
+ *   C) HRRR + RAP next-2h precipitation agreement
+ *   D) NWS warning → sky cover → wind/heat/cold overrides
+ * Returns null when neither METAR, overhead radar, nor model agreement is
+ * informative AND no D-tier signal applies — caller should fall back to the
+ * legacy classifier.
+ */
+function classifyByMetHierarchy(ctx: MetHierarchyCtx): {
+  word: ComprehensiveWord;
+  source: 'metar' | 'overhead_radar' | 'models' | 'warning' | 'sky_cover';
+} | null {
+  // ───── A) METAR present weather ─────────────────────────────────────
+  const m = ctx.metar;
+  if (m && m.presentWeather.length > 0 && m.distanceMi <= 25) {
+    const has = (c: string) => m.presentWeather.includes(c as any);
+    const intensityFor = (c: string): '-' | '' | '+' => {
+      const i = m.presentWeather.indexOf(c as any);
+      return i >= 0 ? m.intensity[i] : '';
+    };
+    // Compound codes first so plain RA/DZ don't shadow them.
+    if (has('TSRA') || has('TS')) return { word: 'THUNDERSTORMS', source: 'metar' };
+    if (has('FZRA') || has('FZDZ')) return { word: 'FREEZING RAIN', source: 'metar' };
+    if (has('GR')) return { word: 'HAIL', source: 'metar' };
+    if (has('PL')) return { word: 'SLEET', source: 'metar' };
+    if (has('SHRA')) return { word: 'SHOWERS', source: 'metar' };
+    if (has('RA')) {
+      const inten = intensityFor('RA');
+      const od = ctx.overhead?.dbz ?? null;
+      if (inten === '+' || (od != null && od >= 40)) return { word: 'HEAVY RAIN', source: 'metar' };
+      if (inten === '' && (od == null || od >= 30)) return { word: 'RAIN', source: 'metar' };
+      return { word: 'LIGHT RAIN', source: 'metar' };
+    }
+    if (has('DZ')) return { word: 'LIGHT RAIN', source: 'metar' };
+    if (has('SN') || has('SG') || has('IC')) {
+      const inten = intensityFor('SN');
+      if (inten === '+') return { word: 'HEAVY SNOW', source: 'metar' };
+      return { word: 'SNOW', source: 'metar' };
+    }
+    if (has('FG')) {
+      const vis = m.visibilityMi;
+      if (vis != null && vis < 0.25) return { word: 'DENSE FOG', source: 'metar' };
+      if (vis != null && vis <= 0.75) return { word: 'FOGGY', source: 'metar' };
+      return { word: 'FOGGY', source: 'metar' };
+    }
+    if (has('BR')) {
+      // Mist is light fog — only call it out when visibility is genuinely low.
+      if (m.visibilityMi != null && m.visibilityMi <= 3) return { word: 'FOGGY', source: 'metar' };
+    }
+    if (has('HZ') || has('FU')) return { word: 'HAZY', source: 'metar' };
+    // DU/SA fall through to sky cover.
+  }
+
+  // ───── B) Overhead radar (no precip in METAR but reflectivity at point) ─
+  const od = ctx.overhead?.dbz ?? null;
+  if (od != null && od > 20) {
+    if (od >= 50) return { word: 'HEAVY RAIN', source: 'overhead_radar' };
+    if (od >= 40) return { word: 'RAIN', source: 'overhead_radar' };
+    if (od >= 30) return { word: 'SHOWERS', source: 'overhead_radar' };
+    return { word: 'LIGHT RAIN', source: 'overhead_radar' };
+  }
+
+  // ───── C) Model agreement for next ~2 h ─────────────────────────────
+  const mdl = ctx.models;
+  if (mdl) {
+    const hrrrSoon1 = !!(mdl.hrrr?.firstHourWithPrecip && mdl.hrrr.firstHourWithPrecip <= 1);
+    const rapSoon1 = !!(mdl.rap?.firstHourWithPrecip && mdl.rap.firstHourWithPrecip <= 1);
+    const hrrrSoon2 = !!(mdl.hrrr?.firstHourWithPrecip && mdl.hrrr.firstHourWithPrecip <= 2);
+    const rapSoon2 = !!(mdl.rap?.firstHourWithPrecip && mdl.rap.firstHourWithPrecip <= 2);
+    if (hrrrSoon1 && rapSoon1) return { word: 'RAIN COMING', source: 'models' };
+    if (hrrrSoon2 && rapSoon2) return { word: 'CHANCE OF RAIN', source: 'models' };
+    if (hrrrSoon2 || rapSoon2) return { word: 'RAIN POSSIBLE', source: 'models' };
+    // Neither model shows precip → fall through to D.
+  }
+
+  // ───── D) No precipitation — sky cover + special conditions ─────────
+  if (ctx.alertEvent) {
+    const w = wordFromWarning(ctx.alertEvent);
+    if (w) return { word: w, source: 'warning' };
+  }
+
+  // Base sky-cover verdict.
+  let base: ComprehensiveWord;
+  if (ctx.cloudCover > 85) base = 'OVERCAST';
+  else if (ctx.cloudCover >= 60) base = 'MOSTLY CLOUDY';
+  else if (ctx.cloudCover >= 30) base = 'PARTLY CLOUDY';
+  else base = ctx.isDay ? 'SUNNY' : 'CLEAR';
+
+  // Special-condition overrides (most dangerous first).
+  if (ctx.tempF != null && ctx.windMph != null) {
+    const wc = windChillF(ctx.tempF, ctx.windMph);
+    if (wc != null && wc < -18) return { word: 'DANGEROUSLY COLD', source: 'sky_cover' };
+    if (wc != null && wc < 0) return { word: 'VERY COLD', source: 'sky_cover' };
+  }
+  if (ctx.heatIndexF != null && ctx.heatIndexF > 110) return { word: 'DANGEROUS HEAT', source: 'sky_cover' };
+  if (ctx.windMph != null && ctx.windMph > 40) return { word: 'VERY WINDY', source: 'sky_cover' };
+  if (ctx.windMph != null && ctx.windMph >= 25) return { word: 'WINDY', source: 'sky_cover' };
+  // 'HOT' is a modifier when there's no precip and heat index is high; we
+  // surface it as the primary word only when the sky is otherwise clear.
+  if (
+    ctx.heatIndexF != null && ctx.heatIndexF > 100 &&
+    (base === 'SUNNY' || base === 'CLEAR' || base === 'PARTLY CLOUDY')
+  ) {
+    return { word: 'HOT', source: 'sky_cover' };
+  }
+  // BREEZY only when the base sky is otherwise clear.
+  if (
+    ctx.windMph != null && ctx.windMph >= 15 && ctx.windMph < 25 &&
+    (base === 'SUNNY' || base === 'CLEAR' || base === 'PARTLY CLOUDY')
+  ) {
+    return { word: 'BREEZY', source: 'sky_cover' };
+  }
+  return { word: base, source: 'sky_cover' };
+}
+
 /** Localised italic sentence for the comprehensive vocabulary. */
 function sentenceForComprehensive(
   word: ComprehensiveWord,
