@@ -1104,7 +1104,7 @@ function HomePage() {
                     fontWeight: 400,
                     fontSize: 'clamp(1.2rem, 5vw, 2rem)',
                     lineHeight: 1,
-                    color: MUTED,
+                    color: txtMuted,
                     marginTop: '0.4em',
                     letterSpacing: '-0.01em',
                   }}
@@ -1122,7 +1122,7 @@ function HomePage() {
                 fontSize: 'clamp(1rem, 4.5vw, 1.35rem)',
                 lineHeight: 1.35,
                 maxWidth: '420px',
-                color: INK,
+                color: txtPrimary,
               }}
             >
               {briefing.sentence}
@@ -1141,7 +1141,7 @@ function HomePage() {
               const chipBase: React.CSSProperties = {
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '7px 13px', borderRadius: 100,
-                border: `1px solid rgba(11,16,24,0.12)`, background: 'transparent',
+                border: `1px solid ${chipBorder}`, background: 'transparent',
                 cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                 fontSize: '0.6rem', letterSpacing: '0.16em',
@@ -1185,7 +1185,7 @@ function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRainSheetOpen(true)}
-                        style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'pointer' }}
+                        style={{ ...chipBase, color: severeMode ? severeWhite : ACCENT, borderColor: severeMode ? chipBorder : `${ACCENT}55`, cursor: 'pointer' }}
                       >
                         <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                         {pillText}
@@ -1193,7 +1193,7 @@ function HomePage() {
                     );
                   })()}
                   {showRadarChip && (
-                    <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: INK }}>
+                    <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: txtPrimary }}>
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>◎</span>
                       {t('home.radar_chip', { defaultValue: 'RADAR' })}
                     </button>
@@ -1204,7 +1204,7 @@ function HomePage() {
                       onClick={() => setWhyOpen(true)}
                       aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
                       title={briefing.verdict_reason.detail}
-                      style={{ ...chipBase, color: INK }}
+                      style={{ ...chipBase, color: txtPrimary }}
                     >
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>ⓘ</span>
                       {t('home.why', { defaultValue: 'WHY' })}
