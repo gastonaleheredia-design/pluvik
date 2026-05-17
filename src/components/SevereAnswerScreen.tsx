@@ -599,8 +599,10 @@ function EmergencyShelterScreen({
               >
                 NEARBY WARNINGS · WITHIN 10 MI
               </div>
-              {otherAlerts.length > 0 ? (
-                otherAlerts.map((a, i) => (
+              {(() => {
+                const cleaned = otherAlerts.map((a) => cleanAlertText(a)).filter(Boolean);
+                return cleaned.length > 0 ? (
+                  cleaned.map((a, i) => (
                   <p
                     key={i}
                     style={{
@@ -610,13 +612,13 @@ function EmergencyShelterScreen({
                       lineHeight: 1.4,
                       color: '#ffffff',
                       margin: 0,
-                      marginBottom: i < otherAlerts.length - 1 ? '6px' : 0,
+                      marginBottom: i < cleaned.length - 1 ? '6px' : 0,
                     }}
                   >
                     {a}
                   </p>
-                ))
-              ) : (
+                  ))
+                ) : (
                 <p
                   style={{
                     fontFamily: 'Fraunces, serif',
@@ -628,7 +630,8 @@ function EmergencyShelterScreen({
                 >
                   No other warnings within 10 miles.
                 </p>
-              )}
+                );
+              })()}
             </div>
 
             <div>
