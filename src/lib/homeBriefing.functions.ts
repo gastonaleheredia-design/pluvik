@@ -324,6 +324,29 @@ function sentenceForComprehensive(
   ctx: ClassifyCtx,
   isEs: boolean,
 ): string | null {
+  // Location-aware override for radar-driven verdicts: when an intense cell
+  // is not directly overhead (>5 mi away), name the distance + direction so
+  // the user knows where the activity is rather than seeing a generic line.
+  const r = ctx.radar;
+  if (r && r.distanceMiles > 5) {
+    const dist = r.distanceMiles;
+    const dir = r.bearing;
+    if (word === 'STORMS' || word === 'THUNDERSTORMS') {
+      return isEs
+        ? `Tormentas a ${dist} mi al ${dir} — monitoreando.`
+        : `Storms ${dist} miles ${dir} — monitoring.`;
+    }
+    if (word === 'SHOWERS NEARBY') {
+      return isEs
+        ? `Chubascos a ${dist} mi al ${dir} — vigilando.`
+        : `Showers ${dist} miles ${dir} — monitoring.`;
+    }
+    if (word === 'CHANCE OF RAIN' && r.maxDbz >= 35) {
+      return isEs
+        ? `Lluvia a ${dist} mi al ${dir} — posible más tarde.`
+        : `Rain ${dist} miles ${dir} — possible later.`;
+    }
+  }
   if (isEs) {
     switch (word) {
       case 'SUNNY':
@@ -343,6 +366,7 @@ function sentenceForComprehensive(
       case 'FREEZING': return 'Temperaturas bajo cero — abrígate bien.';
       case 'DRIZZLE': return 'Llovizna ligera cerca.';
       case 'SHOWERS': return 'Chubascos cerca.';
+      case 'SHOWERS NEARBY': return 'Chubascos cerca.';
       case 'RAIN': return 'Está lloviendo cerca.';
       case 'HEAVY RAIN': return 'Lluvia intensa cerca — tráfico afectado.';
       case 'THUNDERSTORMS': return 'Tormentas eléctricas en el área.';
@@ -370,6 +394,7 @@ function sentenceForComprehensive(
     case 'FREEZING': return 'Freezing temps — bundle up.';
     case 'DRIZZLE': return 'Light drizzle nearby.';
     case 'SHOWERS': return 'Showers nearby.';
+    case 'SHOWERS NEARBY': return 'Showers nearby.';
     case 'RAIN': return 'Rain falling nearby.';
     case 'HEAVY RAIN': return 'Heavy rain nearby — expect slow traffic.';
     case 'THUNDERSTORMS': return 'Thunderstorms in the area.';
