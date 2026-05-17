@@ -258,6 +258,14 @@ export interface HomeBriefing {
   confidence?: 'high' | 'medium' | 'low';
   /** Hourly rain probability (%) for the next 48 hours, paired with ISO time strings. */
   rain_hours_48?: Array<{ time: string; prob: number }>;
+  /**
+   * Source tier that produced the verdict word. Surfaced as a small chip
+   * on the home screen so users can tell observation from forecast.
+   *   - 'OBSERVED': METAR present-weather, or active NWS warning (ground truth)
+   *   - 'RADAR':    live NEXRAD reflectivity at/near the user
+   *   - 'FORECAST': HRRR/RAP/Open-Meteo model guidance only
+   */
+  verdict_source?: 'OBSERVED' | 'RADAR' | 'FORECAST' | null;
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
