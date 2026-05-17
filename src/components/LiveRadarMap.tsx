@@ -491,7 +491,6 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [stationId, setStationId] = useState<string | null>(null);
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   const [gpsBusy, setGpsBusy] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null);
   const [tool, setTool] = useState<"none" | "ruler" | "pin">("none");
   const [rulerPts, setRulerPts] = useState<[number, number][]>([]); // [lon,lat]
   const [pinInfo, setPinInfo] = useState<{ lon: number; lat: number; label: string | null; distMi: number | null } | null>(null);
@@ -1459,19 +1458,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   };
 
   const useMyLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsError("Location not supported");
-      return;
-    }
+    if (!navigator.geolocation) return;
     setGpsBusy(true);
-    setGpsError(null);
     closeAllPanels();
     let settled = false;
     const hardTimer = setTimeout(() => {
       if (settled) return;
       settled = true;
       setGpsBusy(false);
-      setGpsError("Took too long to find you");
     }, 12_000);
     const onOk = async (pos: GeolocationPosition) => {
       if (settled) return;
@@ -1488,17 +1482,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       resumeFollowing();
       setPrecise(true);
     };
-    const onErr = (err: GeolocationPositionError) => {
+    const onErr = (_err: GeolocationPositionError) => {
       if (settled) return;
       settled = true;
       clearTimeout(hardTimer);
       setGpsBusy(false);
-      setGpsError(
-        err.code === 1 ? "Location is blocked. Enable it in your browser/system settings." :
-        err.code === 2 ? "Couldn't read your GPS" :
-        err.code === 3 ? "Took too long to find you" :
-        "Location error",
-      );
+      // Silent: radar already has saved address coords. GPS errors belong in
+      // AddressPicker, not here.
     };
     navigator.geolocation.getCurrentPosition(onOk, onErr,
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 });
@@ -1724,10 +1714,6 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
             </button>
           ))}
         </div>
-      )}
-
-      {gpsError && (
-        <div style={gpsErrorStyle}>{gpsError}</div>
       )}
 
       {tool !== "none" && (
@@ -2290,15 +2276,6 @@ function phenomenaTextColor(ph?: string): string {
   if (ph && light.has(ph.toUpperCase())) return "#0b1018";
   return "#faf7f0";
 }
-
-const gpsErrorStyle: React.CSSProperties = {
-  position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
-  backgroundColor: "rgba(185,28,28,0.92)", color: "#faf7f0",
-  padding: "5px 12px", borderRadius: 100,
-  fontFamily: "JetBrains Mono, ui-monospace, monospace",
-  fontSize: "0.58rem", letterSpacing: "0.14em", fontWeight: 700,
-  zIndex: 6,
-};
 
 const toolHintStyle: React.CSSProperties = {
   position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)",
