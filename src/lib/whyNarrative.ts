@@ -451,9 +451,9 @@ export { severeTypeLabel };
  *  2. When the verdict is RAIN SOON / STORMS / RAINING, strip contradictory
  *     "dry" or "next rain" mentions so the sentence can't fight the verdict.
  */
-function sanitizeSummary<T extends string | null>(text: T, word: WhyInputs['word']): T {
+function sanitizeSummary(text: string | null, word: WhyInputs['word']): string | null {
   if (!text) return text;
-  let out = text;
+  let out: string = text;
 
   // 1) Collapse consecutive duplicate phrases (case-insensitive, 1-3 words).
   //    Repeat until stable to catch overlapping duplications.
@@ -478,5 +478,5 @@ function sanitizeSummary<T extends string | null>(text: T, word: WhyInputs['word
   out = out.replace(/\s{2,}/g, ' ').replace(/^\s*[;,.]\s*/, '').trim();
   // Capitalize the first letter if the sentence now starts with lower case.
   if (out.length > 0) out = out[0].toUpperCase() + out.slice(1);
-  return out as T;
+  return out;
 }
