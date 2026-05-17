@@ -732,6 +732,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       existing.setData(data);
       enforceLayerOrder(map);
       fitToWarnings(map, data, la, lo);
+      setStormMotionData(map, data);
       return;
     }
     map.addSource("nws-warnings", { type: "geojson", data });
@@ -789,7 +790,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     wireWarningInteractions(map);
     enforceLayerOrder(map);
     fitToWarnings(map, data, la, lo);
-  }, [showWarnings, wireWarningInteractions, fitToWarnings]);
+    setStormMotionData(map, data);
+  }, [showWarnings, wireWarningInteractions, fitToWarnings, setStormMotionData]);
 
   /* -------------- Rotation signatures overlay (SWDI) -------------- */
 
