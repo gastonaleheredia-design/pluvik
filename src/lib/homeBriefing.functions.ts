@@ -894,6 +894,49 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     }
 
+    // ─── Comprehensive verdict-word classifier ───────────────────────────
+    // Apply the strict priority hierarchy AFTER all upstream signals have
+    // been collected. This replaces the legacy verdict word with the new
+    // comprehensive vocabulary (RAIN LIKELY, OVERCAST, FOGGY, etc.).
+    const maxRainProbNear = (() => {
+      const start = Math.max(nowIdx, 0);
+      const end = Math.min(start + 6, probs.length);
+      let m = nextHourProb;
+      for (let i = start; i < end; i++) {
+        const v = probs[i];
+        if (Number.isFinite(v) && v > m) m = v;
+      }
+      return m;
+    })();
+    const cur = j.current as OpenMeteoLite['current'];
+    const windMph = typeof cur.wind_speed_10m === 'number' ? Math.round(cur.wind_speed_10m) : null;
+    const visibilityMi = typeof cur.visibility === 'number' ? cur.visibility / 1609.34 : null;
+    const heatIndexF = typeof cur.apparent_temperature === 'number' ? Math.round(cur.apparent_temperature) : null;
+    const tempF = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : null;
+    const isDay = cur.is_day != null ? cur.is_day === 1 : (() => {
+      try {
+        const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date()), 10);
+        return h >= 6 && h < 19;
+      } catch { return true; }
+    })();
+    const comprehensive = classifyComprehensive({
+      alertEvent: activeAlert?.event ?? null,
+      radar: radarReturns,
+      rainingNow: liveRainingNow,
+      thunderNow,
+      snowNow,
+      maxRainProbNear,
+      cloudCover,
+      isDay,
+      windMph,
+      visibilityMi,
+      heatIndexF,
+      tempF,
+    });
+    // Preserve the legacy word for the sentence builder below, then override.
+    const legacyWord = word;
+    word = comprehensive;
+
     // One-line italic summary.
     let sentence: string;
     if (activeAlert) {
