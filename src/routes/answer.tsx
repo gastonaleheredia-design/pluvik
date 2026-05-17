@@ -864,6 +864,52 @@ function AnswerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-refresh severe context every 60s while a warning is active.
+  // Detects expiry/cancellation and (if opted-in) fires a "cleared" push.
+  useEffect(() => {
+    if (!severeAnswer || !coords) return;
+    const id = window.setInterval(async () => {
+      try {
+        const ctx = await fetchSevereContext({ data: { lat: coords.lat, lon: coords.lon } });
+        setSevereLastUpdated(Date.now());
+        if (!ctx.activeAlert && activeAlert != null) {
+          if (notifyOnClear) {
+            triggerPush({
+              data: {
+                title: `All clear — ${resolvedAddress || 'your area'}`,
+                body: `The ${activeAlert.event} has expired or been cancelled.`,
+                userId: user?.id ?? null,
+                priority: 'high',
+                url: '/',
+              },
+            }).catch((err) => console.warn('[severe] clear push failed', err));
+          }
+          setActiveAlert(null);
+          setSevereAnswer({
+            kind: 'general',
+            label: 'WARNING · CLEARED',
+            message: 'The warning has expired or been cancelled. Survey for downed power lines and debris before going outside.',
+          });
+        } else if (ctx.activeAlert) {
+          setActiveAlert(ctx.activeAlert);
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: coords.lat,
+              userLon: coords.lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+        }
+      } catch (err) {
+        console.warn('[severe] auto-refresh failed', err);
+      }
+    }, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [severeAnswer != null, coords?.lat, coords?.lon, activeAlert?.event, notifyOnClear]);
+
   const saveAndTrack = async () => {
     if (!answer) return;
     setSaving(true);
