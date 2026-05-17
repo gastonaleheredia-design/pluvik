@@ -38,6 +38,7 @@ export type SevereAnswerKind =
   | 'evacuation'
   | 'safety'
   | 'weakening'
+  | 'presence'
   | 'general';
 
 export interface SevereAnswer {
@@ -68,6 +69,43 @@ const SEVERE_PATTERNS: RegExp[] = [
   /is it moving/i,
 ];
 
+// Hazard nouns that, when mentioned in the question while a warning of the
+// same family is active, should always trigger the severe interpreter.
+const HAZARD_NOUNS: Array<{ re: RegExp; eventRe: RegExp }> = [
+  { re: /\btornado(es)?\b/i,               eventRe: /tornado/i },
+  { re: /\bflash\s*flood(ing|s)?\b/i,      eventRe: /flash\s*flood/i },
+  { re: /\bflood(ing|s)?\b/i,              eventRe: /flood/i },
+  { re: /\bhurricane\b/i,                  eventRe: /hurricane/i },
+  { re: /\btropical\s*storm\b/i,           eventRe: /tropical\s*storm/i },
+  { re: /\bstorm\s*surge\b/i,              eventRe: /storm\s*surge/i },
+  { re: /\b(severe\s*)?thunderstorm(s)?\b/i, eventRe: /severe\s*thunderstorm/i },
+  { re: /\bblizzard\b/i,                   eventRe: /blizzard/i },
+  { re: /\bice\s*storm\b/i,                eventRe: /ice\s*storm/i },
+  { re: /\bwinter\s*storm\b/i,             eventRe: /winter\s*storm/i },
+  { re: /\bextreme\s*heat\b/i,             eventRe: /extreme\s*heat/i },
+  { re: /\bextreme\s*cold\b/i,             eventRe: /extreme\s*cold/i },
+  { re: /\bred\s*flag\b|\bfire\s*weather\b/i, eventRe: /red\s*flag/i },
+  { re: /\btsunami\b/i,                    eventRe: /tsunami/i },
+  { re: /\bhigh\s*wind(s)?\b/i,            eventRe: /high\s*wind/i },
+];
+
+// "Is this happening right now?" style questions — when paired with an
+// active warning we should always route to the severe interpreter, even if
+// the user didn't name the hazard explicitly.
+const PRESENCE_PATTERNS: RegExp[] = [
+  /\bright now\b/i,
+  /\bcurrently\b/i,
+  /\bhappening\b/i,
+  /\bactive\b/i,
+  /\bin (effect|progress)\b/i,
+  /\bis there (a|an)\b/i,
+  /\bare we under\b/i,
+  /\bany (warning|warnings|alert|alerts)\b/i,
+  /\b(am|are) (i|we) safe\b/i,
+  /\bsafe\b/i,
+  /\bdanger(ous)?\b/i,
+];
+
 function isWarning(alert: InterpreterAlert | null | undefined): boolean {
   if (!alert?.event) return false;
   return /warning/i.test(alert.event);
@@ -83,7 +121,16 @@ export function isSevereWeatherQuestion(
 ): boolean {
   if (!isWarning(activeAlert)) return false;
   if (!question) return false;
-  return SEVERE_PATTERNS.some((re) => re.test(question));
+  if (SEVERE_PATTERNS.some((re) => re.test(question))) return true;
+  // Hazard-noun match: question mentions the same hazard the warning is for.
+  const event = activeAlert!.event;
+  const hazardHit = HAZARD_NOUNS.some(
+    (h) => h.re.test(question) && h.eventRe.test(event),
+  );
+  if (hazardHit) return true;
+  // Presence/safety questions are always severe when a warning is active.
+  if (PRESENCE_PATTERNS.some((re) => re.test(question))) return true;
+  return false;
 }
 
 /* ------------------------- Helpers ------------------------- */
@@ -183,6 +230,11 @@ function matchKind(question: string): SevereAnswerKind {
   if (/should i evacuate|should i leave|should i drive/.test(q)) return 'evacuation';
   if (/safe to go|can i go out|is it over/.test(q)) return 'safety';
   if (/weakening|getting better|getting worse|is it passing/.test(q)) return 'weakening';
+  // "is there a tornado right now?", "are we under a warning?", "is it happening?"
+  if (/\b(is|are|do|does|have|has)\b.*\b(tornado|flood|hurricane|storm|warning|alert|happening|right now|currently|active)\b/.test(q)
+      || /\bright now\b|\bcurrently\b|\bhappening\b|\bin effect\b|\bany (warning|alert)/.test(q)) {
+    return 'presence';
+  }
   return 'general';
 }
 
@@ -355,6 +407,20 @@ export function answerSevereWeatherQuestion(
         label,
         message:
           `Radar trend is not conclusive. The ${noun} remains active until ${expiry.localized}. Stay sheltered.`,
+      };
+    }
+
+    case 'presence': {
+      const minLine = expiry.minutesLeft != null
+        ? ` (${Math.max(0, expiry.minutesLeft)} minutes from now)`
+        : '';
+      return {
+        kind,
+        label,
+        message:
+          `YES — a ${noun} is ACTIVE at your location right now. ` +
+          `It remains in effect until ${expiry.localized}${minLine}. ` +
+          `Take shelter immediately and stay there until the warning expires.`,
       };
     }
 
