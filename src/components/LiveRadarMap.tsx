@@ -32,6 +32,10 @@ interface LiveRadarMapProps {
    * signatures overlay (TVS + mesocyclone circles + labels).
    */
   severity?: 'critical' | 'high' | 'elevated' | 'low' | 'none';
+  /** Optional close handler — surfaces the ✕ in the top bar (fullscreen). */
+  onClose?: () => void;
+  /** Optional minimize handler — surfaces the ▾ chevron in the top bar. */
+  onMinimize?: () => void;
 }
 
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
