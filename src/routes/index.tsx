@@ -761,6 +761,14 @@ function HomePage() {
   const nearbyLine = renderNearby();
   const warning = briefing?.alert ?? null;
   const severity: AlertSeverity = getAlertSeverity(warning?.event);
+  // Severe-warning takeover: when an active NWS Tornado / Flash Flood /
+  // Severe Thunderstorm Warning is in effect, force the home screen into
+  // a high-contrast dark mode so every text element stays readable.
+  const severeMode = !!warning && /(Tornado|Flash Flood|Severe Thunderstorm)\s+Warning/i.test(warning.event);
+  const severeBg = '#1a0808';
+  const severeAccent = '#ff4444';
+  const severeWhite = '#ffffff';
+  const severeMuted = 'rgba(255,255,255,0.75)';
   const SEVERITY_PAGE_BG: Record<AlertSeverity, string> = {
     critical: '#7f1d1d',
     high: '#431407',
@@ -792,6 +800,11 @@ function HomePage() {
   const bannerStyle = palette
     ? { bg: 'rgba(255,255,255,0.08)', border: palette.accent, color: palette.text }
     : SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
+
+  // Resolve text colors used throughout the hero based on severeMode.
+  const txtPrimary = severeMode ? severeWhite : INK;
+  const txtMuted = severeMode ? severeMuted : MUTED;
+  const chipBorder = severeMode ? 'rgba(255,255,255,0.5)' : 'rgba(11,16,24,0.12)';
 
   return (
     <div
