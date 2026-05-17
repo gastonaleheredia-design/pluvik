@@ -845,12 +845,34 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       };
     }
 
+    // Resolve the "NEXT RAIN" pill against live radar + current verdict so we
+    // never advertise a future rain time when it's already raining nearby.
+    //  - Radar return within 5 mi  → "RAINING NEARBY"
+    //  - Radar return within 30 mi → "RAIN APPROACHING · {N} MI"
+    //  - Verdict already wet (RAINING/STORMS/SNOW), or CLOUDY w/ nearby radar
+    //    → suppress the forecast future-time caption entirely.
+    let resolvedRainCaption: string | null = activeAlert ? null : nextRainCaption;
+    if (!activeAlert) {
+      const wetVerdict = word === 'RAINING' || word === 'STORMS' || word === 'SNOW';
+      if (radarReturns && radarReturns.distanceMiles <= 5) {
+        resolvedRainCaption = isEs ? 'LLUVIA CERCA' : 'RAINING NEARBY';
+      } else if (radarReturns && radarReturns.distanceMiles <= 30) {
+        resolvedRainCaption = isEs
+          ? `LLUVIA ACERCÁNDOSE · ${radarReturns.distanceMiles} MI`
+          : `RAIN APPROACHING · ${radarReturns.distanceMiles} MI`;
+      } else if (wetVerdict) {
+        resolvedRainCaption = null;
+      } else if (word === 'CLOUDY' && radarReturns) {
+        resolvedRainCaption = null;
+      }
+    }
+
     return {
       word,
       sentence,
       // When a warning is active, the warning IS the next rain — hide the
       // long-range Open-Meteo caption to avoid contradicting reality.
-      next_rain_caption: activeAlert ? null : nextRainCaption,
+      next_rain_caption: resolvedRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
@@ -874,7 +896,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         tempF: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
         cloudCover,
         hoursUntilRain,
-        nextRainCaption: activeAlert ? null : nextRainCaption,
+        nextRainCaption: resolvedRainCaption,
         nearbyCell: nearbyProbe,
         alert: activeAlert,
       }),
