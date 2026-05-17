@@ -196,6 +196,131 @@ const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 
 /* ---------------------------------------------------------------- */
+/* Comprehensive verdict-word classifier (strict priority hierarchy) */
+/* ---------------------------------------------------------------- */
+
+type ComprehensiveWord = NonNullable<HomeBriefing['word']>;
+
+interface ClassifyCtx {
+  alertEvent: string | null;
+  radar: NearbyRadarReturns | null;
+  rainingNow: boolean;
+  thunderNow: boolean;
+  snowNow: boolean;
+  /** Max probability over next ~6 hours (%). */
+  maxRainProbNear: number;
+  cloudCover: number;
+  isDay: boolean;
+  windMph: number | null;
+  visibilityMi: number | null;
+  heatIndexF: number | null;
+  tempF: number | null;
+}
+
+/** Map an NWS warning event string to its verdict word. */
+function wordFromWarning(event: string): ComprehensiveWord | null {
+  const e = event.toLowerCase();
+  if (/tornado warning/.test(e)) return 'STORMS';
+  if (/flash flood warning/.test(e)) return 'FLASH FLOOD';
+  if (/severe thunderstorm warning/.test(e)) return 'STORMS';
+  if (/blizzard warning/.test(e)) return 'BLIZZARD';
+  if (/winter storm warning/.test(e)) return 'BLIZZARD';
+  if (/ice storm warning/.test(e)) return 'ICE STORM';
+  return null;
+}
+
+function classifyComprehensive(ctx: ClassifyCtx): ComprehensiveWord {
+  // PRIORITY 1 — Active NWS warnings.
+  if (ctx.alertEvent) {
+    const w = wordFromWarning(ctx.alertEvent);
+    if (w) return w;
+  }
+  // Active precip on the point still beats forecast-based fallbacks.
+  if (ctx.thunderNow) return 'STORMS';
+  if (ctx.snowNow) return 'BLIZZARD';
+
+  // PRIORITY 2 — Live radar override.
+  if (ctx.radar) {
+    const rw = classifyRadarReturnWord(ctx.radar.maxDbz, ctx.radar.distanceMiles);
+    if (rw) return rw;
+  }
+  if (ctx.rainingNow) return 'RAIN';
+
+  // PRIORITY 3 — Rain probability.
+  const p = ctx.maxRainProbNear;
+  if (p > 70) return 'RAIN LIKELY';
+  if (p >= 40) return 'SHOWERS LIKELY';
+  if (p >= 25) return 'CHANCE OF RAIN';
+
+  // PRIORITY 5 (checked before cloud cover for hazards that override sky).
+  if (ctx.visibilityMi != null && ctx.visibilityMi < 0.25) return 'FOGGY';
+  if (ctx.heatIndexF != null && ctx.heatIndexF > 110) return 'DANGEROUSLY HOT';
+  if (ctx.heatIndexF != null && ctx.heatIndexF > 100) return 'HOT';
+  if (ctx.windMph != null && ctx.windMph > 40) return 'VERY WINDY';
+  if (ctx.windMph != null && ctx.windMph >= 25) return 'WINDY';
+  if (ctx.tempF != null && ctx.tempF < 32) return 'FREEZING';
+
+  // PRIORITY 4 — Cloud cover.
+  if (ctx.cloudCover > 85) return 'OVERCAST';
+  if (ctx.cloudCover >= 60) return 'MOSTLY CLOUDY';
+  if (ctx.cloudCover >= 30) return 'PARTLY CLOUDY';
+
+  // Otherwise low cloud — special "breezy when otherwise clear" case.
+  if (ctx.windMph != null && ctx.windMph >= 15) return 'BREEZY';
+  return ctx.isDay ? 'SUNNY' : 'CLEAR';
+}
+
+/** Localised italic sentence for the comprehensive vocabulary. */
+function sentenceForComprehensive(
+  word: ComprehensiveWord,
+  ctx: ClassifyCtx,
+  isEs: boolean,
+): string | null {
+  if (isEs) {
+    switch (word) {
+      case 'SUNNY':
+      case 'CLEAR': return 'Cielo despejado ahora mismo.';
+      case 'PARTLY CLOUDY': return 'Algunas nubes, sin lluvia.';
+      case 'MOSTLY CLOUDY': return 'Cielo mayormente nublado, seco por ahora.';
+      case 'OVERCAST': return 'Cielo cubierto, sin lluvia por ahora.';
+      case 'CHANCE OF RAIN': return 'Posible lluvia más tarde — no es seguro.';
+      case 'SHOWERS LIKELY': return 'Se esperan chubascos dispersos.';
+      case 'RAIN LIKELY': return 'Lluvia probable — planifica con eso.';
+      case 'BREEZY': return 'Brisa ligera, por lo demás despejado.';
+      case 'WINDY': return 'Viento fuerte en la zona.';
+      case 'VERY WINDY': return 'Vientos muy fuertes — precaución al aire libre.';
+      case 'FOGGY': return 'Niebla densa — reduce la velocidad al manejar.';
+      case 'HOT': return `Sensación térmica ${ctx.heatIndexF ?? '?'}°F — limita la exposición al sol.`;
+      case 'DANGEROUSLY HOT': return `Calor peligroso (${ctx.heatIndexF ?? '?'}°F) — evita el exterior.`;
+      case 'FREEZING': return 'Temperaturas bajo cero — abrígate bien.';
+      case 'DRIZZLE': return 'Llovizna ligera cerca.';
+      case 'SHOWERS': return 'Chubascos cerca.';
+      case 'RAIN': return 'Está lloviendo cerca.';
+      case 'HEAVY RAIN': return 'Lluvia intensa cerca — tráfico afectado.';
+      case 'THUNDERSTORMS': return 'Tormentas eléctricas en el área.';
+      case 'FLASH FLOOD': return 'Aviso de inundación repentina — busca terreno alto.';
+      case 'BLIZZARD': return 'Ventisca activa — evita viajar.';
+      case 'ICE STORM': return 'Tormenta de hielo — superficies peligrosas.';
+      default: return null;
+    }
+  }
+  switch (word) {
+    case 'SUNNY': return 'Clear skies right now.';
+    case 'CLEAR': return 'Clear skies right now.';
+    case 'PARTLY CLOUDY': return 'Some clouds, staying dry.';
+    case 'MOSTLY CLOUDY': return 'Mostly cloudy, dry for now.';
+    case 'OVERCAST': return 'Overcast, dry for now.';
+    case 'CHANCE OF RAIN': return 'Rain possible later — not certain.';
+    case 'SHOWERS LIKELY': return 'Expect scattered showers.';
+    case 'RAIN LIKELY': return 'Rain expected — plan accordingly.';
+    case 'BREEZY': return 'Breezy conditions, otherwise clear.';
+    case 'WINDY': return 'Windy across the area.';
+    case 'VERY WINDY': return 'Very strong winds — use caution outdoors.';
+    case 'FOGGY': return 'Dense fog — reduce speed if driving.';
+    case 'HOT': return `Heat index ${ctx.heatIndexF ?? '?'}°F — limit outdoor exposure.`;
+    case 'DANGEROUSLY HOT': return `
+
+/* ---------------------------------------------------------------- */
 /* Alert severity classification                                     */
 /* ---------------------------------------------------------------- */
 
