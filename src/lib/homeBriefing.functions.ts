@@ -1169,6 +1169,73 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     const legacyWord = word;
     word = comprehensive;
 
+    // ─── Step 4: strict METAR + overhead-radar + HRRR/RAP hierarchy ──
+    // Best-effort: any individual fetch failure is swallowed and we keep
+    // the legacy/comprehensive verdict. Only override when the hierarchy
+    // returns a high-quality signal (METAR present-weather, overhead dBZ,
+    // or HRRR+RAP model agreement). When it falls all the way through to
+    // sky cover, the legacy radar-based STORMS/THUNDERSTORMS verdicts
+    // are kept so we don't downgrade a real nearby storm.
+    try {
+      const [metarObs, overheadRadar, modelAgreement] = await Promise.all([
+        fetchNearestMetar(lat, lon).catch(() => null),
+        fetchOverheadDbz(lat, lon).catch(() => null),
+        fetchHrrrRapAgreement(lat, lon).catch(() => null),
+      ]);
+      const hierarchy = classifyByMetHierarchy({
+        metar: metarObs,
+        overhead: overheadRadar,
+        models: modelAgreement,
+        alertEvent: activeAlert?.event ?? null,
+        cloudCover,
+        isDay,
+        windMph,
+        tempF,
+        heatIndexF,
+      });
+      if (hierarchy) {
+        // Active warnings already overrode `word` above — never weaken that.
+        if (activeAlert) {
+          // keep word as-is; warning is authoritative.
+        } else if (
+          hierarchy.source === 'metar' ||
+          hierarchy.source === 'overhead_radar' ||
+          hierarchy.source === 'models'
+        ) {
+          word = hierarchy.word;
+          reasonCode =
+            hierarchy.source === 'metar' ? 'point_precip'
+            : hierarchy.source === 'overhead_radar' ? 'nearby_strong_cell'
+            : 'forecast_soon';
+          reasonDetail =
+            hierarchy.source === 'metar'
+              ? (isEs
+                  ? `METAR (${metarObs!.stationId}, ${metarObs!.distanceMi.toFixed(0)} mi): ${metarObs!.presentWeather.join(', ')}`
+                  : `METAR (${metarObs!.stationId}, ${metarObs!.distanceMi.toFixed(0)} mi): ${metarObs!.presentWeather.join(', ')}`)
+              : hierarchy.source === 'overhead_radar'
+              ? (isEs
+                  ? `Radar encima: ${overheadRadar!.dbz} dBZ`
+                  : `Overhead radar: ${overheadRadar!.dbz} dBZ`)
+              : (isEs
+                  ? `HRRR/RAP: confianza ${modelAgreement!.confidence.toLowerCase()}`
+                  : `HRRR/RAP agreement: ${modelAgreement!.confidence.toLowerCase()}`);
+        } else if (hierarchy.source === 'sky_cover') {
+          // Sky-cover-only result: only override when the legacy verdict
+          // is itself a sky/calm verdict (i.e. there's no nearby radar
+          // storm to defend). Avoids "BREEZY" wiping out "STORMS".
+          const calmLegacy =
+            word === 'SUNNY' || word === 'CLEAR' ||
+            word === 'PARTLY CLOUDY' || word === 'MOSTLY CLOUDY' || word === 'OVERCAST' ||
+            word === 'BREEZY' || word === 'WINDY' || word === 'VERY WINDY' ||
+            word === 'HOT' || word === 'FREEZING' ||
+            word === 'DRY' || word === 'CLOUDY';
+          if (calmLegacy) word = hierarchy.word;
+        }
+      }
+    } catch (err) {
+      console.warn('[homeBriefing] met hierarchy failed', err);
+    }
+
     // One-line italic summary.
     let sentence: string;
     if (activeAlert) {
