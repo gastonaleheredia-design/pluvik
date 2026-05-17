@@ -1007,6 +1007,80 @@ export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyC
 }
 
 /**
+ * Wider-radius NEXRAD/HRRR radar return probe used by the home briefing to
+ * enforce the "live radar overrides forecast" rule. Samples the user's
+ * ±50 mi neighborhood and returns the strongest radar return found.
+ *
+ * Returns null when nothing meaningful (>= 20 dBZ) is in range, or when the
+ * upstream call fails. Caller decides what verdict to apply based on the
+ * (maxDbz, distanceMiles) pair — see callers in homeBriefing.functions.ts.
+ */
+export interface NearbyRadarReturns {
+  maxDbz: number;
+  distanceMiles: number;
+  bearing: string;
+}
+
+export async function checkNearbyRadarReturns(
+  lat: number,
+  lon: number,
+): Promise<NearbyRadarReturns | null> {
+  try {
+    // ~3.5 mi grid spacing covering ±~50 mi around the user. Slightly coarser
+    // than probeNearbyCell to keep the URL under Open-Meteo's request limit.
+    const STEP_DEG = 0.05;
+    const N = 14;
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
+    for (let i = -N; i <= N; i++) {
+      for (let j = -N; j <= N; j++) {
+        lats.push(+(lat + i * STEP_DEG).toFixed(4));
+        lons.push(+(lon + (j * STEP_DEG) / cosLat).toFixed(4));
+      }
+    }
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 7000);
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+        `&minutely_15=precipitation&forecast_minutely_15=2` +
+        `&models=gfs_hrrr&precipitation_unit=inch&timezone=auto`,
+      { signal: ctl.signal },
+    ).finally(() => clearTimeout(tid));
+    if (!res.ok) return null;
+    const json = await res.json();
+    const arr: any[] = Array.isArray(json) ? json : [json];
+
+    let best: NearbyRadarReturns | null = null;
+    for (const p of arr) {
+      const precip: number[] = p.minutely_15?.precipitation ?? [];
+      if (precip.length === 0) continue;
+      const max15 = Math.max(...precip);
+      if (max15 < 0.005) continue;
+      const mmPerHr = max15 * 4 * 25.4;
+      const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
+      if (dbz < 20) continue;
+      const dy = (p.latitude - lat) * 69;
+      const dx = (p.longitude - lon) * 69 * cosLat;
+      const dist = Math.round(Math.hypot(dx, dy));
+      if (dist > 50) continue;
+      // Prefer higher dBZ; on tie prefer closer.
+      if (!best || dbz > best.maxDbz || (dbz === best.maxDbz && dist < best.distanceMiles)) {
+        const bearingDeg = (Math.atan2(dx, dy) * 180) / Math.PI;
+        best = {
+          maxDbz: dbz,
+          distanceMiles: dist,
+          bearing: compass((bearingDeg + 360) % 360),
+        };
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Active NWS warning summary used by the home-screen banner. We only surface
  * the highest-priority warning (Tornado / Flash Flood / Severe Thunderstorm).
  * Watches and advisories are intentionally excluded — they cry wolf at a
