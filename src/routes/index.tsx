@@ -1470,6 +1470,77 @@ function HomePage() {
         </div>
       )}
 
+      {/* UPDATED FORECASTS — tracked events whose verdict changed recently */}
+      {user && updatedEvents.length > 0 && (
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{
+            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#6b6b6b',
+            margin: '0 0 10px',
+          }}>
+            Updated forecasts
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {updatedEvents.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => navigate({ to: '/event/$id', params: { id: e.id } })}
+                style={{
+                  textAlign: 'left',
+                  background: '#fff',
+                  border: '1px solid rgba(11,16,24,0.08)',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  color: '#0b1018',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontFamily: '"Fraunces", Georgia, serif',
+                    fontSize: '1rem',
+                    color: '#0b1018',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {e.question || 'Tracked forecast'}
+                  </div>
+                  {e.verdict_word && (
+                    <div style={{
+                      fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      color: '#c2410c',
+                      marginTop: 4,
+                    }}>
+                      {e.verdict_word}
+                    </div>
+                  )}
+                </div>
+                <span style={{
+                  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                  fontSize: '1.1rem',
+                  color: '#c2410c',
+                  lineHeight: 1,
+                }}>
+                  →
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Thin question input pinned near bottom */}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
