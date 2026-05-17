@@ -435,11 +435,48 @@ export function composeWhyNarrative(inputs: WhyInputs): WhyNarrative {
   return {
     scenario,
     severeType,
-    headline: headlineFor(scenario, severeType ?? 'non_severe', inputs),
+    headline: sanitizeSummary(headlineFor(scenario, severeType ?? 'non_severe', inputs), inputs.word),
     bullets,
-    outlook: outlookFor(scenario, inputs),
+    outlook: sanitizeSummary(outlookFor(scenario, inputs), inputs.word),
     confidence: confidenceFor(scenario, inputs),
   };
 }
 
 export { severeTypeLabel };
+
+/**
+ * Final defensive pass on summary strings before they reach the UI:
+ *  1. Collapse any consecutive duplicate word/phrase (1-3 tokens), e.g.
+ *     "next rain next rain · sun 1 pm" → "next rain · sun 1 pm".
+ *  2. When the verdict is RAIN SOON / STORMS / RAINING, strip contradictory
+ *     "dry" or "next rain" mentions so the sentence can't fight the verdict.
+ */
+function sanitizeSummary<T extends string | null>(text: T, word: WhyInputs['word']): T {
+  if (!text) return text;
+  let out = text;
+
+  // 1) Collapse consecutive duplicate phrases (case-insensitive, 1-3 words).
+  //    Repeat until stable to catch overlapping duplications.
+  const dupRe = /\b([\w'·:-]+(?:\s+[\w'·:-]+){0,2})(\s+)\1\b/gi;
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(dupRe, '$1');
+    if (next === out) break;
+    out = next;
+  }
+
+  // 2) Contradiction guard.
+  if (word === 'RAIN SOON' || word === 'STORMS' || word === 'RAINING') {
+    // Drop "dry now;" / "dry for now." / "sin lluvia ahora," fragments.
+    out = out.replace(/\bdry(?:\s+(?:now|for\s+now))?\s*[;,.:]?\s*/gi, '');
+    out = out.replace(/\bsin\s+lluvia\s+ahora\s*[;,.:]?\s*/gi, '');
+    // Drop trailing "next rain ..." fragments since rain is current/imminent.
+    out = out.replace(/[;,.]?\s*\bnext\s+rain\b[^.;,]*[.;,]?/gi, '');
+    out = out.replace(/[;,.]?\s*\bpróxima\s+lluvia\b[^.;,]*[.;,]?/gi, '');
+  }
+
+  // Normalize whitespace + stray leading punctuation introduced by removals.
+  out = out.replace(/\s{2,}/g, ' ').replace(/^\s*[;,.]\s*/, '').trim();
+  // Capitalize the first letter if the sentence now starts with lower case.
+  if (out.length > 0) out = out[0].toUpperCase() + out.slice(1);
+  return out as T;
+}
