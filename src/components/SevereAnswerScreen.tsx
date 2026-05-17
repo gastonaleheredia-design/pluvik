@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { getSeverityColors, STORMS_PALETTE } from '../lib/severityColors';
+import { cleanAlertText } from '../lib/cleanAlertText';
 
 interface SevereAnswerScreenProps {
   answer: ExtendedWeatherAnswer;
@@ -329,21 +330,24 @@ export function SevereAnswerScreen({
             <div className="mono-label" style={{ fontSize: '0.52rem', color: '#fca5a5', marginBottom: '6px' }}>
               {t('severe.alerts_label')}
             </div>
-            {answer.active_alerts.map((alert, i) => (
-              <p
-                key={i}
-                style={{
-                  fontFamily: 'Fraunces, serif',
-                  fontStyle: 'italic',
-                  fontSize: '0.82rem',
-                  color: 'rgba(250,247,240,0.85)',
-                  marginBottom: i < answer.active_alerts!.length - 1 ? '6px' : 0,
-                  lineHeight: 1.4,
-                }}
-              >
-                {alert}
-              </p>
-            ))}
+            {answer.active_alerts
+              .map((a) => cleanAlertText(a))
+              .filter((a) => a.length > 0)
+              .map((alert, i, arr) => (
+                <p
+                  key={i}
+                  style={{
+                    fontFamily: 'Fraunces, serif',
+                    fontStyle: 'italic',
+                    fontSize: '0.82rem',
+                    color: 'rgba(250,247,240,0.85)',
+                    marginBottom: i < arr.length - 1 ? '6px' : 0,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {alert}
+                </p>
+              ))}
           </div>
         )}
 
@@ -595,8 +599,10 @@ function EmergencyShelterScreen({
               >
                 NEARBY WARNINGS · WITHIN 10 MI
               </div>
-              {otherAlerts.length > 0 ? (
-                otherAlerts.map((a, i) => (
+              {(() => {
+                const cleaned = otherAlerts.map((a) => cleanAlertText(a)).filter(Boolean);
+                return cleaned.length > 0 ? (
+                  cleaned.map((a, i) => (
                   <p
                     key={i}
                     style={{
@@ -606,13 +612,13 @@ function EmergencyShelterScreen({
                       lineHeight: 1.4,
                       color: '#ffffff',
                       margin: 0,
-                      marginBottom: i < otherAlerts.length - 1 ? '6px' : 0,
+                      marginBottom: i < cleaned.length - 1 ? '6px' : 0,
                     }}
                   >
                     {a}
                   </p>
-                ))
-              ) : (
+                  ))
+                ) : (
                 <p
                   style={{
                     fontFamily: 'Fraunces, serif',
@@ -624,7 +630,8 @@ function EmergencyShelterScreen({
                 >
                   No other warnings within 10 miles.
                 </p>
-              )}
+                );
+              })()}
             </div>
 
             <div>
