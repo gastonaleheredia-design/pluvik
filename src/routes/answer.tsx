@@ -979,16 +979,83 @@ function AnswerPage() {
     }
   };
 
-  // ── LOADING STATE ──────────────────────────────
-  // Severe-weather intercept: simplified red screen, no confidence ladder,
-  // no tracking prompt. Renders whenever the warning-check resolved into
-  // an answer — regardless of whether the home page predicted it.
+  // ── SEVERE INTERCEPT ──────────────────────────
+  // Emergency-mode red screen with live countdown, auto-refresh, and an
+  // opt-in "notify when it clears" toggle. Renders whenever the warning
+  // check resolved into an answer — regardless of the URL `severe` flag.
   if (severeAnswer || severeLoading) {
+    const refreshSevere = async () => {
+      if (!coords) return;
+      setSevereRefreshing(true);
+      try {
+        const ctx = await fetchSevereContext({ data: { lat: coords.lat, lon: coords.lon } });
+        setSevereLastUpdated(Date.now());
+        // Detect clearance: warning was active, now gone.
+        const wasActive = activeAlert != null;
+        const isActive = ctx.activeAlert != null;
+        if (wasActive && !isActive) {
+          // Warning cleared — fire push if user opted in.
+          if (notifyOnClear) {
+            triggerPush({
+              data: {
+                title: `All clear — ${resolvedAddress || 'your area'}`,
+                body: `The ${activeAlert!.event} has expired or been cancelled.`,
+                userId: user?.id ?? null,
+                priority: 'high',
+                url: '/',
+              },
+            }).catch((err) => console.warn('[severe] clear push failed', err));
+          }
+          // Surface the cleared state in-app.
+          setActiveAlert(null);
+          setSevereAnswer({
+            kind: 'general',
+            label: 'WARNING · CLEARED',
+            message: 'The warning has expired or been cancelled. Survey for downed power lines and debris before going outside.',
+          });
+          return;
+        }
+        if (isActive) {
+          setActiveAlert(ctx.activeAlert);
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: coords.lat,
+              userLon: coords.lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+        }
+      } catch (err) {
+        console.warn('[severe] refresh failed', err);
+      } finally {
+        setSevereRefreshing(false);
+      }
+    };
     return (
       <SevereInterceptScreen
         loading={severeLoading && !severeAnswer}
         answer={severeAnswer}
+        activeAlert={activeAlert}
         question={question}
+        placeLabel={resolvedAddress || address}
+        lastUpdatedAt={severeLastUpdated}
+        notifyEnabled={notifyOnClear}
+        onToggleNotify={async () => {
+          // Toggle local opt-in. If turning on, ensure browser permission
+          // is granted so OneSignal can deliver the push.
+          if (!notifyOnClear && typeof window !== 'undefined' && 'Notification' in window) {
+            try {
+              if (Notification.permission === 'default') {
+                await Notification.requestPermission();
+              }
+            } catch { /* ignore — backend push still attempts via OneSignal */ }
+          }
+          setNotifyOnClear((v) => !v);
+        }}
+        onRefresh={refreshSevere}
+        refreshing={severeRefreshing}
         onBack={() => navigate({ to: '/' })}
       />
     );
