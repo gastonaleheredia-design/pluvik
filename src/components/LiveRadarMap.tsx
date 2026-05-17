@@ -1281,7 +1281,67 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     const v = showWarnings ? "visible" : "none";
     if (map.getLayer("nws-warnings-fill")) map.setLayoutProperty("nws-warnings-fill", "visibility", v);
     if (map.getLayer("nws-warnings-line")) map.setLayoutProperty("nws-warnings-line", "visibility", v);
+    // Storm-motion arrows live on top of warnings; keep them paired with the
+    // warnings toggle so the user can clear the screen with one tap.
+    if (map.getLayer("storm-motion-arrow")) map.setLayoutProperty("storm-motion-arrow", "visibility", v);
   }, [showWarnings]);
+
+  /* ---- Rotation signatures: fetch + push to map ---- */
+  useEffect(() => {
+    if (!rotQualifies) { setRotEvents([]); return; }
+    let cancelled = false;
+    fetchRotationSignatureEvents(meLat, meLon).then((evs) => {
+      if (!cancelled) setRotEvents(evs);
+    });
+    return () => { cancelled = true; };
+  }, [rotQualifies, meLat, meLon]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    setRotationData(map, rotEvents);
+  }, [rotEvents, setRotationData]);
+
+  // ROT layer visibility — also hide when severity drops below qualifying.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const v = showRot && rotQualifies ? "visible" : "none";
+    if (map.getLayer("rot-signatures-circle")) map.setLayoutProperty("rot-signatures-circle", "visibility", v);
+    if (map.getLayer("rot-signatures-label"))  map.setLayoutProperty("rot-signatures-label",  "visibility", v);
+  }, [showRot, rotQualifies]);
+
+  /* ---- Storm motion arrows: re-sync whenever the warnings layer refreshes ---- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let raf = 0;
+    const sync = () => {
+      if (!map.isStyleLoaded()) {
+        raf = requestAnimationFrame(sync);
+        return;
+      }
+      setStormMotionData(map, warningsDataRef.current);
+    };
+    // Push on mount + every time warnings change (we re-fetch on 120s).
+    sync();
+    const id = setInterval(sync, 30_000);
+    return () => { clearInterval(id); cancelAnimationFrame(raf); };
+  }, [setStormMotionData]);
+
+  // Arrow pulse (1.0 ↔ 0.45 once per second) — gives the static SDF icon a
+  // sense of motion without re-rendering React tree.
+  useEffect(() => {
+    const id = setInterval(() => setArrowPulse((p) => (p > 0.6 ? 0.45 : 1)), 600);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (map.getLayer("storm-motion-arrow")) {
+      map.setPaintProperty("storm-motion-arrow", "icon-opacity", arrowPulse);
+    }
+  }, [arrowPulse]);
 
   // Basemap swap
   useEffect(() => {
