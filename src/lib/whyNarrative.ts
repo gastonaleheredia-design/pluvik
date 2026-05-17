@@ -452,6 +452,24 @@ export function composeWhyNarrative(inputs: WhyInputs): WhyNarrative {
   const forecast = buildForecastBullet(inputs);
   if (forecast && !inputs.alert) bullets.push(forecast);
 
+  // Storm-passage ETA: only computed when we have an active warning with
+  // movement metadata, a polygon centroid, and the user's coords.
+  let stormPassageEta: StormPassageEta | null = null;
+  if (
+    inputs.alert &&
+    inputs.alert.movement &&
+    inputs.alert.centroid &&
+    typeof inputs.userLat === 'number' &&
+    typeof inputs.userLon === 'number'
+  ) {
+    stormPassageEta = computeStormPassageEta(
+      inputs.userLat,
+      inputs.userLon,
+      inputs.alert.centroid,
+      inputs.alert.movement,
+    );
+  }
+
   return {
     scenario,
     severeType,
@@ -459,10 +477,112 @@ export function composeWhyNarrative(inputs: WhyInputs): WhyNarrative {
     bullets,
     outlook: sanitizeSummary(outlookFor(scenario, inputs), inputs.word),
     confidence: confidenceFor(scenario, inputs),
+    stormPassageEta,
   };
 }
 
 export { severeTypeLabel };
+
+/* ------------------------- storm-passage ETA ----------------------------- */
+
+/**
+ * Compute when a moving storm will be at its closest approach to the user.
+ * Uses the storm centroid + movement vector parsed from NWS alert metadata
+ * (free-text "MOVING E AT 35 MPH" or "FROM 270 AT 35 MPH" forms).
+ *
+ * Returns null whenever confidence is low: unparseable movement, storm
+ * already past us, closest approach beyond 15 mi, or ETA outside 1-60 min.
+ * Never guesses — a missing line is far better than a wrong one in a warning.
+ */
+export function computeStormPassageEta(
+  userLat: number,
+  userLon: number,
+  centroid: { lat: number; lon: number },
+  movement: string,
+): StormPassageEta | null {
+  const parsed = parseMovement(movement);
+  if (!parsed) return null;
+  const { headingDeg, mph, headingAbbr } = parsed;
+  if (!Number.isFinite(mph) || mph < 5 || mph > 100) return null;
+
+  // Convert lat/lon deltas to miles (equirectangular approximation —
+  // accurate to within a few percent at warning-scale distances).
+  const cosLat = Math.cos((userLat * Math.PI) / 180);
+  const dEastMi = (centroid.lon - userLon) * 69 * cosLat;
+  const dNorthMi = (centroid.lat - userLat) * 69;
+
+  // Velocity components in (east, north) mph. headingDeg is meteorological
+  // direction of motion (0 = N, 90 = E, etc.).
+  const headRad = (headingDeg * Math.PI) / 180;
+  const vEast = mph * Math.sin(headRad);
+  const vNorth = mph * Math.cos(headRad);
+
+  // Closest-approach time: t* = -(d · v) / (v · v) hours.
+  const dDotV = dEastMi * vEast + dNorthMi * vNorth;
+  const vDotV = vEast * vEast + vNorth * vNorth;
+  if (vDotV <= 0) return null;
+  const tHours = -dDotV / vDotV;
+  const etaMinutes = Math.round(tHours * 60);
+  if (etaMinutes < 1 || etaMinutes > 60) return null;
+
+  // Closest-approach distance — only surface if storm actually comes near.
+  const closestEastMi = dEastMi + vEast * tHours;
+  const closestNorthMi = dNorthMi + vNorth * tHours;
+  const closestDistMi = Math.sqrt(closestEastMi ** 2 + closestNorthMi ** 2);
+  if (closestDistMi > 15) return null;
+
+  return { headingAbbr, mph: Math.round(mph), etaMinutes };
+}
+
+const COMPASS_TO_DEG: Record<string, { deg: number; abbr: string }> = {
+  N:  { deg: 0,   abbr: 'N' },  NORTH: { deg: 0, abbr: 'N' },
+  NNE:{ deg: 22,  abbr: 'NNE' },
+  NE: { deg: 45,  abbr: 'NE' }, NORTHEAST: { deg: 45, abbr: 'NE' },
+  ENE:{ deg: 67,  abbr: 'ENE' },
+  E:  { deg: 90,  abbr: 'E' },  EAST: { deg: 90, abbr: 'E' },
+  ESE:{ deg: 112, abbr: 'ESE' },
+  SE: { deg: 135, abbr: 'SE' }, SOUTHEAST: { deg: 135, abbr: 'SE' },
+  SSE:{ deg: 157, abbr: 'SSE' },
+  S:  { deg: 180, abbr: 'S' },  SOUTH: { deg: 180, abbr: 'S' },
+  SSW:{ deg: 202, abbr: 'SSW' },
+  SW: { deg: 225, abbr: 'SW' }, SOUTHWEST: { deg: 225, abbr: 'SW' },
+  WSW:{ deg: 247, abbr: 'WSW' },
+  W:  { deg: 270, abbr: 'W' },  WEST: { deg: 270, abbr: 'W' },
+  WNW:{ deg: 292, abbr: 'WNW' },
+  NW: { deg: 315, abbr: 'NW' }, NORTHWEST: { deg: 315, abbr: 'NW' },
+  NNW:{ deg: 337, abbr: 'NNW' },
+};
+
+function degToAbbr(deg: number): string {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+/**
+ * Parse NWS movement strings. Common forms:
+ *   "MOVING E AT 35 MPH"
+ *   "MOVING NORTHEAST AT 30 MPH"
+ *   "FROM 270 AT 35 MPH"          (from-direction in degrees; flip 180°)
+ */
+function parseMovement(s: string): { headingDeg: number; mph: number; headingAbbr: string } | null {
+  const txt = s.toUpperCase();
+  // "MOVING <DIR> AT <N> MPH"
+  let m = txt.match(/MOVING\s+([NSEW]{1,3}|NORTH(?:EAST|WEST)?|SOUTH(?:EAST|WEST)?|EAST|WEST)\s+(?:AT|@)\s*(\d+)\s*MPH/);
+  if (m) {
+    const compass = COMPASS_TO_DEG[m[1]];
+    if (compass) return { headingDeg: compass.deg, mph: parseInt(m[2], 10), headingAbbr: compass.abbr };
+  }
+  // "FROM <degrees> AT <N> MPH" — flip 180° to get heading.
+  m = txt.match(/FROM\s+(\d{1,3})\s+(?:AT|@)\s*(\d+)\s*(?:MPH|KT)/);
+  if (m) {
+    const fromDeg = parseInt(m[1], 10) % 360;
+    const headingDeg = (fromDeg + 180) % 360;
+    let mphVal = parseInt(m[2], 10);
+    if (/KT/.test(txt)) mphVal = Math.round(mphVal * 1.15078);
+    return { headingDeg, mph: mphVal, headingAbbr: degToAbbr(headingDeg) };
+  }
+  return null;
+}
 
 /**
  * Final defensive pass on summary strings before they reach the UI:
