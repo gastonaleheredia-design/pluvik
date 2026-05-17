@@ -385,63 +385,63 @@ const STYLES = {
 
 /* ---------------- HRRR forecast (FUTURE tab) ---------------- */
 
-const HRRR_API = "https://mesonet.agron.iastate.edu/api/1/radarfcst.json";
+// Discrete forecast hours surfaced in the UI. HRRR runs out to +18h.
+const HRRR_HOURS = [1, 2, 3, 6, 12, 18] as const;
+
+// IEM publishes a tiny JSON metadata file for the latest HRRR REFD run.
+// `model_init_utc` is the run timestamp we plug into the tile URL.
+const HRRR_LATEST_META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/hrrr/refd_1080.json";
 
 interface HrrrFrame {
+  /** Hours ahead of the model init (1, 2, 3, 6, 12, 18). */
+  hoursAhead: number;
   /** Epoch ms of the forecast valid time. */
   validMs: number;
   /** Tile URL template (must contain {z}/{x}/{y}). */
   tileUrl: string;
 }
 
+function pad(n: number, w = 2) { return n.toString().padStart(w, "0"); }
+
+function hrrrInitStamp(initMs: number): string {
+  const d = new Date(initMs);
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+}
+
 /**
- * Fetch IEM's HRRR forecast frame index. Returns a normalized list of
- * { validMs, tileUrl } so the slider can map +Nh → nearest forecast frame.
- * The shape of radarfcst.json varies; this reader is intentionally
- * defensive and falls back to building a tile.py URL when only a
- * timestamp is present.
+ * Fetch the latest HRRR model run and build one tile-template frame per
+ * surfaced forecast hour (+1, +2, +3, +6, +12, +18h). HRRR forecasts are
+ * published in 15-min steps, so hour offsets map cleanly to FXXXX minutes.
  */
 async function fetchHrrrForecastFrames(): Promise<HrrrFrame[]> {
   try {
-    const res = await fetch(HRRR_API);
+    const res = await fetch(HRRR_LATEST_META);
     if (!res.ok) return [];
-    const data = await res.json();
-    const raw: any[] = data?.frames ?? data?.data ?? [];
-    const out: HrrrFrame[] = [];
-    for (const r of raw) {
-      const validIso = r?.valid ?? r?.valid_at ?? r?.time ?? null;
-      const ms = validIso ? new Date(validIso).getTime() : (typeof r?.ts === "number" ? r.ts * 1000 : NaN);
-      if (!Number.isFinite(ms)) continue;
-      let tileUrl: string | null = r?.tile_url ?? r?.url ?? r?.tiles ?? null;
-      if (!tileUrl) {
-        // Derive from timestamp using IEM tile.py convention for HRRR REFD.
-        const d = new Date(ms);
-        const pad = (n: number) => n.toString().padStart(2, "0");
-        const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
-        tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
-      }
-      if (!/\{z\}/.test(tileUrl) || !/\{x\}/.test(tileUrl) || !/\{y\}/.test(tileUrl)) continue;
-      out.push({ validMs: ms, tileUrl });
-    }
-    out.sort((a, b) => a.validMs - b.validMs);
-    return out;
+    const meta = await res.json();
+    const initIso: string | undefined = meta?.model_init_utc;
+    if (!initIso) return [];
+    const initMs = new Date(initIso).getTime();
+    if (!Number.isFinite(initMs)) return [];
+    const stamp = hrrrInitStamp(initMs);
+    return HRRR_HOURS.map((h) => {
+      const fMin = pad(h * 60, 4);
+      return {
+        hoursAhead: h,
+        validMs: initMs + h * 3600 * 1000,
+        // REFD = composite reflectivity at the forecast minute, for the
+        // specific model init we just resolved. Explicit init avoids the
+        // cache-vs-latest ambiguity documented by IEM.
+        tileUrl: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/hrrr::REFD-F${fMin}-${stamp}/{z}/{x}/{y}.png`,
+      };
+    });
   } catch {
     return [];
   }
 }
 
-/** Pick the forecast frame closest to (now + hoursAhead). Returns null if no
- *  frame is within ~45 min of the requested time. */
+/** Pick the forecast frame matching the requested hour offset. */
 function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame | null {
-  if (!frames.length) return null;
-  const target = Date.now() + hoursAhead * 3600 * 1000;
-  let best: HrrrFrame | null = null;
-  let bestDiff = Number.POSITIVE_INFINITY;
-  for (const f of frames) {
-    const diff = Math.abs(f.validMs - target);
-    if (diff < bestDiff) { bestDiff = diff; best = f; }
-  }
-  return best && bestDiff <= 45 * 60 * 1000 ? best : null;
+  return frames.find((f) => f.hoursAhead === hoursAhead) ?? null;
 }
 
 /** Keep warning polygons painted above the radar raster after any swap. */
@@ -1606,60 +1606,41 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         ))}
       </div>
 
-      {/* FUTURE slider + missing-frame message */}
+      {/* FUTURE hour selector — replaces the live scrubber in FUTURE mode */}
       {view === "future" && (
-        <div
-          style={{
-            position: "absolute",
-            left: 16,
-            right: 16,
-            bottom: 110,
-            zIndex: 5,
-            backgroundColor: "rgba(11,16,24,0.82)",
-            border: "1px solid rgba(251,191,36,0.35)",
-            borderRadius: 12,
-            padding: "10px 14px 12px",
-            color: "#faf7f0",
-            fontFamily: "JetBrains Mono, ui-monospace, monospace",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontSize: "0.58rem",
-              letterSpacing: "0.16em",
-              marginBottom: 6,
-              color: "#fbbf24",
-            }}
-          >
+        <div style={futurePanelStyle}>
+          <div style={futurePanelHeader}>
             <span>HRRR FORECAST · +{forecastHour}H</span>
             <span style={{ color: "rgba(250,247,240,0.55)" }}>
-              {forecastLoading ? "LOADING…" : `${forecastFrames?.length ?? 0} FRAMES`}
+              {forecastLoading
+                ? "LOADING…"
+                : forecastFrames && forecastFrames.length > 0
+                  ? "LATEST RUN"
+                  : "UNAVAILABLE"}
             </span>
           </div>
-          <input
-            type="range"
-            min={1}
-            max={18}
-            step={1}
-            value={forecastHour}
-            onChange={(e) => setForecastHour(parseInt(e.target.value, 10))}
-            style={{ width: "100%", accentColor: "#fbbf24" }}
-            aria-label="Forecast hour offset"
-          />
+          <div style={futureHoursRow}>
+            {HRRR_HOURS.map((h) => {
+              const active = forecastHour === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setForecastHour(h)}
+                  style={{
+                    ...futureHourBtn,
+                    ...(active ? futureHourBtnActive : {}),
+                  }}
+                  aria-pressed={active}
+                >
+                  +{h}h
+                </button>
+              );
+            })}
+          </div>
           {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
-            <div
-              style={{
-                marginTop: 8,
-                fontFamily: "Fraunces, serif",
-                fontStyle: "italic",
-                fontSize: "0.85rem",
-                color: "#fde68a",
-              }}
-            >
-              Forecast not yet available
+            <div style={futureMissingStyle}>
+              Model data not yet available for this hour
             </div>
           )}
         </div>
@@ -1791,8 +1772,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </Toggle>
       </div>
 
-      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW */}
-      {frameTime && framesRef.current && (
+      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW (RADAR mode only) */}
+      {view === "radar" && frameTime && framesRef.current && (
         <div style={scrubberBarStyle}>
           {!playing && (
             <div style={pausedTimeStyle}>
@@ -2103,6 +2084,48 @@ const nowPillStyle: React.CSSProperties = {
 const nowPillLive: React.CSSProperties = {
   backgroundColor: "#ef4444", color: "#faf7f0",
   borderColor: "#ef4444",
+};
+
+const futurePanelStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 16, right: 16, bottom: 18,
+  zIndex: 5,
+  backgroundColor: "rgba(11,16,24,0.88)",
+  border: "1px solid rgba(251,191,36,0.4)",
+  borderRadius: 14,
+  padding: "10px 12px 12px",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  backdropFilter: "blur(6px)",
+};
+const futurePanelHeader: React.CSSProperties = {
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+  color: "#fbbf24",
+  marginBottom: 8,
+};
+const futureHoursRow: React.CSSProperties = {
+  display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "space-between",
+};
+const futureHourBtn: React.CSSProperties = {
+  flex: 1, minWidth: 44,
+  padding: "8px 4px", borderRadius: 100,
+  border: "1px solid rgba(251,191,36,0.35)",
+  backgroundColor: "transparent",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.7rem", letterSpacing: "0.08em", fontWeight: 700,
+  cursor: "pointer",
+};
+const futureHourBtnActive: React.CSSProperties = {
+  backgroundColor: "#fbbf24",
+  color: "#451a03",
+  borderColor: "#fbbf24",
+};
+const futureMissingStyle: React.CSSProperties = {
+  marginTop: 10,
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.85rem", color: "#fde68a", textAlign: "center",
 };
 
 const legendWrapStyle: React.CSSProperties = {
