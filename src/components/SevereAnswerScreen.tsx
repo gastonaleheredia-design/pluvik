@@ -247,6 +247,14 @@ export function SevereAnswerScreen({
           "{answer.summary}"
         </p>
 
+        <StormTimelineSection
+          alerts={answer.active_alerts}
+          userLat={typeof userLat === 'number' ? userLat : null}
+          userLon={typeof userLon === 'number' ? userLon : null}
+          textColor={textColor}
+          accentColor={accentColor}
+        />
+
         {isSevereTstmWarning && (
           <div
             style={{
