@@ -526,7 +526,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
               <circle cx="12" cy="12" r="3" />
               <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
             </svg>
-            {detectingLocation ? t('picker.detecting') : t('picker.current_location')}
+            {detectingLocation ? 'Locating you…' : t('picker.current_location')}
           </button>
           {detectingLocation && (
             <div
