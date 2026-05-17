@@ -462,7 +462,7 @@ interface MiniCardData {
   phenomena?: string;
 }
 
-export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none' }: LiveRadarMapProps) {
+export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none', onClose, onMinimize }: LiveRadarMapProps) {
   const navigate = useNavigate();
   const { setAddress, resumeFollowing } = useAddress();
   const containerRef = useRef<HTMLDivElement | null>(null);
