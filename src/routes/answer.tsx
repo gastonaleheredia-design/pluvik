@@ -515,7 +515,7 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer, severe } = Route.useSearch();
+  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, limitedAnswer } = Route.useSearch();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
