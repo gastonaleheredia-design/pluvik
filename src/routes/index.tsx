@@ -801,10 +801,17 @@ function HomePage() {
     ? { bg: 'rgba(255,255,255,0.08)', border: palette.accent, color: palette.text }
     : SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
 
-  // Resolve text colors used throughout the hero based on severeMode.
-  const txtPrimary = severeMode ? severeWhite : INK;
-  const txtMuted = severeMode ? severeMuted : MUTED;
-  const chipBorder = severeMode ? 'rgba(255,255,255,0.5)' : 'rgba(11,16,24,0.12)';
+  // Dark-mode home screen: any active NWS warning OR a dark-bg verdict word
+  // forces every text element to white. Do NOT rely on CSS inheritance —
+  // each element below sets `color` explicitly using `isDarkMode`.
+  const DARK_VERDICTS = new Set([
+    'STORMS', 'THUNDERSTORMS', 'HEAVY RAIN',
+    'FLASH FLOOD', 'BLIZZARD', 'ICE STORM',
+  ]);
+  const isDarkMode = !!warning || (!!briefing?.word && DARK_VERDICTS.has(briefing.word));
+  const txtPrimary = isDarkMode ? severeWhite : INK;
+  const txtMuted = isDarkMode ? severeWhite : MUTED;
+  const chipBorder = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
 
   return (
     <div
