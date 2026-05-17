@@ -912,18 +912,21 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         const { maxDbz, distanceMiles, bearing } = radarReturns;
         let radarWord: HomeBriefing['word'] | null = null;
         let radarLabel: string | null = null;
-        if (maxDbz >= 45 && distanceMiles <= 20) {
+        // Distance-weighted severity — see classifyRadarReturnWord docs.
+        if (maxDbz >= 45 && distanceMiles <= 10) {
           radarWord = 'STORMS';
           radarLabel = isEs ? 'TORMENTAS' : 'STORMS';
+        } else if (maxDbz >= 45 && distanceMiles <= 20) {
+          radarWord = 'THUNDERSTORMS';
+          radarLabel = isEs ? 'TORMENTAS' : 'THUNDERSTORMS';
+        } else if (maxDbz >= 35 && distanceMiles <= 20) {
+          radarWord = 'SHOWERS NEARBY';
+          radarLabel = isEs ? 'CHUBASCOS CERCA' : 'SHOWERS NEARBY';
         } else if (maxDbz >= 35 && distanceMiles <= 30) {
-          // "RAIN" / "HEAVY RAIN" mapped to the existing RAINING token so
-          // downstream UI keeps working. Severity is conveyed in the sentence.
-          radarWord = 'RAINING';
-          radarLabel = maxDbz >= 50
-            ? (isEs ? 'LLUVIA INTENSA' : 'HEAVY RAIN')
-            : (isEs ? 'LLUVIA' : 'RAIN');
+          radarWord = 'CHANCE OF RAIN';
+          radarLabel = isEs ? 'POSIBLE LLUVIA' : 'CHANCE OF RAIN';
         } else if (maxDbz >= 20 && distanceMiles <= 15) {
-          radarWord = 'RAINING';
+          radarWord = 'SHOWERS';
           radarLabel = isEs ? 'CHUBASCOS' : 'SHOWERS';
         }
         if (radarWord) {
