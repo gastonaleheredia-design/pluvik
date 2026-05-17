@@ -1030,12 +1030,18 @@ export interface ActiveAlert {
 }
 
 const ALERT_PRIORITY: Record<string, number> = {
-  'Tornado Warning': 100,
-  'Flash Flood Warning': 90,
-  'Severe Thunderstorm Warning': 80,
-  'Tornado Watch': 0,        // excluded
-  'Severe Thunderstorm Watch': 0, // excluded
+  'Tornado Warning': 10,
+  'Flash Flood Warning': 9,
+  'Severe Thunderstorm Warning': 8,
+  'Winter Storm Warning': 7,
+  'Ice Storm Warning': 7,
+  'Tornado Watch': 6,
+  'Severe Thunderstorm Watch': 5,
+  'Flash Flood Watch': 4,
 };
+
+/** Minimum priority required to surface through briefing.alert. */
+const ALERT_SURFACE_THRESHOLD = 4;
 
 function polygonCentroid(coords: number[][]): { lat: number; lon: number } | null {
   if (!Array.isArray(coords) || coords.length === 0) return null;
@@ -1094,9 +1100,11 @@ export async function getActiveWarning(lat: number, lon: number): Promise<Active
       const event: string = p.event ?? '';
       // Default priority for unlisted "Warning" events; explicit override above.
       const score = ALERT_PRIORITY[event] ?? (
-        /Warning$/.test(event) && (p.severity === 'Extreme' || p.severity === 'Severe') ? 50 : 0
+        /Warning$/.test(event) && (p.severity === 'Extreme' || p.severity === 'Severe') ? 7
+        : /Advisory$/.test(event) ? 2
+        : 0
       );
-      if (score === 0) continue;
+      if (score < ALERT_SURFACE_THRESHOLD) continue;
 
       const geom = f.geometry;
       let centroid: { lat: number; lon: number } | null = null;
