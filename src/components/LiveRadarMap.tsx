@@ -107,7 +107,10 @@ function buildIemMosaicFrames(): PreparedFrames {
   // Round down to nearest 5-min mark.
   const latest = Math.floor(nowSec / 300) * 300;
   const frames: RVFrame[] = [];
-  for (let i = 11; i >= 0; i--) {
+  // 2-hour loop at 5-min cadence = 24 frames. The last frame is "live"; the
+  // auto-play ticker wraps back to frame 0 when it reaches the end so the
+  // loop replays the last two hours and settles on live again.
+  for (let i = 23; i >= 0; i--) {
     const t = latest - i * 300;
     frames.push({ time: t, path: `iem-mosaic-${t}` });
   }
@@ -1662,49 +1665,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* Right toolbar */}
+      {/* Right toolbar — only the essentials */}
       <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
         <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
-        <ToolBtn label="◎" title="Recenter" onClick={recenter} />
         <ToolBtn
           label={gpsBusy ? "…" : "📍"}
-          title="My location (GPS)"
+          title="My location"
           onClick={useMyLocation}
           accent={precise}
         />
-        <ToolBtn
-          label="📡"
-          title="Radar source"
-          onClick={() => {
-            const willOpen = !sourceMenuOpen;
-            closeAllPanels();
-            setSourceMenuOpen(willOpen);
-          }}
-        />
-        {isFullscreen && (
-          <>
-            <ToolBtn
-              label="📏"
-              title={tool === "ruler" ? "Exit ruler" : "Measure distance"}
-              onClick={() => {
-                const next = tool === "ruler" ? "none" : "ruler";
-                closeAllPanels();
-                setTool(next);
-              }}
-            />
-            <ToolBtn
-              label="🎯"
-              title={tool === "pin" ? "Exit pin" : "Drop a pin"}
-              onClick={() => {
-                const next = tool === "pin" ? "none" : "pin";
-                closeAllPanels();
-                setTool(next);
-              }}
-            />
-          </>
-        )}
       </div>
 
       {/* Source picker panel */}
@@ -1809,9 +1780,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         )}
       </div>
 
-      {/* Bottom toggles */}
-      <div style={togglesStyle}>
-        <Toggle on={showRadar} onClick={() => setShowRadar((s) => !s)}>RADAR</Toggle>
+      {/* Layer toggles — compact row top-left, below the LIVE pill */}
+      <div style={topToggleRowStyle}>
         <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
         {rotQualifies && (
           <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
@@ -1821,38 +1791,85 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </Toggle>
       </div>
 
-      {/* Frame clock + progress strip, bottom-center */}
-      {frameTime && (
-        <div style={clockWrapStyle}>
-          <div style={clockRow}>
-            <span style={clockText}>
+      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW */}
+      {frameTime && framesRef.current && (
+        <div style={scrubberBarStyle}>
+          {!playing && (
+            <div style={pausedTimeStyle}>
               {frameLabel}
-              {frameTime.isForecast ? " · forecast" : " · now"}
-            </span>
-          </div>
-          {isFullscreen && framesRef.current ? (
-            <input
-              type="range"
-              min={0}
-              max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
-              value={frameIdxRef.current}
-              onChange={(e) => {
-                playingRef.current = false;
-                setPlaying(false);
-                jumpToFrame(parseInt(e.target.value, 10));
-              }}
-              style={scrubStyle}
-            />
-          ) : (
-            <div style={progressTrack}>
-              <div
-                style={{
-                  ...progressFill,
-                  width: `${Math.round(frameProgress * 100)}%`,
-                }}
-              />
+              {frameTime.isForecast ? " · forecast" : ""}
             </div>
           )}
+          <div style={scrubberRow}>
+            <button
+              type="button"
+              onClick={() => setPlaying((p) => !p)}
+              style={scrubberPlayBtn}
+              aria-label={playing ? "Pause" : "Play"}
+              title={playing ? "Pause" : "Play"}
+            >
+              {playing ? "❚❚" : "▶"}
+            </button>
+            <div style={scrubberTrackWrap}>
+              <div style={tickRowStyle}>
+                {(() => {
+                  const fr = framesRef.current;
+                  if (!fr) return null;
+                  const out: React.ReactNode[] = [];
+                  // Tick every 30 minutes (= every 6 frames at 5-min cadence).
+                  for (let i = 0; i < fr.frames.length; i++) {
+                    const f = fr.frames[i];
+                    const d = new Date(f.time * 1000);
+                    const isHalfHour = d.getMinutes() % 30 === 0;
+                    if (!isHalfHour) continue;
+                    const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
+                    const hh = d.getHours();
+                    const mm = d.getMinutes().toString().padStart(2, "0");
+                    const h12 = ((hh + 11) % 12) + 1;
+                    out.push(
+                      <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
+                        <div style={tickMark} />
+                        <div style={tickLabel}>{`${h12}:${mm}`}</div>
+                      </div>,
+                    );
+                  }
+                  return out;
+                })()}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
+                value={frameIdxRef.current}
+                onChange={(e) => {
+                  playingRef.current = false;
+                  setPlaying(false);
+                  jumpToFrame(parseInt(e.target.value, 10));
+                }}
+                style={scrubStyle}
+                aria-label="Radar time"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const fr = framesRef.current;
+                if (!fr) return;
+                jumpToFrame(fr.frames.length - 1);
+                setPlaying(true);
+              }}
+              style={{
+                ...nowPillStyle,
+                ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing
+                  ? nowPillLive
+                  : {}),
+              }}
+              aria-label="Snap to live"
+              title="Snap to live"
+            >
+              NOW
+            </button>
+          </div>
         </div>
       )}
 
@@ -2013,6 +2030,79 @@ const toolbarStyleFullscreen: React.CSSProperties = {
 const togglesStyle: React.CSSProperties = {
   position: "absolute", bottom: 78, left: 10,
   display: "flex", gap: 6, flexWrap: "wrap",
+};
+
+const topToggleRowStyle: React.CSSProperties = {
+  position: "absolute", top: 44, left: 12,
+  display: "flex", gap: 6, flexWrap: "wrap",
+  zIndex: 5,
+};
+
+const scrubberBarStyle: React.CSSProperties = {
+  position: "absolute", left: 10, right: 10, bottom: 14,
+  display: "flex", flexDirection: "column", gap: 8,
+  zIndex: 5,
+};
+const pausedTimeStyle: React.CSSProperties = {
+  alignSelf: "center",
+  backgroundColor: "rgba(11,16,24,0.92)", color: "#faf7f0",
+  padding: "6px 14px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.78rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,247,240,0.25)",
+};
+const scrubberRow: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8,
+  backgroundColor: "rgba(11,16,24,0.82)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 100,
+  padding: "6px 8px",
+  backdropFilter: "blur(6px)",
+};
+const scrubberPlayBtn: React.CSSProperties = {
+  flex: "0 0 auto",
+  width: 30, height: 30, borderRadius: "50%",
+  border: "1px solid rgba(255,255,255,0.2)",
+  backgroundColor: "rgba(255,255,255,0.08)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontSize: 12, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+};
+const scrubberTrackWrap: React.CSSProperties = {
+  position: "relative", flex: 1, height: 30,
+  display: "flex", alignItems: "center",
+};
+const tickRowStyle: React.CSSProperties = {
+  position: "absolute", inset: 0, pointerEvents: "none",
+};
+const tickWrap: React.CSSProperties = {
+  position: "absolute", top: 0, bottom: 0,
+  transform: "translateX(-50%)",
+  display: "flex", flexDirection: "column", alignItems: "center",
+  justifyContent: "flex-end",
+};
+const tickMark: React.CSSProperties = {
+  width: 1, height: 6, backgroundColor: "rgba(250,247,240,0.4)",
+  marginBottom: 1,
+};
+const tickLabel: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.5rem", letterSpacing: "0.06em",
+  color: "rgba(250,247,240,0.55)",
+  whiteSpace: "nowrap",
+};
+const nowPillStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  padding: "6px 12px", borderRadius: 100,
+  border: "1px solid rgba(250,247,240,0.45)",
+  backgroundColor: "#faf7f0", color: "#0b1018",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.6rem", letterSpacing: "0.16em", fontWeight: 800,
+  cursor: "pointer",
+};
+const nowPillLive: React.CSSProperties = {
+  backgroundColor: "#ef4444", color: "#faf7f0",
+  borderColor: "#ef4444",
 };
 
 const legendWrapStyle: React.CSSProperties = {
