@@ -19,6 +19,254 @@ const radarCellsByKey = new Map<string, StormInterceptResult[]>();
 export function getStructuredCellsForKey(key: string): StormInterceptResult[] {
   return radarCellsByKey.get(key) ?? [];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// METAR observations (NWS Aviation Weather Center)
+//
+// Step 1 of the new current-conditions hierarchy: a METAR within ~25 mi is
+// ground truth for what is happening RIGHT NOW (rain, drizzle, thunder, fog,
+// snow, etc). Higher priority than radar reflectivity or model nowcasts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MetarWxCode =
+  | 'RA' | 'DZ' | 'TS' | 'SN' | 'SG' | 'IC' | 'PL' | 'GR' | 'GS'
+  | 'FG' | 'BR' | 'HZ' | 'FU' | 'DU' | 'SA'
+  | 'FZDZ' | 'FZRA' | 'TSRA' | 'SHRA';
+
+export interface MetarObservation {
+  stationId: string;
+  stationName?: string;
+  lat: number;
+  lon: number;
+  /** Miles from the requested point. */
+  distanceMi: number;
+  /** ISO timestamp of the observation. */
+  observedAt: string;
+  /** Age of the observation in minutes (relative to now). */
+  ageMinutes: number;
+  /** Raw METAR text. */
+  rawText: string;
+  /** Present weather codes detected (RA, TSRA, FZRA, etc). */
+  presentWeather: MetarWxCode[];
+  /** Intensity prefix per code: '-' light, '' moderate, '+' heavy. Same order as presentWeather. */
+  intensity: Array<'-' | '' | '+'>;
+  /** Temperature in °C, if available. */
+  tempC: number | null;
+  /** Dewpoint in °C, if available. */
+  dewpointC: number | null;
+  /** Wind speed in knots, if available. */
+  windKt: number | null;
+  /** Wind gust in knots, if available. */
+  windGustKt: number | null;
+  /** Wind direction in degrees (0–359), or null for variable/calm. */
+  windDir: number | null;
+  /** Visibility in statute miles, if available. */
+  visibilityMi: number | null;
+  /** Altimeter setting in inches of mercury, if available. */
+  altimeterInHg: number | null;
+}
+
+function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3959;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Parse a raw METAR string. Returns the subset of fields we care about for
+ * the home-screen verdict. Tolerant of missing groups — METARs vary widely
+ * by station and reporting practice.
+ */
+export function parseMetar(raw: string): {
+  presentWeather: MetarWxCode[];
+  intensity: Array<'-' | '' | '+'>;
+  tempC: number | null;
+  dewpointC: number | null;
+  windKt: number | null;
+  windGustKt: number | null;
+  windDir: number | null;
+  visibilityMi: number | null;
+  altimeterInHg: number | null;
+} {
+  const tokens = raw.trim().split(/\s+/);
+
+  // Recognized phenomena descriptors/qualifiers we ignore as standalone but
+  // strip when they appear glued to a phenomenon code.
+  const COMPOUND: MetarWxCode[] = ['FZDZ', 'FZRA', 'TSRA', 'SHRA'];
+  const SIMPLE: MetarWxCode[] = [
+    'RA', 'DZ', 'TS', 'SN', 'SG', 'IC', 'PL', 'GR', 'GS',
+    'FG', 'BR', 'HZ', 'FU', 'DU', 'SA',
+  ];
+
+  const presentWeather: MetarWxCode[] = [];
+  const intensity: Array<'-' | '' | '+'> = [];
+
+  let tempC: number | null = null;
+  let dewpointC: number | null = null;
+  let windKt: number | null = null;
+  let windGustKt: number | null = null;
+  let windDir: number | null = null;
+  let visibilityMi: number | null = null;
+  let altimeterInHg: number | null = null;
+
+  const pushWx = (code: MetarWxCode, inten: '-' | '' | '+') => {
+    if (!presentWeather.includes(code)) {
+      presentWeather.push(code);
+      intensity.push(inten);
+    }
+  };
+
+  for (const tok of tokens) {
+    // Wind: dddffKT or dddffGggKT or VRBffKT
+    const wind = tok.match(/^(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT$/);
+    if (wind) {
+      windDir = wind[1] === 'VRB' ? null : parseInt(wind[1], 10);
+      windKt = parseInt(wind[2], 10);
+      windGustKt = wind[3] ? parseInt(wind[3], 10) : null;
+      continue;
+    }
+    // Temp/dewpoint: TT/DD or M02/M05 (M = minus)
+    const td = tok.match(/^(M?\d{2})\/(M?\d{2})$/);
+    if (td) {
+      const conv = (s: string) => (s.startsWith('M') ? -parseInt(s.slice(1), 10) : parseInt(s, 10));
+      tempC = conv(td[1]);
+      dewpointC = conv(td[2]);
+      continue;
+    }
+    // Altimeter: A2992 → 29.92 inHg
+    const alt = tok.match(/^A(\d{4})$/);
+    if (alt) {
+      altimeterInHg = parseInt(alt[1], 10) / 100;
+      continue;
+    }
+    // Visibility: "10SM", "1/2SM", "2 1/2SM" (second token handled implicitly)
+    const vis = tok.match(/^(\d+)(?:\/(\d+))?SM$/);
+    if (vis) {
+      const num = parseInt(vis[1], 10);
+      visibilityMi = vis[2] ? num / parseInt(vis[2], 10) : num;
+      continue;
+    }
+    // Present weather: optional intensity prefix, then one or more 2-letter codes.
+    const wx = tok.match(/^([-+]?)((?:VC|MI|PR|BC|DR|BL|SH|TS|FZ)?[A-Z]{2,8})$/);
+    if (wx) {
+      const inten = (wx[1] as '-' | '+' | '') || '';
+      let body = wx[2];
+      // VC = vicinity; treat as present but at observation site only if also bare code.
+      if (body.startsWith('VC')) body = body.slice(2);
+      // Compound codes first (FZRA before RA, TSRA before RA, SHRA before RA).
+      let matched = false;
+      for (const code of COMPOUND) {
+        if (body.includes(code)) {
+          pushWx(code, inten);
+          matched = true;
+        }
+      }
+      if (!matched) {
+        for (const code of SIMPLE) {
+          // Avoid double-counting RA if FZRA / TSRA / SHRA was already added.
+          if (body.includes(code)) {
+            if (code === 'RA' && presentWeather.some((c) => c === 'FZRA' || c === 'TSRA' || c === 'SHRA')) continue;
+            if (code === 'DZ' && presentWeather.includes('FZDZ')) continue;
+            pushWx(code, inten);
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    presentWeather,
+    intensity,
+    tempC,
+    dewpointC,
+    windKt,
+    windGustKt,
+    windDir,
+    visibilityMi,
+    altimeterInHg,
+  };
+}
+
+/**
+ * Fetch the nearest METAR within ~25 mi of (lat, lon) from the Aviation
+ * Weather Center. Returns null if no station reported in the last hour
+ * within the search radius.
+ */
+export async function fetchNearestMetar(
+  lat: number,
+  lon: number,
+  opts?: { maxDistanceMi?: number; signal?: AbortSignal },
+): Promise<MetarObservation | null> {
+  const maxDistanceMi = opts?.maxDistanceMi ?? 25;
+  const bbox = `${(lat - 0.5).toFixed(4)},${(lon - 0.5).toFixed(4)},${(lat + 0.5).toFixed(4)},${(lon + 0.5).toFixed(4)}`;
+  const url = `https://aviationweather.gov/api/data/metar?ids=&format=json&taf=false&hours=1&bbox=${bbox}`;
+
+  let stations: any[] = [];
+  try {
+    const res = await fetch(url, { signal: opts?.signal });
+    if (!res.ok) {
+      console.warn(`[metar] AWC returned ${res.status}`);
+      return null;
+    }
+    const json = await res.json();
+    if (!Array.isArray(json)) return null;
+    stations = json;
+  } catch (err) {
+    if ((err as any)?.name !== 'AbortError') {
+      console.warn('[metar] fetch failed', err);
+    }
+    return null;
+  }
+
+  // Pick nearest station within the radius. AWC returns one row per
+  // observation; if a station has multiple in the last hour, keep the freshest.
+  type Row = { id: string; name?: string; lat: number; lon: number; obsTime: string; rawOb: string; dist: number };
+  const byStation = new Map<string, Row>();
+  for (const s of stations) {
+    const sLat = typeof s.lat === 'number' ? s.lat : parseFloat(s.lat);
+    const sLon = typeof s.lon === 'number' ? s.lon : parseFloat(s.lon);
+    if (!Number.isFinite(sLat) || !Number.isFinite(sLon)) continue;
+    const dist = haversineMi(lat, lon, sLat, sLon);
+    if (dist > maxDistanceMi) continue;
+    const id = String(s.icaoId ?? s.stationId ?? s.id ?? '').trim();
+    if (!id) continue;
+    const obsTime = String(s.reportTime ?? s.obsTime ?? '');
+    const rawOb = String(s.rawOb ?? s.raw ?? '');
+    const prev = byStation.get(id);
+    if (!prev || (obsTime && obsTime > prev.obsTime)) {
+      byStation.set(id, { id, name: s.name, lat: sLat, lon: sLon, obsTime, rawOb, dist });
+    }
+  }
+  if (byStation.size === 0) return null;
+
+  let nearest: Row | null = null;
+  for (const row of byStation.values()) {
+    if (!nearest || row.dist < nearest.dist) nearest = row;
+  }
+  if (!nearest || !nearest.rawOb) return null;
+
+  const parsed = parseMetar(nearest.rawOb);
+  const observedAt = nearest.obsTime || new Date().toISOString();
+  const ageMs = Math.max(0, Date.now() - new Date(observedAt).getTime());
+
+  return {
+    stationId: nearest.id,
+    stationName: nearest.name,
+    lat: nearest.lat,
+    lon: nearest.lon,
+    distanceMi: nearest.dist,
+    observedAt,
+    ageMinutes: Math.round(ageMs / 60000),
+    rawText: nearest.rawOb,
+    ...parsed,
+  };
+}
+
 function putStructuredCells(key: string, cells: StormInterceptResult[]) {
   radarCellsByKey.set(key, cells);
   if (radarCellsByKey.size > 200) {
