@@ -820,7 +820,7 @@ function HomePage() {
         minHeight: '100vh',
         position: 'relative',
         backgroundColor: severeMode ? severeBg : pageBg,
-        color: severeMode ? severeWhite : (isDarkSeverity ? severityText : INK),
+        color: isDarkMode ? severeWhite : (isDarkSeverity ? severityText : INK),
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
