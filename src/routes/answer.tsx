@@ -519,7 +519,12 @@ function AnswerPage() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
-  const [loadingIndex, setLoadingIndex] = useState(0);
+  // Progressive loading state: which step is the pipeline currently on.
+  // 'warnings'  — checking NWS for an active warning at the resolved coords
+  // 'radar'     — fetching radar / SPC / model context
+  // 'writing'   — composing the final answer
+  type LoadingStep = 'warnings' | 'radar' | 'writing';
+  const [loadingStep, setLoadingStep] = useState<LoadingStep>('warnings');
   const { user, tier } = useAuth();
   const { address: selectedAddress } = useAddress();
   const { tempUnit, windUnit, timeFormat } = usePreferences();
@@ -546,58 +551,13 @@ function AnswerPage() {
     return extractPlaceFromQuestion(question)?.place ?? null;
   })();
 
-  // Stage-aware loading copy. We classify the question on the client so the
-  // loading screen matches the kind of answer we are about to return.
-  const predictedStage: ForecastStage = (() => {
-    const t0 = extractEventTimeFromQuestion(question);
-    if (!t0) return 'short_range';
-    return classifyForecastStage({ hoursAhead: Math.max(0, t0.hoursAhead) });
-  })();
-
-  const loadingPhrases = (() => {
-    switch (predictedStage) {
-      case 'climate':
-        return [
-          'Looking up the climate for that date…',
-          'Pulling 30-year averages for this location…',
-          'Reading historical patterns…',
-        ];
-      case 'outlook':
-        return [
-          'Reading the long-range outlook…',
-          'Checking 8–14 day signals…',
-          'Comparing to seasonal averages…',
-        ];
-      case 'model_trend':
-        return [
-          'Checking the early model signals…',
-          'Comparing the major weather models…',
-          'Looking for model agreement…',
-        ];
-      case 'live':
-        return [
-          'Checking what is happening right now…',
-          'Reading radar and active warnings…',
-          'Watching the storm cells…',
-        ];
-      case 'short_range':
-      default:
-        return [
-          t('answer.loading_1'),
-          t('answer.loading_2'),
-          t('answer.loading_3'),
-          t('answer.loading_4'),
-        ];
-    }
-  })();
-
-  useEffect(() => {
-    if (status !== 'loading') return;
-    const interval = setInterval(() => {
-      setLoadingIndex((prev) => (prev + 1) % loadingPhrases.length);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [status, loadingPhrases.length]);
+  // Three-step progressive loader. The labels mirror what the pipeline is
+  // actually doing, so the wait feels like progress instead of a spinner.
+  const loadingSteps: { key: LoadingStep; label: string }[] = [
+    { key: 'warnings', label: 'Checking active warnings' },
+    { key: 'radar',    label: 'Reading radar and forecast' },
+    { key: 'writing',  label: 'Writing your answer' },
+  ];
 
   // Increment daily question count in user_profiles on every successful
   // answer. Resets the counter when last_question_date is not today.
@@ -629,105 +589,89 @@ function AnswerPage() {
       return;
     }
 
-    // Severe-weather intercept: skip the LLM pipeline entirely. Fetch
-    // active warning + rotation/trend context, run the rule-based
-    // interpreter, and render the simplified red screen below.
-    if (severe) {
-      let cancelled = false;
-      (async () => {
-        setSevereLoading(true);
-        const lat = typeof searchLat === 'number' ? searchLat : selectedAddress.lat;
-        const lon = typeof searchLon === 'number' ? searchLon : selectedAddress.lon;
-        if (lat == null || lon == null) {
-          if (!cancelled) {
+    let cancelled = false;
+
+    (async () => {
+      // ── STEP 1: resolve coords ────────────────────────────────────
+      // Single source of truth used by BOTH the severe-warning check
+      // and the standard LLM pipeline. Priority:
+      //   1. Explicit place mentioned in the question (e.g. "Cairo, NE")
+      //   2. URL searchLat/searchLon (chip resolver from the home page)
+      //   3. The user's active saved address
+      //   4. Geocode the address string as a last resort
+      let resolvedCoords: { lat: number; lon: number } | null = null;
+      let effectiveAddress = address;
+
+      const placeOverride = extractPlaceFromQuestion(question)?.place ?? null;
+      if (placeOverride) {
+        const geo = await geocodeAddress(placeOverride);
+        if (cancelled) return;
+        if (geo.ok) {
+          resolvedCoords = { lat: geo.lat, lon: geo.lon };
+          effectiveAddress = placeOverride;
+        } else {
+          console.warn('[location] geocode failed for detected place, falling back', { placeOverride, reason: geo.reason });
+        }
+      }
+      if (!resolvedCoords
+          && typeof searchLat === 'number' && typeof searchLon === 'number'
+          && Number.isFinite(searchLat) && Number.isFinite(searchLon)) {
+        resolvedCoords = { lat: searchLat, lon: searchLon };
+      }
+      if (!resolvedCoords) {
+        if (selectedAddress.lat && selectedAddress.lon) {
+          resolvedCoords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
+        } else {
+          const geo = await geocodeAddress(address);
+          if (cancelled) return;
+          if (!geo.ok) {
+            setStatus(geo.reason === 'out_of_coverage' ? 'out_of_coverage' : 'error');
+            return;
+          }
+          resolvedCoords = { lat: geo.lat, lon: geo.lon };
+        }
+      }
+      if (cancelled || !resolvedCoords) return;
+      setResolvedAddress(effectiveAddress);
+      setCoords(resolvedCoords);
+
+      // ── STEP 2: severe-warning intercept at the RESOLVED coords ───
+      // This runs for every question, not just when severe=true in the
+      // URL. The URL flag is only a hint from the home page (which
+      // checks the user's home address); the authoritative check has
+      // to happen at the coords the question is actually about.
+      // Skip outside the US — NWS doesn't cover non-US points.
+      if (isUSLocation(resolvedCoords.lat, resolvedCoords.lon)) {
+        setLoadingStep('warnings');
+        try {
+          const ctx = await fetchSevereContext({
+            data: { lat: resolvedCoords.lat, lon: resolvedCoords.lon },
+          });
+          if (cancelled) return;
+          if (isSevereWeatherQuestion(question, ctx.activeAlert)) {
             setSevereAnswer(
               answerSevereWeatherQuestion(question, {
-                activeAlert: null,
-                userLat: 0,
-                userLon: 0,
-                rotationSignatures: null,
-                radarTrend: null,
+                activeAlert: ctx.activeAlert,
+                userLat: resolvedCoords.lat,
+                userLon: resolvedCoords.lon,
+                rotationSignatures: ctx.rotationSignatures,
+                radarTrend: ctx.radarTrend,
               }),
             );
-            setSevereLoading(false);
             setStatus('success');
+            return; // ← skip the slow LLM pipeline entirely
           }
-          return;
-        }
-        try {
-          const ctx = await fetchSevereContext({ data: { lat, lon } });
-          if (cancelled) return;
-          // Re-check intercept against the freshly-fetched alert; if no
-          // warning is actually active, fall back to the standard pipeline.
-          if (!isSevereWeatherQuestion(question, ctx.activeAlert)) {
-            setSevereLoading(false);
-            return; // standard pipeline will be triggered by re-running effect
-          }
-          setSevereAnswer(
-            answerSevereWeatherQuestion(question, {
-              activeAlert: ctx.activeAlert,
-              userLat: lat,
-              userLon: lon,
-              rotationSignatures: ctx.rotationSignatures,
-              radarTrend: ctx.radarTrend,
-            }),
-          );
-          setStatus('success');
         } catch {
-          if (!cancelled) {
-            setStatus('error');
-          }
-        } finally {
-          if (!cancelled) setSevereLoading(false);
+          // Soft-fail: warning check is best-effort, fall through to
+          // the standard pipeline so the user still gets an answer.
         }
-      })();
-      return () => { cancelled = true; };
-    }
+      }
 
-    const fetchAnswer = async () => {
+      // ── STEP 3: standard LLM pipeline ─────────────────────────────
+      setLoadingStep('radar');
       try {
-        let coords: { lat: number; lon: number } | null = null;
-        let effectiveAddress = address;
-        // Fast path: caller (home page chips) already resolved coords.
-        if (typeof searchLat === 'number' && typeof searchLon === 'number'
-            && Number.isFinite(searchLat) && Number.isFinite(searchLon)) {
-          coords = { lat: searchLat, lon: searchLon };
-          effectiveAddress = address;
-        }
-        // ALWAYS check the question for an explicit place — it must
-        // override URL coords (which often come from "current location"
-        // even when the user typed "in Phoenix").
-        const placeOverride = extractPlaceFromQuestion(question)?.place ?? null;
-        if (placeOverride) {
-          const geo = await geocodeAddress(placeOverride);
-          if (geo.ok) {
-            coords = { lat: geo.lat, lon: geo.lon };
-            effectiveAddress = placeOverride;
-          } else {
-            // Detected place failed (timeout, not_found, network, or
-            // out-of-coverage). Silently fall back to the active address
-            // rather than showing a generic error — the user still gets
-            // a useful answer for where they are.
-            console.warn('[location] geocode failed for detected place, falling back to active address', { placeOverride, reason: geo.reason });
-          }
-        }
-        if (!coords) {
-          if (selectedAddress.lat && selectedAddress.lon) {
-            coords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
-          } else {
-            const geo = await geocodeAddress(address);
-            if (!geo.ok) {
-              setStatus(geo.reason === 'out_of_coverage' ? 'out_of_coverage' : 'error');
-              return;
-            }
-            coords = { lat: geo.lat, lon: geo.lon };
-          }
-        }
-        setResolvedAddress(effectiveAddress);
-
-        // Compute hoursAhead from the question text so the server can pick
-        // the right forecast-maturity stage (climate / outlook / model_trend
-        // / short_range / live). Without this every question defaults to 24h.
+        // Compute hoursAhead from the question text so the server can
+        // pick the right forecast-maturity stage.
         let hoursAhead: number | undefined;
         let endHoursAhead: number | undefined;
         if (eventAtIso) {
@@ -748,11 +692,12 @@ function AnswerPage() {
           }
         }
 
+        setLoadingStep('writing');
         const result = await askWeather({
           data: {
             question,
-            lat: coords.lat,
-            lon: coords.lon,
+            lat: resolvedCoords.lat,
+            lon: resolvedCoords.lon,
             language: i18n.language,
             address: effectiveAddress,
             tempUnit,
@@ -763,16 +708,15 @@ function AnswerPage() {
             intent,
           },
         });
-
+        if (cancelled) return;
         setAnswer(result as WeatherAnswer);
-        setCoords(coords);
         setStatus('success');
       } catch {
-        setStatus('error');
+        if (!cancelled) setStatus('error');
       }
-    };
+    })();
 
-    fetchAnswer();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
