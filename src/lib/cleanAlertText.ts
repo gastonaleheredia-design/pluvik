@@ -27,6 +27,8 @@ const ISSUED_HEADER_RE =
   /the national weather service in [^.]*? has issued a [^.]*? (warning|advisory|watch)[^.]*\.?/gi;
 // NWS sigline / coordinate blocks.
 const COORD_BLOCK_RE = /^(LAT\.\.\.LON|TIME\.\.\.MOT\.\.\.LOC|POLYGON)\b.*$/i;
+// UGC zone/county code line, e.g. "NEC025-152115-" or "TXZ123>129-".
+const UGC_LINE_RE = /^[A-Z]{2,3}[CZ]?\d{2,3}([->]\d+)*-?\d*-?$/;
 
 export function cleanAlertText(raw: string | null | undefined): string {
   if (!raw) return '';
@@ -47,6 +49,7 @@ export function cleanAlertText(raw: string | null | undefined): string {
     if (DIVIDER_RE.test(line)) continue;
     if (CODE_LINE_RE.test(line)) continue;
     if (COORD_BLOCK_RE.test(line)) continue;
+    if (UGC_LINE_RE.test(line)) continue;
     // Standalone bulletin codes embedded in a sentence (e.g. "SVRLBF") —
     // strip the token, keep the rest.
     const cleaned = line.replace(/\b[A-Z]{3,8}\d{0,3}\b(?=\s|$)/g, (m) => {
