@@ -1272,6 +1272,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       return;
     }
     const existing = map.getSource("hrrr-forecast") as mapboxgl.RasterTileSource | undefined;
+    // 300-mile bbox around the user — limits HRRR tile fetches to the
+    // relevant region instead of pulling the full national mosaic.
+    const hrrrBounds: [number, number, number, number] = [
+      coordsRef.current.lon - 3.5,
+      coordsRef.current.lat - 2.5,
+      coordsRef.current.lon + 3.5,
+      coordsRef.current.lat + 2.5,
+    ];
     if (existing) {
       (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([frame.tileUrl]);
     } else {
@@ -1280,6 +1288,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         tiles: [frame.tileUrl],
         tileSize: 256,
         maxzoom: 9,
+        bounds: hrrrBounds,
         attribution: "© NOAA HRRR · IEM",
       });
       const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
