@@ -18,7 +18,7 @@ import { usePreferences } from '../lib/preferencesContext';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 import type { ForecastIntent } from '../lib/forecastRequest';
-import { classifyForecastStage, type ForecastStage } from '../lib/forecastStage';
+import { type ForecastStage } from '../lib/forecastStage';
 import { buildWindowLabel } from '../lib/windowLabel';
 import { pickConfidenceAwareWord } from '../lib/headlineAnswer';
 import { toast } from 'sonner';
