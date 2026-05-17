@@ -1813,6 +1813,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       <div style={togglesStyle}>
         <Toggle on={showRadar} onClick={() => setShowRadar((s) => !s)}>RADAR</Toggle>
         <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
+        {rotQualifies && (
+          <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
+        )}
         <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
           {basemap === "satellite" ? "SAT" : "MAP"}
         </Toggle>
