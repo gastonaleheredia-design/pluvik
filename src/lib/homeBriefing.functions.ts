@@ -258,6 +258,14 @@ export interface HomeBriefing {
   confidence?: 'high' | 'medium' | 'low';
   /** Hourly rain probability (%) for the next 48 hours, paired with ISO time strings. */
   rain_hours_48?: Array<{ time: string; prob: number }>;
+  /**
+   * Source tier that produced the verdict word. Surfaced as a small chip
+   * on the home screen so users can tell observation from forecast.
+   *   - 'OBSERVED': METAR present-weather, or active NWS warning (ground truth)
+   *   - 'RADAR':    live NEXRAD reflectivity at/near the user
+   *   - 'FORECAST': HRRR/RAP/Open-Meteo model guidance only
+   */
+  verdict_source?: 'OBSERVED' | 'RADAR' | 'FORECAST' | null;
 }
 
 const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -944,12 +952,16 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // promote to STORMS so the home screen agrees with Ask. Best-effort —
     // probe failures fall through to the point-only verdict.
     let stormOverride: { eta: number; bearing: string | null } | null = null;
+    // Tracks which tier produced the final verdict. Updated alongside word
+    // overrides; surfaced on the home screen as a small chip next to time.
+    let verdictSource: 'OBSERVED' | 'RADAR' | 'FORECAST' = 'FORECAST';
     try {
       const probe = await probeImminentStorm(lat, lon);
       if (probe.approaching && probe.etaMinutes != null) {
         word = 'STORMS';
         stormOverride = { eta: probe.etaMinutes, bearing: probe.bearingFromUser };
         reasonCode = 'imminent_radar_cell';
+        verdictSource = 'RADAR';
         reasonDetail = isEs
           ? `Celda en radar acercándose desde el ${probe.bearingFromUser ?? 'oeste'} — ~${probe.etaMinutes} min`
           : `Radar cell closing from the ${probe.bearingFromUser ?? 'west'} — ~${probe.etaMinutes} min out`;
@@ -965,6 +977,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       if (activeAlert) {
         word = 'STORMS';
         reasonCode = 'active_alert';
+        verdictSource = 'OBSERVED';
         reasonDetail = isEs
           ? `Aviso activo del NWS: ${activeAlert.event}`
           : `Active NWS alert: ${activeAlert.event}`;
@@ -1117,6 +1130,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         if (radarWord) {
           word = radarWord;
           reasonCode = 'nearby_strong_cell';
+          verdictSource = 'RADAR';
           reasonDetail = isEs
             ? `Radar: ${maxDbz} dBZ a ${distanceMiles} mi al ${bearing}`
             : `Radar: ${maxDbz} dBZ ${distanceMiles} mi ${bearing} (${radarLabel})`;
@@ -1207,6 +1221,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
             hierarchy.source === 'metar' ? 'point_precip'
             : hierarchy.source === 'overhead_radar' ? 'nearby_strong_cell'
             : 'forecast_soon';
+          verdictSource =
+            hierarchy.source === 'metar' ? 'OBSERVED'
+            : hierarchy.source === 'overhead_radar' ? 'RADAR'
+            : 'FORECAST';
           reasonDetail =
             hierarchy.source === 'metar'
               ? (isEs
@@ -1229,7 +1247,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
             word === 'BREEZY' || word === 'WINDY' || word === 'VERY WINDY' ||
             word === 'HOT' || word === 'FREEZING' ||
             word === 'DRY' || word === 'CLOUDY';
-          if (calmLegacy) word = hierarchy.word;
+          if (calmLegacy) {
+            word = hierarchy.word;
+            verdictSource = 'FORECAST';
+          }
         }
       }
     } catch (err) {
@@ -1459,6 +1480,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      verdict_source: verdictSource,
       next_hour_prob: Number.isFinite(nextHourProb) ? Math.round(nextHourProb) : null,
       confidence,
       rain_hours_48: (() => {
