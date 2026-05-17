@@ -812,8 +812,8 @@ function HomePage() {
       style={{
         minHeight: '100vh',
         position: 'relative',
-        backgroundColor: pageBg,
-        color: isDarkSeverity ? severityText : INK,
+        backgroundColor: severeMode ? severeBg : pageBg,
+        color: severeMode ? severeWhite : (isDarkSeverity ? severityText : INK),
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
@@ -885,16 +885,16 @@ function HomePage() {
               width: '100%',
               maxWidth: '480px',
               marginBottom: '20px',
-              padding: severity === 'elevated' || severity === 'critical' ? '14px 16px' : '10px 14px',
+              padding: severeMode || severity === 'elevated' || severity === 'critical' ? '14px 16px' : '10px 14px',
               borderRadius: '10px',
-              backgroundColor: bannerStyle.bg,
-              border: `${severity === 'elevated' || severity === 'critical' ? 2 : 1}px solid ${bannerStyle.border}`,
+              backgroundColor: severeMode ? 'rgba(255,255,255,0.06)' : bannerStyle.bg,
+              border: `${severeMode || severity === 'elevated' || severity === 'critical' ? 2 : 1}px solid ${severeMode ? severeAccent : bannerStyle.border}`,
               textAlign: 'center',
               cursor: 'pointer',
               fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: severity === 'elevated' || severity === 'critical' ? '0.7rem' : '0.62rem',
+              fontSize: severeMode || severity === 'elevated' || severity === 'critical' ? '0.7rem' : '0.62rem',
               letterSpacing: '0.18em',
-              color: bannerStyle.color,
+              color: severeMode ? severeWhite : bannerStyle.color,
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
@@ -902,14 +902,14 @@ function HomePage() {
               gap: 10,
             }}
           >
-            {(severity === 'critical' || (palette && severity !== 'low' && severity !== 'none')) && (
+            {(severeMode || severity === 'critical' || (palette && severity !== 'low' && severity !== 'none')) && (
               <span
                 aria-hidden
                 style={{
                   width: 9,
                   height: 9,
                   borderRadius: '50%',
-                  backgroundColor: severityAccent,
+                  backgroundColor: severeMode ? severeAccent : severityAccent,
                   animation: 'homePulse 1.1s ease-in-out infinite',
                   flexShrink: 0,
                 }}
