@@ -677,7 +677,12 @@ function AnswerPage() {
   // Severe-weather intercept state (parallel to the normal pipeline).
   const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
   const [severeLoading, setSevereLoading] = useState<boolean>(false);
+  const [activeAlert, setActiveAlert] = useState<InterpreterAlert | null>(null);
+  const [severeLastUpdated, setSevereLastUpdated] = useState<number | null>(null);
+  const [severeRefreshing, setSevereRefreshing] = useState<boolean>(false);
+  const [notifyOnClear, setNotifyOnClear] = useState<boolean>(false);
   const fetchSevereContext = useServerFn(getSevereContext);
+  const triggerPush = useServerFn(sendSevereWeatherPush);
 
   // Detected place override from the question text. Computed synchronously so
   // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
@@ -786,6 +791,8 @@ function AnswerPage() {
           });
           if (cancelled) return;
           if (isSevereWeatherQuestion(question, ctx.activeAlert)) {
+            setActiveAlert(ctx.activeAlert);
+            setSevereLastUpdated(Date.now());
             setSevereAnswer(
               answerSevereWeatherQuestion(question, {
                 activeAlert: ctx.activeAlert,
