@@ -837,8 +837,9 @@ function AnswerPage() {
 
   // ── LOADING STATE ──────────────────────────────
   // Severe-weather intercept: simplified red screen, no confidence ladder,
-  // no tracking prompt. Renders as soon as the interpreter has a result.
-  if (severe && (severeAnswer || severeLoading)) {
+  // no tracking prompt. Renders whenever the warning-check resolved into
+  // an answer — regardless of whether the home page predicted it.
+  if (severeAnswer || severeLoading) {
     return (
       <SevereInterceptScreen
         loading={severeLoading && !severeAnswer}
@@ -864,20 +865,7 @@ function AnswerPage() {
           fontFamily: 'Inter, sans-serif',
         }}
       >
-        <div
-          style={{
-            width: '14px',
-            height: '14px',
-            borderRadius: '50%',
-            backgroundColor: ACCENT,
-            marginBottom: '24px',
-            animation: 'pulse 1.4s ease-in-out infinite',
-          }}
-        />
-        <style>{`@keyframes pulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}`}</style>
-        <div style={{ fontSize: '0.95rem', color: MUTED, marginBottom: '32px' }}>
-          {loadingPhrases[loadingIndex]}
-        </div>
+        {/* Echoed question — keeps the user grounded in what they asked */}
         <div
           style={{
             fontSize: '1.15rem',
@@ -886,18 +874,62 @@ function AnswerPage() {
             color: '#9ca3af',
             textAlign: 'center',
             maxWidth: '420px',
-            marginBottom: '12px',
+            marginBottom: '10px',
           }}
         >
           &ldquo;{question}&rdquo;
         </div>
-        <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em', marginBottom: 36 }}>
           {t('answer.for_location')} {detectedPlace ?? resolvedAddress}
           {(detectedPlace || resolvedAddress !== address) && (
             <div style={{ marginTop: 6, fontSize: '0.7rem', color: ACCENT, letterSpacing: '0.1em' }}>
               ↳ FROM YOUR QUESTION
             </div>
           )}
+        </div>
+
+        {/* Progressive 3-step status. Each completed step gets a check,
+            the active step animates, and pending steps stay muted. */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            minWidth: 240,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.72rem',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {loadingSteps.map((step, idx) => {
+            const activeIdx = loadingSteps.findIndex(s => s.key === loadingStep);
+            const state: 'done' | 'active' | 'pending' =
+              idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : 'pending';
+            const color =
+              state === 'done'   ? '#16a34a' :
+              state === 'active' ? ACCENT : '#cbc3b3';
+            return (
+              <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 12, color }}>
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    backgroundColor: state === 'pending' ? 'transparent' : color,
+                    border: state === 'pending' ? `1.5px solid ${color}` : 'none',
+                    flexShrink: 0,
+                    animation: state === 'active' ? 'stepPulse 1.2s ease-in-out infinite' : 'none',
+                  }}
+                />
+                <span style={{ opacity: state === 'pending' ? 0.6 : 1 }}>
+                  {state === 'done' ? `✓ ${step.label}` : step.label}
+                  {state === 'active' && '…'}
+                </span>
+              </div>
+            );
+          })}
+          <style>{`@keyframes stepPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.25)}}`}</style>
         </div>
       </div>
     );
