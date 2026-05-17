@@ -1009,15 +1009,36 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
           : `Lluvia posible en la próxima hora (${nextHourProb}% prob).`;
     }
 
+    // Override the sentence for any new comprehensive-vocabulary word.
+    if (!activeAlert) {
+      const ctxForSentence: ClassifyCtx = {
+        alertEvent: null,
+        radar: radarReturns,
+        rainingNow: liveRainingNow,
+        thunderNow,
+        snowNow,
+        maxRainProbNear,
+        cloudCover,
+        isDay,
+        windMph,
+        visibilityMi,
+        heatIndexF,
+        tempF,
+      };
+      const s = sentenceForComprehensive(word as ComprehensiveWord, ctxForSentence, language.startsWith('es'));
+      if (s) sentence = s;
+    }
+
     // Confidence stamp for the headline word — used by UI to soften copy.
     let confidence: 'high' | 'medium' | 'low' = 'medium';
     if (activeAlert || stormOverride) confidence = 'high';
-    else if (word === 'RAINING' || word === 'STORMS' || word === 'SNOW') confidence = 'high';
-    else if (word === 'RAIN SOON') {
+    else if (word === 'STORMS' || word === 'THUNDERSTORMS' || word === 'HEAVY RAIN' || word === 'RAIN' || word === 'FLASH FLOOD' || word === 'BLIZZARD' || word === 'ICE STORM') confidence = 'high';
+    else if (word === 'RAIN LIKELY' || word === 'SHOWERS LIKELY') {
       if (nextHourProb >= 70) confidence = 'high';
       else if (nextHourProb >= 50) confidence = 'medium';
       else confidence = 'low';
-    } else if (word === 'DRY' || word === 'CLOUDY') confidence = 'high';
+    } else if (word === 'CHANCE OF RAIN') confidence = 'low';
+    else if (word === 'SUNNY' || word === 'CLEAR' || word === 'OVERCAST' || word === 'MOSTLY CLOUDY' || word === 'PARTLY CLOUDY') confidence = 'high';
 
     // Local "updated at" string in the address's timezone.
     const updatedLocal = new Date().toLocaleTimeString(language.startsWith('es') ? 'es-US' : 'en-US', {
