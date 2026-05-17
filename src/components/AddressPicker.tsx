@@ -141,14 +141,16 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
     setDetectError(null);
 
     let settled = false;
-    // Hard total cap so the button never sticks on "Detecting…".
+    // Hard total cap so the button never sticks on "Locating you…".
+    // Allows the full standard (8s) + high-accuracy (12s) sequence to finish
+    // before surfacing the timeout error, plus a small buffer for iOS.
     const hardTimer = setTimeout(() => {
       if (settled) return;
       settled = true;
       setDetectingLocation(false);
       setDetectError('Took too long to find you. Try again.');
       console.warn('[AddressPicker] geolocation hard timeout');
-    }, 14000);
+    }, 22000);
 
     detectAbortRef.current = {
       abort: () => {
@@ -198,11 +200,15 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
       navigator.geolocation.getCurrentPosition(
         onSuccess,
         onFinalError,
-        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+        // iOS Safari sometimes refuses a sub-10s high-accuracy fix in cold
+        // start — give it 12s before declaring a timeout.
+        { enableHighAccuracy: true, timeout: 12_000, maximumAge: 0 },
       );
     };
 
-    // Step 1: fast standard fix.
+    // Step 1: fast standard fix. maximumAge of 5 minutes lets iOS return a
+    // recently cached position instantly instead of cold-starting GPS — the
+    // most common cause of the "Detecting…" hang on iPhone.
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       (err) => {
@@ -212,7 +218,7 @@ export function AddressPicker({ onClose }: AddressPickerProps) {
         // Timeout / position unavailable — escalate to high accuracy.
         tryHighAccuracy();
       },
-      { enableHighAccuracy: false, timeout: 5_000, maximumAge: 60_000 },
+      { enableHighAccuracy: false, timeout: 8_000, maximumAge: 300_000 },
     );
   };
 
