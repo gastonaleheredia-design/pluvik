@@ -204,6 +204,11 @@ export interface HomeBriefing {
     | 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY'
     | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
     | 'FLASH FLOOD' | 'BLIZZARD' | 'ICE STORM'
+    // Strict-hierarchy additions (Step 4):
+    | 'FREEZING RAIN' | 'HAIL' | 'LIGHT RAIN' | 'HEAVY SNOW' | 'SLEET'
+    | 'DENSE FOG' | 'HAZY'
+    | 'RAIN COMING' | 'RAIN POSSIBLE'
+    | 'DANGEROUS HEAT' | 'DANGEROUSLY COLD' | 'VERY COLD'
     | null;
   /** Italic sentence under the word */
   sentence: string;
