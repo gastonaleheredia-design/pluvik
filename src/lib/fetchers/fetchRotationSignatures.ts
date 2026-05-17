@@ -167,7 +167,14 @@ function buildPlainLanguage(
 }
 
 // MAIN EXPORT
-export async function fetchRotationSignatures(userLat: number, userLon: number): Promise<string> {
+/**
+ * Structured variant of `fetchRotationSignatures` — returns the underlying
+ * RotationEvent list (sorted nearest-first, capped at 150 mi from the user).
+ * Safe to call from the client; no API key required.
+ */
+export async function fetchRotationSignatureEvents(
+  userLat: number, userLon: number,
+): Promise<RotationEvent[]> {
   try {
     const [tvsRaw, mdaRaw, hailRaw] = await Promise.all([
       fetchSwdiDataset('nx3tvs', userLat, userLon),
@@ -228,6 +235,16 @@ export async function fetchRotationSignatures(userLat: number, userLon: number):
     }
 
     events.sort((a, b) => a.distanceMi - b.distanceMi);
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+// MAIN EXPORT
+export async function fetchRotationSignatures(userLat: number, userLon: number): Promise<string> {
+  try {
+    const events = await fetchRotationSignatureEvents(userLat, userLon);
 
     const hasTVS = events.some(e => e.type === 'TVS');
     const hasMesocyclone = events.some(e => e.type === 'MESO');
