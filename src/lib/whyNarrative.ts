@@ -55,6 +55,23 @@ export interface WhyNarrative {
   bullets: WhyBullet[];
   outlook: string | null;
   confidence: WhyConfidence;
+  /**
+   * Computed storm-passage ETA — when the moving storm cell will be at
+   * its closest approach to the user. Only populated when we can compute
+   * it with high confidence (movement string parsed, centroid present,
+   * passage within the next ~60 minutes, closest approach < 15 mi).
+   * Used by the Why sheet's warning-mode "When's it over" line.
+   */
+  stormPassageEta?: StormPassageEta | null;
+}
+
+export interface StormPassageEta {
+  /** Cardinal direction the storm is heading (e.g. 'E', 'NE'). */
+  headingAbbr: string;
+  /** Ground speed in mph. */
+  mph: number;
+  /** Minutes until closest approach to the user (1-60). */
+  etaMinutes: number;
 }
 
 export interface WhyInputs {
@@ -73,6 +90,9 @@ export interface WhyInputs {
   /** Optional dewpoint °F + temp-dewpoint spread for fog/heat detection. */
   dewpointF?: number | null;
   tempDewSpread?: number | null;
+  /** User location, used to compute storm-passage ETA during warnings. */
+  userLat?: number;
+  userLon?: number;
 }
 
 /* ------------------------- scenario classification ----------------------- */
