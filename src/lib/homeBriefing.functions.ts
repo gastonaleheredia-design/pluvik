@@ -184,7 +184,7 @@ export interface HomeBriefing {
   word:
     | 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY'
     | 'THUNDERSTORMS' | 'HEAVY RAIN' | 'RAIN' | 'SHOWERS' | 'DRIZZLE'
-    | 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN'
+    | 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN' | 'SHOWERS NEARBY'
     | 'OVERCAST' | 'MOSTLY CLOUDY' | 'PARTLY CLOUDY' | 'SUNNY' | 'CLEAR'
     | 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY'
     | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
@@ -324,6 +324,29 @@ function sentenceForComprehensive(
   ctx: ClassifyCtx,
   isEs: boolean,
 ): string | null {
+  // Location-aware override for radar-driven verdicts: when an intense cell
+  // is not directly overhead (>5 mi away), name the distance + direction so
+  // the user knows where the activity is rather than seeing a generic line.
+  const r = ctx.radar;
+  if (r && r.distanceMiles > 5) {
+    const dist = r.distanceMiles;
+    const dir = r.bearing;
+    if (word === 'STORMS' || word === 'THUNDERSTORMS') {
+      return isEs
+        ? `Tormentas a ${dist} mi al ${dir} — monitoreando.`
+        : `Storms ${dist} miles ${dir} — monitoring.`;
+    }
+    if (word === 'SHOWERS NEARBY') {
+      return isEs
+        ? `Chubascos a ${dist} mi al ${dir} — vigilando.`
+        : `Showers ${dist} miles ${dir} — monitoring.`;
+    }
+    if (word === 'CHANCE OF RAIN' && r.maxDbz >= 35) {
+      return isEs
+        ? `Lluvia a ${dist} mi al ${dir} — posible más tarde.`
+        : `Rain ${dist} miles ${dir} — possible later.`;
+    }
+  }
   if (isEs) {
     switch (word) {
       case 'SUNNY':
@@ -343,6 +366,7 @@ function sentenceForComprehensive(
       case 'FREEZING': return 'Temperaturas bajo cero — abrígate bien.';
       case 'DRIZZLE': return 'Llovizna ligera cerca.';
       case 'SHOWERS': return 'Chubascos cerca.';
+      case 'SHOWERS NEARBY': return 'Chubascos cerca.';
       case 'RAIN': return 'Está lloviendo cerca.';
       case 'HEAVY RAIN': return 'Lluvia intensa cerca — tráfico afectado.';
       case 'THUNDERSTORMS': return 'Tormentas eléctricas en el área.';
@@ -370,6 +394,7 @@ function sentenceForComprehensive(
     case 'FREEZING': return 'Freezing temps — bundle up.';
     case 'DRIZZLE': return 'Light drizzle nearby.';
     case 'SHOWERS': return 'Showers nearby.';
+    case 'SHOWERS NEARBY': return 'Showers nearby.';
     case 'RAIN': return 'Rain falling nearby.';
     case 'HEAVY RAIN': return 'Heavy rain nearby — expect slow traffic.';
     case 'THUNDERSTORMS': return 'Thunderstorms in the area.';
@@ -912,18 +937,21 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         const { maxDbz, distanceMiles, bearing } = radarReturns;
         let radarWord: HomeBriefing['word'] | null = null;
         let radarLabel: string | null = null;
-        if (maxDbz >= 45 && distanceMiles <= 20) {
+        // Distance-weighted severity — see classifyRadarReturnWord docs.
+        if (maxDbz >= 45 && distanceMiles <= 10) {
           radarWord = 'STORMS';
           radarLabel = isEs ? 'TORMENTAS' : 'STORMS';
+        } else if (maxDbz >= 45 && distanceMiles <= 20) {
+          radarWord = 'THUNDERSTORMS';
+          radarLabel = isEs ? 'TORMENTAS' : 'THUNDERSTORMS';
+        } else if (maxDbz >= 35 && distanceMiles <= 20) {
+          radarWord = 'SHOWERS NEARBY';
+          radarLabel = isEs ? 'CHUBASCOS CERCA' : 'SHOWERS NEARBY';
         } else if (maxDbz >= 35 && distanceMiles <= 30) {
-          // "RAIN" / "HEAVY RAIN" mapped to the existing RAINING token so
-          // downstream UI keeps working. Severity is conveyed in the sentence.
-          radarWord = 'RAINING';
-          radarLabel = maxDbz >= 50
-            ? (isEs ? 'LLUVIA INTENSA' : 'HEAVY RAIN')
-            : (isEs ? 'LLUVIA' : 'RAIN');
+          radarWord = 'CHANCE OF RAIN';
+          radarLabel = isEs ? 'POSIBLE LLUVIA' : 'CHANCE OF RAIN';
         } else if (maxDbz >= 20 && distanceMiles <= 15) {
-          radarWord = 'RAINING';
+          radarWord = 'SHOWERS';
           radarLabel = isEs ? 'CHUBASCOS' : 'SHOWERS';
         }
         if (radarWord) {

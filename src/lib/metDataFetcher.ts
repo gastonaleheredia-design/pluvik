@@ -1026,18 +1026,23 @@ export interface NearbyRadarReturns {
  * comprehensive verdict word, per the home-screen priority hierarchy.
  * Returns null if no return is meaningful enough to override forecast.
  *
- *  dBZ 60+ within 10mi  → 'STORMS'
- *  dBZ 50+ within 20mi  → 'THUNDERSTORMS'
- *  dBZ 45+ within 20mi  → 'HEAVY RAIN'
- *  dBZ 35+ within 30mi  → 'RAIN'
- *  dBZ 20+ within 15mi  → 'SHOWERS'
- *  dBZ 20+ within 30mi  → 'DRIZZLE'
+ * Distance-weighted severity — an intense cell 25 mi away is not the same
+ * as one overhead, so the verdict is softened with distance:
+ *
+ *  dBZ 45+ within 10mi      → 'STORMS'          (immediate threat)
+ *  dBZ 45+ within 10–20mi   → 'THUNDERSTORMS'   (nearby, not overhead)
+ *  dBZ 35–45 within 20mi    → 'SHOWERS NEARBY'
+ *  dBZ 35–45 within 20–30mi → 'CHANCE OF RAIN'
+ *  dBZ 20+ within 15mi      → 'SHOWERS'
+ *  dBZ 20+ within 30mi      → 'DRIZZLE'
  */
 export type RadarVerdictWord =
   | 'STORMS'
   | 'THUNDERSTORMS'
   | 'HEAVY RAIN'
   | 'RAIN'
+  | 'SHOWERS NEARBY'
+  | 'CHANCE OF RAIN'
   | 'SHOWERS'
   | 'DRIZZLE';
 
@@ -1045,10 +1050,10 @@ export function classifyRadarReturnWord(
   maxDbz: number,
   distanceMiles: number,
 ): RadarVerdictWord | null {
-  if (maxDbz >= 60 && distanceMiles <= 10) return 'STORMS';
-  if (maxDbz >= 50 && distanceMiles <= 20) return 'THUNDERSTORMS';
-  if (maxDbz >= 45 && distanceMiles <= 20) return 'HEAVY RAIN';
-  if (maxDbz >= 35 && distanceMiles <= 30) return 'RAIN';
+  if (maxDbz >= 45 && distanceMiles <= 10) return 'STORMS';
+  if (maxDbz >= 45 && distanceMiles <= 20) return 'THUNDERSTORMS';
+  if (maxDbz >= 35 && distanceMiles <= 20) return 'SHOWERS NEARBY';
+  if (maxDbz >= 35 && distanceMiles <= 30) return 'CHANCE OF RAIN';
   if (maxDbz >= 20 && distanceMiles <= 15) return 'SHOWERS';
   if (maxDbz >= 20 && distanceMiles <= 30) return 'DRIZZLE';
   return null;
