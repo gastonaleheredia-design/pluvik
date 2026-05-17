@@ -449,6 +449,35 @@ function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame |
   return frames.find((f) => f.hoursAhead === hoursAhead) ?? null;
 }
 
+/**
+ * Warm the browser HTTP cache for an HRRR forecast frame by pre-fetching
+ * the handful of XYZ tiles that cover the user's ~300 mi bbox at the zoom
+ * levels Mapbox most often requests (z=6,7). When the user later opens
+ * FUTURE, Mapbox finds these tiles already in cache and paints instantly.
+ */
+function warmHrrrTiles(tileUrl: string, lat: number, lon: number, signal?: AbortSignal): Promise<void> {
+  const lon2tileX = (l: number, z: number) => Math.floor(((l + 180) / 360) * Math.pow(2, z));
+  const lat2tileY = (l: number, z: number) => {
+    const r = (l * Math.PI) / 180;
+    return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z));
+  };
+  const urls: string[] = [];
+  for (const z of [6, 7]) {
+    const xMin = lon2tileX(lon - 3.5, z);
+    const xMax = lon2tileX(lon + 3.5, z);
+    const yMin = lat2tileY(lat + 2.5, z);
+    const yMax = lat2tileY(lat - 2.5, z);
+    for (let x = xMin; x <= xMax; x++) {
+      for (let y = yMin; y <= yMax; y++) {
+        urls.push(tileUrl.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y)));
+      }
+    }
+  }
+  return Promise.all(
+    urls.map((u) => fetch(u, { signal, cache: "force-cache" }).then(() => undefined).catch(() => undefined)),
+  ).then(() => undefined);
+}
+
 /** Keep warning polygons painted above the radar raster after any swap. */
 function enforceLayerOrder(map: mapboxgl.Map) {
   if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
