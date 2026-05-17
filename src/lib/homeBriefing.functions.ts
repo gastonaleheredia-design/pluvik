@@ -772,9 +772,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
           word = 'DRY';
         }
         reasonCode = 'forecast_clear';
-        reasonDetail = isEs
-          ? 'Sin tormenta confirmada en el radar cercano'
-          : 'No storm confirmed on nearby radar';
+        reasonDetail = composeNonSevereDetail(nextHourProb, nearbyProbe, isEs);
       }
 
       // Point said RAINING but neither minutely_15 nor radar agrees → downgrade.
@@ -784,9 +782,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         else if (cloudCover >= 70) word = 'CLOUDY';
         else word = 'DRY';
         reasonCode = 'forecast_clear';
-        reasonDetail = isEs
-          ? 'Sin lluvia confirmada en el radar cercano'
-          : 'No rain confirmed on nearby radar';
+        reasonDetail = composeNonSevereDetail(nextHourProb, nearbyProbe, isEs);
       }
 
       // If we kept STORMS via radar confirmation (instead of imminent override),
