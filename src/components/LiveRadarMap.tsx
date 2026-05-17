@@ -484,7 +484,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [showRadar, setShowRadar] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
   const [basemap, setBasemap] = useState<"streets" | "satellite">("streets");
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [miniCard, setMiniCard] = useState<MiniCardData | null>(null);
   const [mode, setMode] = useState<"rain" | "mix" | "snow">("rain");
   const [source, setSource] = useState<"mosaic" | "station">("mosaic");
