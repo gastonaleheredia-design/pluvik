@@ -2047,55 +2047,61 @@ function AnswerPage() {
 
           <div style={{ flex: 1 }} />
 
-          {/* Three action buttons: Why? / Save & Track / + Group Event */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12, flexWrap: 'wrap' as const,
-          }}>
-            {isClimate ? (
-              <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
-                NO FORECAST YET
-              </span>
-            ) : (
-              <button
-                onClick={() => setShowWhy(true)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.85rem', letterSpacing: '0.08em', color: ACCENT,
-                }}
-              >
-                {t('answer.why', { defaultValue: 'Why?' })} →
-              </button>
-            )}
+          {/* Primary CTA: Track this forecast. Secondary: Why? / + Group Event */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <button
               onClick={handleSaveTrack}
               disabled={saving}
               style={{
-                background: 'none', border: 'none', cursor: saving ? 'default' : 'pointer', padding: 0,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.65rem', letterSpacing: '0.18em',
-                color: saving ? MUTED : MUTED,
+                background: '#c2410c',
+                color: '#faf7f0',
+                border: 'none',
+                borderRadius: 12,
+                padding: 14,
+                width: '100%',
+                cursor: saving ? 'default' : 'pointer',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontWeight: 600,
+                fontSize: '1rem',
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? '…' : (saveCtaLabel || 'SAVE & TRACK')}
+              {saving ? '…' : (saveCtaLabel || 'Track this forecast')}
             </button>
-            <button
-              onClick={() => {
-                if (user) setShowCreateGroup(true);
-                else setShowAuthModal(true);
-              }}
-              style={{
-                background: 'none',
-                border: `1px solid ${INK}22`,
-                borderRadius: 999,
-                padding: '8px 14px', cursor: 'pointer',
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.62rem', letterSpacing: '0.16em', color: MUTED,
-              }}
-            >
-              + GROUP EVENT
-            </button>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, flexWrap: 'wrap' as const,
+            }}>
+              {isClimate ? (
+                <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
+                  NO FORECAST YET
+                </span>
+              ) : (
+                <button
+                  onClick={() => setShowWhy(true)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontSize: '0.85rem', color: ACCENT, textDecoration: 'underline',
+                  }}
+                >
+                  {t('answer.why', { defaultValue: 'Why?' })}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (user) setShowCreateGroup(true);
+                  else setShowAuthModal(true);
+                }}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontSize: '0.85rem', color: MUTED, textDecoration: 'underline',
+                }}
+              >
+                + Group Event
+              </button>
+            </div>
           </div>
         </div>
         {showAuthModal && (
