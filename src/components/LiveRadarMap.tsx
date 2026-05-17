@@ -149,6 +149,9 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
 
       const expires: string | null = p.expire ?? p.expires ?? null;
       const containsUser = pointInGeometry(lat, lon, f.geometry);
+      const desc = String(p.description ?? p.headline ?? "");
+      const motion = parseStormMotion(desc);
+      const ctr = polygonCentroidLngLat(f.geometry);
 
       // Pre-populate the alert cache so tapping a polygon opens the detail
       // page instantly. The detail page falls back to NWS by id when missing.
@@ -171,7 +174,13 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event: eventName, expires, containsUser, phenomena: ph },
+        properties: {
+          id, event: eventName, expires, containsUser, phenomena: ph,
+          motionDeg: motion?.deg ?? null,
+          motionMph: motion?.mph ?? null,
+          centroidLon: ctr?.lon ?? null,
+          centroidLat: ctr?.lat ?? null,
+        },
       });
     }
 
@@ -243,6 +252,9 @@ async function fetchNwsActiveWarningPolygons(lat: number, lon: number) {
       }
       const id = String(p.id ?? `nws-${event}-${p.sent ?? ""}`);
       const containsUser = pointInGeometry(lat, lon, f.geometry);
+      const desc = String(p.description ?? p.headline ?? "");
+      const motion = parseStormMotion(desc);
+      const centroid = polygonCentroidLngLat(f.geometry);
       cacheAlert({
         id,
         event,
@@ -260,7 +272,13 @@ async function fetchNwsActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event, expires: p.expires ?? null, containsUser, phenomena: ph },
+        properties: {
+          id, event, expires: p.expires ?? null, containsUser, phenomena: ph,
+          motionDeg: motion?.deg ?? null,
+          motionMph: motion?.mph ?? null,
+          centroidLon: centroid?.lon ?? null,
+          centroidLat: centroid?.lat ?? null,
+        },
       });
     }
     if (!out.length) return null;
