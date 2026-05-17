@@ -768,16 +768,30 @@ function HomePage() {
     low: PAGE_BG,
     none: PAGE_BG,
   };
-  const pageBg = SEVERITY_PAGE_BG[severity];
-  const isDarkSeverity = severity === 'critical' || severity === 'high';
+  // Severity palette: warning-level alerts (and bare STORMS verdict) take
+  // over the entire screen with a dark bg + white text + accent triad.
+  const isStormsVerdict = briefing?.word === 'STORMS';
+  const useSeverityPalette =
+    !!warning || severity === 'critical' || severity === 'high' || severity === 'elevated' || isStormsVerdict;
+  const palette = warning
+    ? getSeverityColors(warning.event)
+    : isStormsVerdict
+      ? STORMS_PALETTE
+      : null;
+  const pageBg = palette ? palette.bg : SEVERITY_PAGE_BG[severity];
+  const isDarkSeverity = !!palette || severity === 'critical' || severity === 'high';
+  const severityText = palette?.text ?? '#faf7f0';
+  const severityAccent = palette?.accent ?? '#ef4444';
   const SEVERITY_BANNER: Record<AlertSeverity, { bg: string; border: string; color: string } | null> = {
-    critical: { bg: 'rgba(255,255,255,0.08)', border: '#fecaca', color: '#fff5f5' },
-    high:     { bg: 'rgba(255,255,255,0.08)', border: '#fdba74', color: '#fff7ed' },
+    critical: { bg: 'rgba(255,255,255,0.08)', border: severityAccent, color: severityText },
+    high:     { bg: 'rgba(255,255,255,0.08)', border: severityAccent, color: severityText },
     elevated: { bg: '#fff7ed', border: '#ea580c', color: '#9a3412' },
     low:      { bg: '#fefce8', border: '#eab308', color: '#854d0e' },
     none:     null,
   };
-  const bannerStyle = SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
+  const bannerStyle = palette
+    ? { bg: 'rgba(255,255,255,0.08)', border: palette.accent, color: palette.text }
+    : SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
 
   return (
     <div
@@ -786,7 +800,7 @@ function HomePage() {
         minHeight: '100vh',
         position: 'relative',
         backgroundColor: pageBg,
-        color: isDarkSeverity ? '#faf7f0' : INK,
+        color: isDarkSeverity ? severityText : INK,
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
