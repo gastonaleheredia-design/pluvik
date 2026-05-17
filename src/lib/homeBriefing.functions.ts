@@ -1157,8 +1157,8 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     const cur = j.current as OpenMeteoLite['current'];
     const windMph = typeof cur.wind_speed_10m === 'number' ? Math.round(cur.wind_speed_10m) : null;
     const visibilityMi = typeof cur.visibility === 'number' ? cur.visibility / 1609.34 : null;
-    const heatIndexF = typeof cur.apparent_temperature === 'number' ? Math.round(cur.apparent_temperature) : null;
-    const tempF = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : null;
+    let heatIndexF = typeof cur.apparent_temperature === 'number' ? Math.round(cur.apparent_temperature) : null;
+    let tempF = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : null;
     const isDay = cur.is_day != null ? cur.is_day === 1 : (() => {
       try {
         const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date()), 10);
@@ -1196,6 +1196,31 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
         fetchOverheadDbz(lat, lon).catch(() => null),
         fetchHrrrRapAgreement(lat, lon).catch(() => null),
       ]);
+      // Prefer observed METAR temperature over model output when fresh.
+      // METAR is the ground truth airports report; Open-Meteo can drift
+      // several degrees from what's actually being measured nearby.
+      if (metarObs && metarObs.tempC != null && metarObs.ageMinutes <= 90) {
+        const obsTempF = Math.round(metarObs.tempC * 9 / 5 + 32);
+        tempF = obsTempF;
+        // Recompute heat index from observed T + dewpoint when available
+        // (Rothfusz regression). Falls back to the model apparent_temperature.
+        if (metarObs.dewpointC != null && obsTempF >= 80) {
+          const dewF = metarObs.dewpointC * 9 / 5 + 32;
+          // Approximate RH from T and Td (Magnus formula).
+          const a = 17.625, b = 243.04;
+          const tC = metarObs.tempC;
+          const tdC = metarObs.dewpointC;
+          const rh = 100 * (Math.exp((a * tdC) / (b + tdC)) / Math.exp((a * tC) / (b + tC)));
+          const T = obsTempF;
+          const R = Math.max(0, Math.min(100, rh));
+          const hi = -42.379 + 2.04901523 * T + 10.14333127 * R
+            - 0.22475541 * T * R - 0.00683783 * T * T - 0.05481717 * R * R
+            + 0.00122874 * T * T * R + 0.00085282 * T * R * R - 0.00000199 * T * T * R * R;
+          heatIndexF = Math.round(hi);
+        } else if (obsTempF < 80) {
+          heatIndexF = obsTempF;
+        }
+      }
       const hierarchy = classifyByMetHierarchy({
         metar: metarObs,
         overhead: overheadRadar,
@@ -1477,7 +1502,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       next_rain_caption: resolvedRainCaption,
       nearby_cell: nearbyCell,
       updated_at_local: updatedLocal,
-      temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
+      temp_f: tempF,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
       verdict_source: verdictSource,
@@ -1496,7 +1521,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       why: await buildWhyPayload({
         lat, lon, language,
         word,
-        tempF: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
+        tempF,
         cloudCover,
         hoursUntilRain,
         nextRainCaption: resolvedRainCaption,
