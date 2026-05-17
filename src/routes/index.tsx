@@ -1113,16 +1113,46 @@ function HomePage() {
                   display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
                   gap: 8, maxWidth: 420,
                 }}>
-                  {briefing.next_rain_caption && (
-                    <button
-                      type="button"
-                      onClick={() => setRainSheetOpen(true)}
-                      style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'pointer' }}
-                    >
-                      <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
-                      {briefing.next_rain_caption}
-                    </button>
-                  )}
+                  {(() => {
+                    // Verdict-driven pill logic.
+                    //   STORMS / HEAVY RAIN  → no pill (radar + why only)
+                    //   RAIN SOON            → "APPROACHING · {N} MI {DIR}"
+                    //   RAINING (RAIN)       → "RAINING NEARBY"
+                    //   DRY / CLOUDY / CLEAR → "NEXT RAIN · {time}" (from briefing)
+                    const w = briefing.word;
+                    const cell = briefing.nearby_cell;
+                    const isHeavyRain = w === 'RAINING'
+                      && cell != null
+                      && cell.distance_mi <= 5;
+
+                    if (w === 'STORMS' || isHeavyRain) {
+                      return null; // hide pill entirely
+                    }
+
+                    let pillText: string | null = null;
+                    if (w === 'RAIN SOON') {
+                      pillText = cell
+                        ? `APPROACHING · ${cell.distance_mi} MI ${cell.bearing}`
+                        : (briefing.next_rain_caption ?? null);
+                    } else if (w === 'RAINING') {
+                      pillText = 'RAINING NEARBY';
+                    } else {
+                      // DRY / CLOUDY / CLEAR (SNOW falls through to its caption too)
+                      pillText = briefing.next_rain_caption ?? null;
+                    }
+
+                    if (!pillText) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setRainSheetOpen(true)}
+                        style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'pointer' }}
+                      >
+                        <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
+                        {pillText}
+                      </button>
+                    );
+                  })()}
                   {showRadarChip && (
                     <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: INK }}>
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>◎</span>
