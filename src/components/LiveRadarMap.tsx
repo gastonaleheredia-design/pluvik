@@ -286,6 +286,40 @@ function polygonCentroidLngLat(geom: any): { lat: number; lon: number } | null {
   return { lat: sy / n, lon: sx / n };
 }
 
+/**
+ * Parse "Movement was northeast at 35 mph" (and variants) out of an NWS
+ * warning description. Returns degrees clockwise from north + speed in mph,
+ * or null when no motion phrase is found.
+ */
+const COMPASS_TO_DEG: Record<string, number> = {
+  n: 0, north: 0,
+  nne: 22.5, 'north-northeast': 22.5,
+  ne: 45, northeast: 45,
+  ene: 67.5, 'east-northeast': 67.5,
+  e: 90, east: 90,
+  ese: 112.5, 'east-southeast': 112.5,
+  se: 135, southeast: 135,
+  sse: 157.5, 'south-southeast': 157.5,
+  s: 180, south: 180,
+  ssw: 202.5, 'south-southwest': 202.5,
+  sw: 225, southwest: 225,
+  wsw: 247.5, 'west-southwest': 247.5,
+  w: 270, west: 270,
+  wnw: 292.5, 'west-northwest': 292.5,
+  nw: 315, northwest: 315,
+  nnw: 337.5, 'north-northwest': 337.5,
+};
+function parseStormMotion(text: string | null | undefined): { deg: number; mph: number } | null {
+  if (!text) return null;
+  const m = text.match(/mov(?:ement|ing)\s+(?:was\s+|toward\s+the\s+|to\s+the\s+)?([a-z-]+)\s+at\s+(\d{1,3})\s*mph/i);
+  if (!m) return null;
+  const dir = m[1].toLowerCase();
+  const mph = parseInt(m[2], 10);
+  const deg = COMPASS_TO_DEG[dir];
+  if (deg == null || !Number.isFinite(mph)) return null;
+  return { deg, mph };
+}
+
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 3958.8;
   const toRad = (d: number) => (d * Math.PI) / 180;
