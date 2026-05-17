@@ -406,9 +406,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // Open-Meteo: current + 168h hourly precipitation.
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=precipitation,weather_code,cloud_cover,temperature_2m` +
+      `&current=precipitation,weather_code,cloud_cover,temperature_2m,wind_speed_10m,visibility,apparent_temperature,is_day` +
       `&hourly=precipitation_probability,precipitation,weather_code` +
-      `&forecast_days=7&timezone=auto&temperature_unit=fahrenheit`;
+      `&forecast_days=7&timezone=auto&temperature_unit=fahrenheit` +
+      `&wind_speed_unit=mph`;
 
     // Resilient fetch: 8s timeout + one retry on network/5xx errors.
     const fetchOnce = async (): Promise<Response> => {
