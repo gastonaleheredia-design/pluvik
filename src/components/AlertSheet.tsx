@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Drawer } from 'vaul';
 import { LiveRadarMap } from './LiveRadarMap';
+import { cleanAlertText } from '../lib/cleanAlertText';
 
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
@@ -131,7 +132,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                   lineHeight: 1.4,
                 }}
               >
-                {alert.headline}
+                {cleanAlertText(alert.headline)}
               </div>
             )}
 
@@ -220,7 +221,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                   whiteSpace: 'pre-wrap',
                 }}
               >
-                {alert.description.trim()}
+                {cleanAlertText(alert.description)}
               </div>
             )}
             {!isFull && alert?.instruction && (
@@ -237,7 +238,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
                   whiteSpace: 'pre-wrap',
                 }}
               >
-                {alert.instruction.trim()}
+                {cleanAlertText(alert.instruction)}
               </div>
             )}
 
