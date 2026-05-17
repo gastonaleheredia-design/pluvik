@@ -112,6 +112,13 @@ interface HomeBriefingRequest {
   lat: number;
   lon: number;
   language: string;
+  /**
+   * When true, skip the in-memory Open-Meteo cache and force a fresh
+   * upstream fan-out. Use ONLY on explicit user actions (e.g. a location
+   * change) — background polling should leave this falsy so we don't
+   * hammer APIs.
+   */
+  bustCache?: boolean;
 }
 
 export interface HomeBriefing {
@@ -367,7 +374,7 @@ function pickWord(opts: {
 export const getHomeBriefing = createServerFn({ method: 'POST' })
   .inputValidator((data: HomeBriefingRequest) => data)
   .handler(async ({ data }) => {
-    const { lat, lon, language } = data;
+    const { lat, lon, language, bustCache } = data;
 
     // Open-Meteo: current + 168h hourly precipitation.
     const url =
@@ -387,10 +394,11 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     };
 
-    // 0. Serve fresh cache immediately if available.
+    // 0. Serve fresh cache immediately if available — unless the caller
+    //    explicitly requested a bypass (e.g. location just changed).
     const ck = cacheKey(lat, lon);
     const hit = CACHE.get(ck);
-    let j: OpenMeteoLite | null = hit && hit.expires > Date.now() ? hit.value : null;
+    let j: OpenMeteoLite | null = !bustCache && hit && hit.expires > Date.now() ? hit.value : null;
 
     // 1. Try Open-Meteo (one attempt; retries hammer 429s).
     if (!j) {

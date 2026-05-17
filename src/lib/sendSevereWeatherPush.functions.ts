@@ -21,7 +21,8 @@ const PayloadSchema = z.object({
   userId: z.string().min(1).max(255).nullable().optional(),
   data: z.record(z.string().min(1).max(255), z.unknown()).optional(),
   priority: z.enum(['high', 'normal']).optional(),
-  url: z.string().url().max(2048).optional(),
+  // Allow empty string (callers sometimes pass '') as well as a valid URL.
+  url: z.union([z.string().url().max(2048), z.literal('')]).optional(),
 });
 
 export const sendSevereWeatherPush = createServerFn({ method: 'POST' })

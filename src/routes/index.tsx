@@ -459,14 +459,23 @@ function HomePage() {
     // briefing/warning so an old banner from a previous city cannot remain
     // visible while the new city is loading.
     setBriefing(null);
-    const fetchOnce = (showLoading: boolean) => {
+    const fetchOnce = (showLoading: boolean, bustCache: boolean = false) => {
       if (showLoading) setBriefingLoading(true);
       // Snapshot the coords this fetch was issued for, so a stale response
       // from a prior address can't overwrite a newer one.
       const reqLat = selectedAddress.lat;
       const reqLon = selectedAddress.lon;
       getHomeBriefing({
-        data: { lat: selectedAddress.lat!, lon: selectedAddress.lon!, language: i18n.language },
+        data: {
+          lat: selectedAddress.lat!,
+          lon: selectedAddress.lon!,
+          language: i18n.language,
+          // Skip the 60s server cache only on explicit location changes so
+          // brand-new coords don't get a stale briefing from a prior visit.
+          // Background polls (visibilitychange, auto-retry, expiry tick)
+          // omit this flag and reuse the cache normally.
+          ...(bustCache ? { bustCache: true } : {}),
+        },
       })
         .then((b) => {
           if (cancelled) return;
@@ -491,7 +500,9 @@ function HomePage() {
           setBriefingLoading(false);
         });
     };
-    fetchOnce(true);
+    // Initial fetch after a coord change: bust the cache so NWS warnings,
+    // radar returns, and forecast at the new location appear immediately.
+    fetchOnce(true, true);
     const onVis = () => { if (!document.hidden) fetchOnce(false); };
     document.addEventListener('visibilitychange', onVis);
     return () => { cancelled = true; document.removeEventListener('visibilitychange', onVis); };
