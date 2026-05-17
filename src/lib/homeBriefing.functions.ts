@@ -1,4 +1,52 @@
 import { createServerFn } from '@tanstack/react-start';
+
+/**
+ * Build a context-aware "main concern" sentence for non-severe verdicts.
+ * Replaces generic "No storm confirmed on nearby radar" messaging with
+ * something that explains what IS going on (rain chance, scattered echoes,
+ * nearby moderate cell) so the Why? sheet is informative when calm.
+ */
+function composeNonSevereDetail(
+  nextHourProb: number,
+  probe: NearbyCellProbe | null,
+  isEs: boolean,
+): string {
+  const dbz = probe?.dbz ?? 0;
+  const dist = probe?.distanceMiles ?? Infinity;
+  const bearing = probe?.bearingFromUser ?? '';
+
+  // Moderate cell nearby — name it, with distance + bearing.
+  if (probe && dbz >= 35 && dbz < 45 && dist <= 20) {
+    return isEs
+      ? `Celda de lluvia moderada a ${Math.round(dist)} mi al ${bearing} — acercándose.`
+      : `Moderate rain cell ${Math.round(dist)} mi ${bearing} — approaching.`;
+  }
+  // Light scattered returns nearby.
+  if (probe && dbz >= 20 && dbz < 35 && dist <= 30) {
+    return isEs
+      ? 'Actividad ligera y dispersa cerca — no es una tormenta.'
+      : 'Light scattered activity nearby — not a storm.';
+  }
+  // No meaningful radar — describe by forecast probability bucket.
+  if (nextHourProb > 40) {
+    return isEs
+      ? 'Lluvia probable más tarde — aún no aparece en el radar.'
+      : 'Rain likely later — not showing on radar yet.';
+  }
+  if (nextHourProb >= 25) {
+    return isEs
+      ? 'Posible chubasco aislado — no generalizado.'
+      : 'Isolated shower possible — not widespread.';
+  }
+  if (nextHourProb >= 15) {
+    return isEs
+      ? 'Posible humedad dispersa — sin lluvia organizada cerca.'
+      : 'Scattered moisture possible — no organized rain nearby.';
+  }
+  return isEs
+    ? 'Sin lluvia organizada cerca.'
+    : 'No organized rain nearby.';
+}
 import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, classifyRadarReturnWord, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
