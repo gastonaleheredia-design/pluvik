@@ -2032,6 +2032,79 @@ const togglesStyle: React.CSSProperties = {
   display: "flex", gap: 6, flexWrap: "wrap",
 };
 
+const topToggleRowStyle: React.CSSProperties = {
+  position: "absolute", top: 44, left: 12,
+  display: "flex", gap: 6, flexWrap: "wrap",
+  zIndex: 5,
+};
+
+const scrubberBarStyle: React.CSSProperties = {
+  position: "absolute", left: 10, right: 10, bottom: 14,
+  display: "flex", flexDirection: "column", gap: 8,
+  zIndex: 5,
+};
+const pausedTimeStyle: React.CSSProperties = {
+  alignSelf: "center",
+  backgroundColor: "rgba(11,16,24,0.92)", color: "#faf7f0",
+  padding: "6px 14px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.78rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,247,240,0.25)",
+};
+const scrubberRow: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8,
+  backgroundColor: "rgba(11,16,24,0.82)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 100,
+  padding: "6px 8px",
+  backdropFilter: "blur(6px)",
+};
+const scrubberPlayBtn: React.CSSProperties = {
+  flex: "0 0 auto",
+  width: 30, height: 30, borderRadius: "50%",
+  border: "1px solid rgba(255,255,255,0.2)",
+  backgroundColor: "rgba(255,255,255,0.08)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontSize: 12, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+};
+const scrubberTrackWrap: React.CSSProperties = {
+  position: "relative", flex: 1, height: 30,
+  display: "flex", alignItems: "center",
+};
+const tickRowStyle: React.CSSProperties = {
+  position: "absolute", inset: 0, pointerEvents: "none",
+};
+const tickWrap: React.CSSProperties = {
+  position: "absolute", top: 0, bottom: 0,
+  transform: "translateX(-50%)",
+  display: "flex", flexDirection: "column", alignItems: "center",
+  justifyContent: "flex-end",
+};
+const tickMark: React.CSSProperties = {
+  width: 1, height: 6, backgroundColor: "rgba(250,247,240,0.4)",
+  marginBottom: 1,
+};
+const tickLabel: React.CSSProperties = {
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.5rem", letterSpacing: "0.06em",
+  color: "rgba(250,247,240,0.55)",
+  whiteSpace: "nowrap",
+};
+const nowPillStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  padding: "6px 12px", borderRadius: 100,
+  border: "1px solid rgba(250,247,240,0.45)",
+  backgroundColor: "#faf7f0", color: "#0b1018",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.6rem", letterSpacing: "0.16em", fontWeight: 800,
+  cursor: "pointer",
+};
+const nowPillLive: React.CSSProperties = {
+  backgroundColor: "#ef4444", color: "#faf7f0",
+  borderColor: "#ef4444",
+};
+
 const legendWrapStyle: React.CSSProperties = {
   position: "absolute", bottom: 78, right: 10,
   backgroundColor: "rgba(11,16,24,0.82)",
