@@ -678,6 +678,49 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       reasonCode = 'cloudy_point';
     }
 
+    // Strict hierarchy enforcement (warnings > live radar > forecast):
+    //  1) Active NWS warning is already applied above via getActiveWarning.
+    //  2) Live radar returns within 50 mi override any forecast-based
+    //     "dry/cloudy/rain soon" verdict so the home screen never claims
+    //     "dry for now" when real returns are nearby.
+    //  3) Forecast (hourly / Tomorrow.io) is the source of truth only when
+    //     steps 1 and 2 are clear.
+    let radarReturns: NearbyRadarReturns | null = null;
+    if (!activeAlert) {
+      try {
+        radarReturns = await checkNearbyRadarReturns(lat, lon);
+      } catch { /* ignore — forecast verdict stands */ }
+
+      if (radarReturns) {
+        const { maxDbz, distanceMiles, bearing } = radarReturns;
+        let radarWord: HomeBriefing['word'] | null = null;
+        let radarLabel: string | null = null;
+        if (maxDbz >= 45 && distanceMiles <= 20) {
+          radarWord = 'STORMS';
+          radarLabel = isEs ? 'TORMENTAS' : 'STORMS';
+        } else if (maxDbz >= 35 && distanceMiles <= 30) {
+          // "RAIN" / "HEAVY RAIN" mapped to the existing RAINING token so
+          // downstream UI keeps working. Severity is conveyed in the sentence.
+          radarWord = 'RAINING';
+          radarLabel = maxDbz >= 50
+            ? (isEs ? 'LLUVIA INTENSA' : 'HEAVY RAIN')
+            : (isEs ? 'LLUVIA' : 'RAIN');
+        } else if (maxDbz >= 20 && distanceMiles <= 15) {
+          radarWord = 'RAINING';
+          radarLabel = isEs ? 'CHUBASCOS' : 'SHOWERS';
+        }
+        if (radarWord) {
+          word = radarWord;
+          reasonCode = 'nearby_strong_cell';
+          reasonDetail = isEs
+            ? `Radar: ${maxDbz} dBZ a ${distanceMiles} mi al ${bearing}`
+            : `Radar: ${maxDbz} dBZ ${distanceMiles} mi ${bearing} (${radarLabel})`;
+          // Imminent precipitation — make sure the sentence cannot say "dry".
+          if (hoursUntilRain == null || hoursUntilRain > 0) hoursUntilRain = 0;
+        }
+      }
+    }
+
     // One-line italic summary.
     let sentence: string;
     if (activeAlert) {
