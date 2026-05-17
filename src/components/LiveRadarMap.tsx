@@ -32,6 +32,10 @@ interface LiveRadarMapProps {
    * signatures overlay (TVS + mesocyclone circles + labels).
    */
   severity?: 'critical' | 'high' | 'elevated' | 'low' | 'none';
+  /** Optional close handler — surfaces the ✕ in the top bar (fullscreen). */
+  onClose?: () => void;
+  /** Optional minimize handler — surfaces the ▾ chevron in the top bar. */
+  onMinimize?: () => void;
 }
 
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
@@ -458,7 +462,7 @@ interface MiniCardData {
   phenomena?: string;
 }
 
-export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none' }: LiveRadarMapProps) {
+export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none', onClose, onMinimize }: LiveRadarMapProps) {
   const navigate = useNavigate();
   const { setAddress, resumeFollowing } = useAddress();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -480,7 +484,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [showRadar, setShowRadar] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
   const [basemap, setBasemap] = useState<"streets" | "satellite">("streets");
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [miniCard, setMiniCard] = useState<MiniCardData | null>(null);
   const [mode, setMode] = useState<"rain" | "mix" | "snow">("rain");
   const [source, setSource] = useState<"mosaic" | "station">("mosaic");
@@ -1268,6 +1272,14 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       return;
     }
     const existing = map.getSource("hrrr-forecast") as mapboxgl.RasterTileSource | undefined;
+    // 300-mile bbox around the user — limits HRRR tile fetches to the
+    // relevant region instead of pulling the full national mosaic.
+    const hrrrBounds: [number, number, number, number] = [
+      coordsRef.current.lon - 3.5,
+      coordsRef.current.lat - 2.5,
+      coordsRef.current.lon + 3.5,
+      coordsRef.current.lat + 2.5,
+    ];
     if (existing) {
       (existing as unknown as { setTiles?: (t: string[]) => void }).setTiles?.([frame.tileUrl]);
     } else {
@@ -1276,6 +1288,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         tiles: [frame.tileUrl],
         tileSize: 256,
         maxzoom: 9,
+        bounds: hrrrBounds,
         attribution: "© NOAA HRRR · IEM",
       });
       const beforeId = map.getLayer("nws-warnings-fill") ? "nws-warnings-fill" : undefined;
@@ -1610,139 +1623,78 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* Top-left: live indicator only */}
-      {view === "radar" ? (
-        <div style={pillTopLeft}>
-          <span style={liveDot} />
-          {source === "station" && stationId
-            ? `Live · ${stationId}`
-            : "Live · Mosaic"}
-        </div>
-      ) : (
-        <div
-          style={{
-            ...pillTopLeft,
-            backgroundColor: "rgba(120,53,15,0.85)",
-            color: "#fbbf24",
-            borderColor: "rgba(251,191,36,0.55)",
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: "#fbbf24",
-              marginRight: 6,
-              display: "inline-block",
-            }}
-          />
-          PREDICTED ·{" "}
-          {(() => {
-            const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
-            const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
-            return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
-          })()}
-        </div>
-      )}
-
-      {/* RADAR / FUTURE tabs */}
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: "inline-flex",
-          backgroundColor: "rgba(11,16,24,0.78)",
-          border: "1px solid rgba(250,247,240,0.18)",
-          borderRadius: 999,
-          padding: 3,
-          zIndex: 5,
-          fontFamily: "JetBrains Mono, ui-monospace, monospace",
-          fontSize: "0.6rem",
-          letterSpacing: "0.16em",
-        }}
-      >
-        {(["radar", "future"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setView(v)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 700,
-              letterSpacing: "0.16em",
-              backgroundColor: view === v
-                ? (v === "future" ? "#fbbf24" : "#faf7f0")
-                : "transparent",
-              color: view === v
-                ? (v === "future" ? "#451a03" : "#0b1018")
-                : "rgba(250,247,240,0.7)",
-              fontFamily: "inherit",
-              fontSize: "inherit",
-            }}
-          >
-            {v === "radar" ? "RADAR" : "FUTURE"}
-          </button>
-        ))}
-      </div>
-
-      {/* FUTURE hour selector — replaces the live scrubber in FUTURE mode */}
-      {view === "future" && (
-        <div style={futurePanelStyle}>
-          <div style={futurePanelHeader}>
-            <span>HRRR FORECAST · +{forecastHour}H</span>
-            <span style={{ color: "rgba(250,247,240,0.55)" }}>
-              {forecastLoading
-                ? "LOADING…"
-                : forecastFrames && forecastFrames.length > 0
-                  ? "LATEST RUN"
-                  : "UNAVAILABLE"}
-            </span>
-          </div>
-          <div style={futureHoursRow}>
-            {HRRR_HOURS.map((h) => {
-              const active = forecastHour === h;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setForecastHour(h)}
-                  style={{
-                    ...futureHourBtn,
-                    ...(active ? futureHourBtnActive : {}),
-                  }}
-                  aria-pressed={active}
-                >
-                  +{h}h
-                </button>
-              );
-            })}
-          </div>
-          {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
-            <div style={futureMissingStyle}>
-              Model data not yet available for this hour
+      {/* ============== TOP BAR ============== */}
+      <div style={topBarStyle}>
+        <div style={topBarLeft}>
+          {onMinimize && (
+            <button type="button" onClick={onMinimize} style={topBarIconBtn} aria-label="Minimize">▾</button>
+          )}
+          {view === "radar" ? (
+            <div style={statusLabelLive}>
+              <span style={liveDot} />
+              {source === "station" && stationId ? `LIVE · ${stationId}` : "LIVE · MOSAIC"}
+            </div>
+          ) : (
+            <div style={statusLabelFuture}>
+              <span style={amberDot} />
+              PREDICTED ·{" "}
+              {(() => {
+                const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+                const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
+                return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
+              })()}
             </div>
           )}
         </div>
-      )}
-
-      {/* Right toolbar — only the essentials */}
-      <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
-        <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
-        <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
-        <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
-        <ToolBtn
-          label={gpsBusy ? "…" : "📍"}
-          title="My location"
-          onClick={useMyLocation}
-          accent={precise}
-        />
+        <div style={topBarRight}>
+          <div style={segmentedWrap}>
+            {(["radar", "future"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                style={{
+                  ...segmentedBtn,
+                  ...(view === v
+                    ? (v === "future" ? segmentedBtnActiveAmber : segmentedBtnActive)
+                    : {}),
+                }}
+              >
+                {v === "radar" ? "RADAR" : "FUTURE"}
+              </button>
+            ))}
+          </div>
+          {onClose && (
+            <button type="button" onClick={onClose} style={topBarIconBtn} aria-label="Close">✕</button>
+          )}
+        </div>
       </div>
+
+      {/* ============== RIGHT CONTROLS (vertically centered) ============== */}
+      <div style={rightControlsStyle}>
+        <button type="button" onClick={() => mapRef.current?.zoomIn()} style={rightCtrlBtn} aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" onClick={() => mapRef.current?.zoomOut()} style={rightCtrlBtn} aria-label="Zoom out" title="Zoom out">−</button>
+        <button
+          type="button"
+          onClick={useMyLocation}
+          style={{ ...rightCtrlBtn, ...(precise ? rightCtrlBtnAccent : {}) }}
+          aria-label="Center on my location"
+          title="Center on my location"
+        >
+          {gpsBusy ? "…" : "⊕"}
+        </button>
+      </div>
+
+      {/* ============== LAYER TOGGLES (severe only) ============== */}
+      {severeActive && (
+        <div style={layerTogglesStyle}>
+          {rotQualifies && (
+            <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
+          )}
+          <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
+          <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
+        </div>
+      )}
 
       {/* Source picker panel */}
       {sourceMenuOpen && (
@@ -1804,28 +1756,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* dBZ legend, bottom-right, collapsible */}
-      <div style={legendWrapStyle}>
-        <button
-          onClick={() => setLegendOpen((o) => !o)}
-          style={legendHeaderStyle}
-          aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
-        >
-          {mode === "rain" ? "RAIN · dBZ" : mode === "mix" ? "MIX · dBZ" : "SNOW"} {legendOpen ? "▾" : "▸"}
-        </button>
+      {/* ============== dBZ legend pill (bottom-right, above bottom bar) ============== */}
+      <div style={legendPillWrap}>
         {legendOpen && (
-          <div style={legendBodyStyle}>
-            {/* Mode switcher */}
+          <div style={legendOverlayBody}>
             <div style={modeSwitchRow}>
               {(["rain", "mix", "snow"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  style={{
-                    ...modeChip,
-                    ...(mode === m ? modeChipActive : {}),
-                  }}
+                  style={{ ...modeChip, ...(mode === m ? modeChipActive : {}) }}
                 >
                   {m.toUpperCase()}
                 </button>
@@ -1837,113 +1778,116 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
                 <span style={legendLabel}>{s.tag} · {s.label}</span>
               </div>
             ))}
-            {mode === "mix" && (
-              <div style={legendNoteStyle}>
-                Reflectivity from rain palette. Likely mix when surface temp 28–36°F.
-              </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setLegendOpen((o) => !o)}
+          style={legendPillBtn}
+          aria-label={legendOpen ? "Hide legend" : "Show legend"}
+        >
+          dBZ {legendOpen ? "▾" : "▴"}
+        </button>
+      </div>
+
+      {/* ============== BOTTOM BAR ============== */}
+      <div style={bottomBarStyle}>
+        {view === "future" ? (
+          <div style={futureRowStyle}>
+            {HRRR_HOURS.map((h) => {
+              const active = forecastHour === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setForecastHour(h)}
+                  style={{ ...futureHourBtn, ...(active ? futureHourBtnActive : {}) }}
+                  aria-pressed={active}
+                >
+                  +{h}h
+                </button>
+              );
+            })}
+            {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
+              <div style={futureMissingInline}>Model data not yet available</div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Layer toggles — compact row top-left, below the LIVE pill */}
-      <div style={topToggleRowStyle}>
-        <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
-        {rotQualifies && (
-          <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
-        )}
-        {severeActive && (
+        ) : frameTime && framesRef.current ? (
           <>
-            <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
-            <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
-          </>
-        )}
-        <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
-          {basemap === "satellite" ? "SAT" : "MAP"}
-        </Toggle>
-      </div>
-
-      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW (RADAR mode only) */}
-      {view === "radar" && frameTime && framesRef.current && (
-        <div style={scrubberBarStyle}>
-          {!playing && (
-            <div style={pausedTimeStyle}>
-              {frameLabel}
-              {frameTime.isForecast ? " · forecast" : ""}
-            </div>
-          )}
-          <div style={scrubberRow}>
-            <button
-              type="button"
-              onClick={() => setPlaying((p) => !p)}
-              style={scrubberPlayBtn}
-              aria-label={playing ? "Pause" : "Play"}
-              title={playing ? "Pause" : "Play"}
-            >
-              {playing ? "❚❚" : "▶"}
-            </button>
-            <div style={scrubberTrackWrap}>
-              <div style={tickRowStyle}>
-                {(() => {
-                  const fr = framesRef.current;
-                  if (!fr) return null;
-                  const out: React.ReactNode[] = [];
-                  // Tick every 30 minutes (= every 6 frames at 5-min cadence).
-                  for (let i = 0; i < fr.frames.length; i++) {
-                    const f = fr.frames[i];
-                    const d = new Date(f.time * 1000);
-                    const isHalfHour = d.getMinutes() % 30 === 0;
-                    if (!isHalfHour) continue;
-                    const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
-                    const hh = d.getHours();
-                    const mm = d.getMinutes().toString().padStart(2, "0");
-                    const h12 = ((hh + 11) % 12) + 1;
-                    out.push(
-                      <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
-                        <div style={tickMark} />
-                        <div style={tickLabel}>{`${h12}:${mm}`}</div>
-                      </div>,
-                    );
-                  }
-                  return out;
-                })()}
+            {!playing && (
+              <div style={pausedTimeFloat}>
+                {frameLabel}{frameTime.isForecast ? " · forecast" : ""}
               </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
-                value={frameIdxRef.current}
-                onChange={(e) => {
-                  playingRef.current = false;
-                  setPlaying(false);
-                  jumpToFrame(parseInt(e.target.value, 10));
+            )}
+            <div style={scrubberRow}>
+              <button
+                type="button"
+                onClick={() => setPlaying((p) => !p)}
+                style={scrubberPlayBtn}
+                aria-label={playing ? "Pause" : "Play"}
+                title={playing ? "Pause" : "Play"}
+              >
+                {playing ? "❚❚" : "▶"}
+              </button>
+              <div style={scrubberTrackWrap}>
+                <div style={tickRowStyle}>
+                  {(() => {
+                    const fr = framesRef.current;
+                    if (!fr) return null;
+                    const out: React.ReactNode[] = [];
+                    for (let i = 0; i < fr.frames.length; i++) {
+                      const f = fr.frames[i];
+                      const d = new Date(f.time * 1000);
+                      if (d.getMinutes() % 30 !== 0) continue;
+                      const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
+                      const hh = d.getHours();
+                      const mm = d.getMinutes().toString().padStart(2, "0");
+                      const h12 = ((hh + 11) % 12) + 1;
+                      out.push(
+                        <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
+                          <div style={tickMark} />
+                          <div style={tickLabel}>{`${h12}:${mm}`}</div>
+                        </div>,
+                      );
+                    }
+                    return out;
+                  })()}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
+                  value={frameIdxRef.current}
+                  onChange={(e) => {
+                    playingRef.current = false;
+                    setPlaying(false);
+                    jumpToFrame(parseInt(e.target.value, 10));
+                  }}
+                  style={scrubStyle}
+                  aria-label="Radar time"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const fr = framesRef.current;
+                  if (!fr) return;
+                  jumpToFrame(fr.frames.length - 1);
+                  setPlaying(true);
                 }}
-                style={scrubStyle}
-                aria-label="Radar time"
-              />
+                style={{
+                  ...nowPillStyle,
+                  ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing ? nowPillLive : {}),
+                }}
+                aria-label="Snap to live"
+                title="Snap to live"
+              >
+                NOW
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const fr = framesRef.current;
-                if (!fr) return;
-                jumpToFrame(fr.frames.length - 1);
-                setPlaying(true);
-              }}
-              style={{
-                ...nowPillStyle,
-                ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing
-                  ? nowPillLive
-                  : {}),
-              }}
-              aria-label="Snap to live"
-              title="Snap to live"
-            >
-              NOW
-            </button>
-          </div>
-        </div>
-      )}
+          </>
+        ) : null}
+      </div>
 
       {/* Mini info card for clicked polygon */}
       {miniCard && (
@@ -2124,12 +2068,8 @@ const pausedTimeStyle: React.CSSProperties = {
   border: "1px solid rgba(250,247,240,0.25)",
 };
 const scrubberRow: React.CSSProperties = {
-  display: "flex", alignItems: "center", gap: 8,
-  backgroundColor: "rgba(11,16,24,0.82)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 100,
-  padding: "6px 8px",
-  backdropFilter: "blur(6px)",
+  display: "flex", alignItems: "center", gap: 10,
+  width: "100%",
 };
 const scrubberPlayBtn: React.CSSProperties = {
   flex: "0 0 auto",
@@ -2474,4 +2414,169 @@ const legendNoteStyle: React.CSSProperties = {
   fontFamily: "Fraunces, serif", fontStyle: "italic",
   fontSize: "0.6rem", color: "#cfd2d9", lineHeight: 1.3,
   maxWidth: 140,
+};
+
+/* ============== NEW LAYOUT STYLES (non-overlapping zones) ============== */
+
+// Reserve room for Mapbox attribution (~24px) at the very bottom so the
+// bottom bar never covers the © Mapbox / improve-this-map link.
+const BOTTOM_BAR_OFFSET = 24;
+const BOTTOM_BAR_HEIGHT = 56;
+const TOP_BAR_HEIGHT = 48;
+
+const topBarStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 0, left: 0, right: 0,
+  height: TOP_BAR_HEIGHT,
+  paddingTop: isFullscreenSafeArea(),
+  paddingLeft: 12, paddingRight: 12,
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  gap: 10,
+  backgroundColor: "rgba(0,0,0,0.75)",
+  backdropFilter: "blur(8px)",
+  zIndex: 6,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+};
+function isFullscreenSafeArea(): string { return "env(safe-area-inset-top, 0px)"; }
+const topBarLeft: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1,
+};
+const topBarRight: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto",
+};
+const topBarIconBtn: React.CSSProperties = {
+  width: 32, height: 32, borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(255,255,255,0.06)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: 14, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  flex: "0 0 auto",
+};
+const statusLabelLive: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center",
+  color: "#22c55e",
+  fontSize: "0.62rem", letterSpacing: "0.16em", fontWeight: 700,
+  textTransform: "uppercase",
+  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+};
+const statusLabelFuture: React.CSSProperties = {
+  ...statusLabelLive,
+  color: "#fbbf24",
+};
+const amberDot: React.CSSProperties = {
+  width: 6, height: 6, borderRadius: "50%",
+  backgroundColor: "#fbbf24",
+  marginRight: 6, display: "inline-block",
+};
+const segmentedWrap: React.CSSProperties = {
+  display: "inline-flex",
+  backgroundColor: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  borderRadius: 999, padding: 2,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+};
+const segmentedBtn: React.CSSProperties = {
+  padding: "5px 12px", borderRadius: 999,
+  border: "none", background: "transparent",
+  color: "rgba(250,247,240,0.7)", cursor: "pointer",
+  fontFamily: "inherit",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+};
+const segmentedBtnActive: React.CSSProperties = {
+  backgroundColor: "#faf7f0", color: "#0b1018",
+};
+const segmentedBtnActiveAmber: React.CSSProperties = {
+  backgroundColor: "#fbbf24", color: "#451a03",
+};
+
+const rightControlsStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  top: "50%",
+  transform: "translateY(-50%)",
+  display: "flex", flexDirection: "column", gap: 8,
+  zIndex: 5,
+};
+const rightCtrlBtn: React.CSSProperties = {
+  width: 40, height: 40, borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(0,0,0,0.75)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: 16, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  backdropFilter: "blur(6px)",
+};
+const rightCtrlBtnAccent: React.CSSProperties = {
+  border: "1px solid rgba(34,197,94,0.7)",
+  color: "#22c55e",
+};
+
+const layerTogglesStyle: React.CSSProperties = {
+  position: "absolute",
+  top: TOP_BAR_HEIGHT + 8,
+  left: 12,
+  display: "flex", gap: 6, flexWrap: "wrap",
+  zIndex: 5,
+};
+
+const legendPillWrap: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  bottom: BOTTOM_BAR_OFFSET + BOTTOM_BAR_HEIGHT + 10,
+  display: "flex", flexDirection: "column",
+  alignItems: "flex-end", gap: 6,
+  zIndex: 5,
+};
+const legendPillBtn: React.CSSProperties = {
+  padding: "5px 10px", borderRadius: 100,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(0,0,0,0.75)",
+  color: "#faf7f0", cursor: "pointer",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em", fontWeight: 700,
+  backdropFilter: "blur(6px)",
+};
+const legendOverlayBody: React.CSSProperties = {
+  backgroundColor: "rgba(0,0,0,0.85)",
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 10,
+  padding: "8px 10px",
+  display: "flex", flexDirection: "column", gap: 3,
+  minWidth: 130, maxWidth: 160,
+  backdropFilter: "blur(8px)",
+};
+
+const bottomBarStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 0, right: 0,
+  bottom: BOTTOM_BAR_OFFSET,
+  minHeight: BOTTOM_BAR_HEIGHT,
+  padding: "8px 12px",
+  backgroundColor: "rgba(0,0,0,0.9)",
+  display: "flex", alignItems: "center",
+  zIndex: 6,
+  backdropFilter: "blur(8px)",
+};
+const futureRowStyle: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8,
+  overflowX: "auto", width: "100%",
+  WebkitOverflowScrolling: "touch",
+};
+const futureMissingInline: React.CSSProperties = {
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.78rem", color: "#fde68a",
+  whiteSpace: "nowrap", marginLeft: 8,
+};
+const pausedTimeFloat: React.CSSProperties = {
+  position: "absolute",
+  top: -36, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(0,0,0,0.92)", color: "#faf7f0",
+  padding: "5px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.72rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,247,240,0.25)",
+  whiteSpace: "nowrap",
 };
