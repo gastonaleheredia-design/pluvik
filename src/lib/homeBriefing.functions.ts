@@ -1480,6 +1480,7 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       temp_f: typeof j.current?.temperature_2m === 'number' ? Math.round(j.current.temperature_2m) : null,
       alert: alertOut,
       verdict_reason: { code: reasonCode, detail: reasonDetail },
+      verdict_source: verdictSource,
       next_hour_prob: Number.isFinite(nextHourProb) ? Math.round(nextHourProb) : null,
       confidence,
       rain_hours_48: (() => {
