@@ -553,8 +553,9 @@ function HomePage() {
     notifySevereWeather(
       { event: a.event, expiresIso: a.expires_iso, expiresLocal: a.expires_local },
       place,
+      user?.id ?? null,
     ).catch(() => { /* notification failures are non-fatal */ });
-  }, [briefing?.alert?.event, briefing?.alert?.expires_iso, selectedAddress.label]);
+  }, [briefing?.alert?.event, briefing?.alert?.expires_iso, selectedAddress.label, user?.id]);
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
