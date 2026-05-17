@@ -435,7 +435,7 @@ export function composeWhyNarrative(inputs: WhyInputs): WhyNarrative {
   return {
     scenario,
     severeType,
-    headline: sanitizeSummary(headlineFor(scenario, severeType ?? 'non_severe', inputs), inputs.word),
+    headline: sanitizeSummary(headlineFor(scenario, severeType ?? 'non_severe', inputs), inputs.word) ?? '',
     bullets,
     outlook: sanitizeSummary(outlookFor(scenario, inputs), inputs.word),
     confidence: confidenceFor(scenario, inputs),
