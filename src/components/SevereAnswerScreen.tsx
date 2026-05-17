@@ -3,6 +3,14 @@ import { useTranslation } from 'react-i18next';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { getSeverityColors, STORMS_PALETTE } from '../lib/severityColors';
 import { cleanAlertText } from '../lib/cleanAlertText';
+import {
+  parseStormMotionFromAlerts,
+  computeStormTiming,
+  compassFromDeg,
+  formatClockOffset,
+  type StormTiming,
+  type StormMotion,
+} from '../lib/stormTiming';
 
 interface SevereAnswerScreenProps {
   answer: ExtendedWeatherAnswer;
@@ -11,6 +19,8 @@ interface SevereAnswerScreenProps {
   onBack: () => void;
   onSaveTrack: () => void;
   saving: boolean;
+  userLat?: number | null;
+  userLon?: number | null;
 }
 
 const THREAT_COLORS: Record<string, string> = {
@@ -75,6 +85,8 @@ export function SevereAnswerScreen({
   onBack,
   onSaveTrack,
   saving,
+  userLat,
+  userLon,
 }: SevereAnswerScreenProps) {
   const { t } = useTranslation();
   const riskNum = answer.risk_level_num ?? 2;
