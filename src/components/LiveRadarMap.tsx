@@ -532,6 +532,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [forecastHour, setForecastHour] = useState<number>(1);
   const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
   const [forecastLoading, setForecastLoading] = useState<boolean>(false);
+  // Hours whose tiles have already been warmed in the browser cache. Drives
+  // the "instant FUTURE" behavior — when the user taps FUTURE, any hour in
+  // this set paints immediately because Mapbox finds the tiles cached.
+  const prefetchedHoursRef = useRef<Set<number>>(new Set());
+  const [prefetching, setPrefetching] = useState<boolean>(false);
 
   // Rotation signatures (SWDI TVS + MDA). Only fetched + shown when the
   // active alert severity is high or critical and the user has not toggled
