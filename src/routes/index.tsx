@@ -1559,30 +1559,58 @@ function HomePage() {
             padding: '6px 6px 6px 18px',
           }}
         >
-          <input
-            ref={questionInputRef}
-            className={isDarkMode ? 'severe-input' : undefined}
-            value={questionText}
-            onChange={(e) => {
-              setQuestionText(e.target.value);
-            }}
-            placeholder={
-              micState === 'recording' ? t('home.mic_listening', { defaultValue: 'Listening…' }) :
-              micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
-              t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
-            }
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: '0.95rem',
-              color: isDarkMode ? severeWhite : INK,
-              minWidth: 0,
-            }}
-          />
+          {micState === 'recording' ? (
+            <div
+              aria-label="Recording"
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                minWidth: 0,
+                height: 24,
+              }}
+            >
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: 'inline-block',
+                    width: 3,
+                    height: 20,
+                    background: '#c2410c',
+                    borderRadius: 2,
+                    transformOrigin: 'center',
+                    animation: `waveBar 0.9s ease-in-out ${i * 0.12}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <input
+              ref={questionInputRef}
+              className={isDarkMode ? 'severe-input' : undefined}
+              value={questionText}
+              onChange={(e) => {
+                setQuestionText(e.target.value);
+              }}
+              placeholder={
+                micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
+                t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
+              }
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontFamily: 'Fraunces, serif',
+                fontStyle: 'italic',
+                fontSize: '0.95rem',
+                color: isDarkMode ? severeWhite : INK,
+                minWidth: 0,
+              }}
+            />
+          )}
           <button
               type="button"
               onClick={() => {
