@@ -1425,15 +1425,15 @@ function HomePage() {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: severeMode ? 'rgba(255,255,255,0.1)' : '#fff',
-            border: severeMode ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(11,16,24,0.08)',
+            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#fff',
+            border: isDarkMode ? '1px solid rgba(255,255,255,0.6)' : '1px solid rgba(11,16,24,0.08)',
             borderRadius: '100px',
             padding: '6px 6px 6px 18px',
           }}
         >
           <input
             ref={questionInputRef}
-            className={severeMode ? 'severe-input' : undefined}
+            className={isDarkMode ? 'severe-input' : undefined}
             value={questionText}
             onChange={(e) => {
               setQuestionText(e.target.value);
@@ -1451,7 +1451,7 @@ function HomePage() {
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
               fontSize: '0.95rem',
-              color: severeMode ? severeWhite : INK,
+              color: isDarkMode ? severeWhite : INK,
               minWidth: 0,
             }}
           />
@@ -1467,8 +1467,8 @@ function HomePage() {
                 height: '34px',
                 borderRadius: '50%',
                 border: 'none',
-                backgroundColor: micState === 'recording' ? ACCENT : '#f1ede4',
-                color: micState === 'recording' ? PAGE_BG : INK,
+                backgroundColor: micState === 'recording' ? ACCENT : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#f1ede4'),
+                color: micState === 'recording' ? PAGE_BG : (isDarkMode ? severeWhite : INK),
                 cursor: micState === 'transcribing' ? 'default' : 'pointer',
                 opacity: micState === 'transcribing' ? 0.6 : 1,
                 display: 'flex',
@@ -1515,8 +1515,8 @@ function HomePage() {
               height: '36px',
               borderRadius: '50%',
               border: 'none',
-              backgroundColor: questionText.trim() ? ACCENT : '#e5e7eb',
-              color: questionText.trim() ? PAGE_BG : '#9ca3af',
+              backgroundColor: questionText.trim() ? ACCENT : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#e5e7eb'),
+              color: questionText.trim() ? (isDarkMode ? severeWhite : PAGE_BG) : (isDarkMode ? 'rgba(255,255,255,0.4)' : '#9ca3af'),
               cursor: questionText.trim() ? 'pointer' : 'default',
               fontSize: '1rem',
               flexShrink: 0,
