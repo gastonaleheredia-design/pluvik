@@ -127,6 +127,11 @@ function HomePage() {
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
+  const [updatedEvents, setUpdatedEvents] = useState<Array<{
+    id: string;
+    question: string;
+    verdict_word: string | null;
+  }>>([]);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
   const [recordElapsed, setRecordElapsed] = useState(0);
@@ -243,6 +248,31 @@ function HomePage() {
         event_date: e.event_date as string | null,
         event_end: e.event_end as string | null,
         creator_username: usernameById.get(e.creator_id as string) ?? 'friend',
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Updated forecasts: user's tracked events whose verdict / percentage
+  // changed within the last 24 hours.
+  useEffect(() => {
+    if (!user) { setUpdatedEvents([]); return; }
+    let cancelled = false;
+    (async () => {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('tracked_events')
+        .select('id, question, current_verdict_word, last_significant_change_at')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .gte('last_significant_change_at', since)
+        .order('last_significant_change_at', { ascending: false })
+        .limit(2);
+      if (cancelled) return;
+      setUpdatedEvents((data ?? []).map((r) => ({
+        id: r.id as string,
+        question: (r.question as string) ?? '',
+        verdict_word: (r.current_verdict_word as string | null) ?? null,
       })));
     })();
     return () => { cancelled = true; };
@@ -1436,6 +1466,77 @@ function HomePage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* UPDATED FORECASTS — tracked events whose verdict changed recently */}
+      {user && updatedEvents.length > 0 && (
+        <div style={{ padding: '0 20px 8px' }}>
+          <p style={{
+            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: '#6b6b6b',
+            margin: '0 0 10px',
+          }}>
+            Updated forecasts
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {updatedEvents.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => navigate({ to: '/event/$id', params: { id: e.id } })}
+                style={{
+                  textAlign: 'left',
+                  background: '#fff',
+                  border: '1px solid rgba(11,16,24,0.08)',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  color: '#0b1018',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontFamily: '"Fraunces", Georgia, serif',
+                    fontSize: '1rem',
+                    color: '#0b1018',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {e.question || 'Tracked forecast'}
+                  </div>
+                  {e.verdict_word && (
+                    <div style={{
+                      fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      color: '#c2410c',
+                      marginTop: 4,
+                    }}>
+                      {e.verdict_word}
+                    </div>
+                  )}
+                </div>
+                <span style={{
+                  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                  fontSize: '1.1rem',
+                  color: '#c2410c',
+                  lineHeight: 1,
+                }}>
+                  →
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       )}
