@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { fetchAlertById, getCachedAlert, type CachedAlert } from '@/lib/activeAlertsCache';
+import { cleanAlertText } from '@/lib/cleanAlertText';
 
 const PAGE_BG = '#faf7f0';
 const INK = '#0b1018';
@@ -111,7 +112,7 @@ function AlertDetailPage() {
                 fontSize: '1.4rem', lineHeight: 1.35, color: INK, fontWeight: 400,
               }}
             >
-              {alert.headline}
+              {cleanAlertText(alert.headline)}
             </h1>
           )}
 
@@ -127,11 +128,14 @@ function AlertDetailPage() {
             </div>
           )}
 
-          {alert.description && (
-            <div style={{ marginTop: 20 }}>
-              <Section title="Details">{alert.description}</Section>
-            </div>
-          )}
+          {(() => {
+            const cleaned = cleanAlertText(alert.description);
+            return cleaned ? (
+              <div style={{ marginTop: 20 }}>
+                <Section title="Details">{cleaned}</Section>
+              </div>
+            ) : null;
+          })()}
 
           {alert.instruction && (
             <div
