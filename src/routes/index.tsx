@@ -1199,7 +1199,7 @@ function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRainSheetOpen(true)}
-                        style={{ ...chipBase, color: severeMode ? severeWhite : ACCENT, borderColor: severeMode ? chipBorder : `${ACCENT}55`, cursor: 'pointer' }}
+                        style={{ ...chipBase, color: isDarkMode ? severeWhite : ACCENT, borderColor: isDarkMode ? 'rgba(255,255,255,0.6)' : `${ACCENT}55`, cursor: 'pointer' }}
                       >
                         <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                         {pillText}
