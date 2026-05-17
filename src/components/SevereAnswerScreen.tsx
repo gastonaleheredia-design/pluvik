@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
+import { getSeverityColors, STORMS_PALETTE } from '../lib/severityColors';
 
 interface SevereAnswerScreenProps {
   answer: ExtendedWeatherAnswer;
@@ -87,6 +88,27 @@ export function SevereAnswerScreen({
   const emergency = detectEmergency(answer.active_alerts);
   const isSevereTstmWarning = !emergency.kind && detectSevereTstmWarning(answer.active_alerts);
 
+  // Pick the most-severe matching palette from active alerts; fall back to
+  // the generic STORMS palette so the screen always renders with white text
+  // on a dark background.
+  const palette = (() => {
+    const alerts = answer.active_alerts ?? [];
+    const priorities = [
+      'Tornado Warning',
+      'Flash Flood Warning',
+      'Severe Thunderstorm Warning',
+      'Winter Storm Warning',
+      'Tornado Watch',
+      'Severe Thunderstorm Watch',
+    ];
+    for (const evt of priorities) {
+      if (alerts.some((a) => a.toLowerCase().includes(evt.toLowerCase()))) {
+        return getSeverityColors(evt);
+      }
+    }
+    return STORMS_PALETTE;
+  })();
+
   if (emergency.kind) {
     return (
       <EmergencyShelterScreen
@@ -100,14 +122,16 @@ export function SevereAnswerScreen({
     );
   }
 
-  const pageBg = isSevereTstmWarning ? '#431407' : '#0b1018';
+  const pageBg = palette.bg;
+  const textColor = palette.text;
+  const accentColor = palette.accent;
 
   return (
     <div
       style={{
         minHeight: '100vh',
         backgroundColor: pageBg,
-        color: '#faf7f0',
+        color: textColor,
         paddingBottom: '48px',
         position: 'relative',
         overflow: 'hidden',
