@@ -2068,12 +2068,8 @@ const pausedTimeStyle: React.CSSProperties = {
   border: "1px solid rgba(250,247,240,0.25)",
 };
 const scrubberRow: React.CSSProperties = {
-  display: "flex", alignItems: "center", gap: 8,
-  backgroundColor: "rgba(11,16,24,0.82)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 100,
-  padding: "6px 8px",
-  backdropFilter: "blur(6px)",
+  display: "flex", alignItems: "center", gap: 10,
+  width: "100%",
 };
 const scrubberPlayBtn: React.CSSProperties = {
   flex: "0 0 auto",
