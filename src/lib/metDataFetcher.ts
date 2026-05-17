@@ -64,6 +64,8 @@ export interface MetarObservation {
   visibilityMi: number | null;
   /** Altimeter setting in inches of mercury, if available. */
   altimeterInHg: number | null;
+  /** Total sky cover in percent derived from the highest reporting layer (CLR/SKC=0, FEW=20, SCT=40, BKN=80, OVC=100). null when no sky group reported. */
+  cloudCoverPct: number | null;
 }
 
 function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -92,6 +94,7 @@ export function parseMetar(raw: string): {
   windDir: number | null;
   visibilityMi: number | null;
   altimeterInHg: number | null;
+  cloudCoverPct: number | null;
 } {
   const tokens = raw.trim().split(/\s+/);
 
@@ -113,6 +116,7 @@ export function parseMetar(raw: string): {
   let windDir: number | null = null;
   let visibilityMi: number | null = null;
   let altimeterInHg: number | null = null;
+  let cloudCoverPct: number | null = null;
 
   const pushWx = (code: MetarWxCode, inten: '-' | '' | '+') => {
     if (!presentWeather.includes(code)) {
@@ -142,6 +146,17 @@ export function parseMetar(raw: string): {
     const alt = tok.match(/^A(\d{4})$/);
     if (alt) {
       altimeterInHg = parseInt(alt[1], 10) / 100;
+      continue;
+    }
+    // Sky cover groups: CLR, SKC, NCD, NSC, FEW###, SCT###, BKN###, OVC###, VV### (vertical vis = obscured/OVC).
+    if (tok === 'CLR' || tok === 'SKC' || tok === 'NCD' || tok === 'NSC') {
+      if (cloudCoverPct == null) cloudCoverPct = 0;
+      continue;
+    }
+    const sky = tok.match(/^(FEW|SCT|BKN|OVC|VV)(\d{3})?(?:CB|TCU)?$/);
+    if (sky) {
+      const pct = sky[1] === 'FEW' ? 20 : sky[1] === 'SCT' ? 40 : sky[1] === 'BKN' ? 80 : 100;
+      cloudCoverPct = Math.max(cloudCoverPct ?? 0, pct);
       continue;
     }
     // Visibility: "10SM", "1/2SM", "2 1/2SM" (second token handled implicitly)
@@ -189,6 +204,7 @@ export function parseMetar(raw: string): {
     windDir,
     visibilityMi,
     altimeterInHg,
+    cloudCoverPct,
   };
 }
 
