@@ -1561,6 +1561,7 @@ function HomePage() {
           key={`${selectedAddress.lat.toFixed(4)}|${selectedAddress.lon.toFixed(4)}`}
           lat={selectedAddress.lat}
           lon={selectedAddress.lon}
+          severity={severity}
           alert={sheetMode === 'alert' && warning ? {
             event: warning.event,
             headline: warning.headline,
