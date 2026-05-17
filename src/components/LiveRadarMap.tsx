@@ -2606,6 +2606,18 @@ const futureMissingInline: React.CSSProperties = {
   fontSize: "0.78rem", color: "#fde68a",
   whiteSpace: "nowrap", marginLeft: 8,
 };
+const prefetchHintStyle: React.CSSProperties = {
+  position: "absolute",
+  top: -22, right: 12,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.52rem", letterSpacing: "0.14em", fontWeight: 700,
+  color: "rgba(250,247,240,0.55)",
+  backgroundColor: "rgba(0,0,0,0.55)",
+  padding: "3px 8px", borderRadius: 100,
+  pointerEvents: "none",
+  whiteSpace: "nowrap",
+  textTransform: "uppercase",
+};
 const pausedTimeFloat: React.CSSProperties = {
   position: "absolute",
   top: -36, left: "50%", transform: "translateX(-50%)",
