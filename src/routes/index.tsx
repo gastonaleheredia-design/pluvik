@@ -1256,7 +1256,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.5) !important;}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
