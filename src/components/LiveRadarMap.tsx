@@ -1756,28 +1756,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* dBZ legend, bottom-right, collapsible */}
-      <div style={legendWrapStyle}>
-        <button
-          onClick={() => setLegendOpen((o) => !o)}
-          style={legendHeaderStyle}
-          aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
-        >
-          {mode === "rain" ? "RAIN · dBZ" : mode === "mix" ? "MIX · dBZ" : "SNOW"} {legendOpen ? "▾" : "▸"}
-        </button>
+      {/* ============== dBZ legend pill (bottom-right, above bottom bar) ============== */}
+      <div style={legendPillWrap}>
         {legendOpen && (
-          <div style={legendBodyStyle}>
-            {/* Mode switcher */}
+          <div style={legendOverlayBody}>
             <div style={modeSwitchRow}>
               {(["rain", "mix", "snow"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  style={{
-                    ...modeChip,
-                    ...(mode === m ? modeChipActive : {}),
-                  }}
+                  style={{ ...modeChip, ...(mode === m ? modeChipActive : {}) }}
                 >
                   {m.toUpperCase()}
                 </button>
@@ -1789,113 +1778,116 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
                 <span style={legendLabel}>{s.tag} · {s.label}</span>
               </div>
             ))}
-            {mode === "mix" && (
-              <div style={legendNoteStyle}>
-                Reflectivity from rain palette. Likely mix when surface temp 28–36°F.
-              </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setLegendOpen((o) => !o)}
+          style={legendPillBtn}
+          aria-label={legendOpen ? "Hide legend" : "Show legend"}
+        >
+          dBZ {legendOpen ? "▾" : "▴"}
+        </button>
+      </div>
+
+      {/* ============== BOTTOM BAR ============== */}
+      <div style={bottomBarStyle}>
+        {view === "future" ? (
+          <div style={futureRowStyle}>
+            {HRRR_HOURS.map((h) => {
+              const active = forecastHour === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setForecastHour(h)}
+                  style={{ ...futureHourBtn, ...(active ? futureHourBtnActive : {}) }}
+                  aria-pressed={active}
+                >
+                  +{h}h
+                </button>
+              );
+            })}
+            {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
+              <div style={futureMissingInline}>Model data not yet available</div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Layer toggles — compact row top-left, below the LIVE pill */}
-      <div style={topToggleRowStyle}>
-        <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
-        {rotQualifies && (
-          <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
-        )}
-        {severeActive && (
+        ) : frameTime && framesRef.current ? (
           <>
-            <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
-            <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
-          </>
-        )}
-        <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
-          {basemap === "satellite" ? "SAT" : "MAP"}
-        </Toggle>
-      </div>
-
-      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW (RADAR mode only) */}
-      {view === "radar" && frameTime && framesRef.current && (
-        <div style={scrubberBarStyle}>
-          {!playing && (
-            <div style={pausedTimeStyle}>
-              {frameLabel}
-              {frameTime.isForecast ? " · forecast" : ""}
-            </div>
-          )}
-          <div style={scrubberRow}>
-            <button
-              type="button"
-              onClick={() => setPlaying((p) => !p)}
-              style={scrubberPlayBtn}
-              aria-label={playing ? "Pause" : "Play"}
-              title={playing ? "Pause" : "Play"}
-            >
-              {playing ? "❚❚" : "▶"}
-            </button>
-            <div style={scrubberTrackWrap}>
-              <div style={tickRowStyle}>
-                {(() => {
-                  const fr = framesRef.current;
-                  if (!fr) return null;
-                  const out: React.ReactNode[] = [];
-                  // Tick every 30 minutes (= every 6 frames at 5-min cadence).
-                  for (let i = 0; i < fr.frames.length; i++) {
-                    const f = fr.frames[i];
-                    const d = new Date(f.time * 1000);
-                    const isHalfHour = d.getMinutes() % 30 === 0;
-                    if (!isHalfHour) continue;
-                    const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
-                    const hh = d.getHours();
-                    const mm = d.getMinutes().toString().padStart(2, "0");
-                    const h12 = ((hh + 11) % 12) + 1;
-                    out.push(
-                      <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
-                        <div style={tickMark} />
-                        <div style={tickLabel}>{`${h12}:${mm}`}</div>
-                      </div>,
-                    );
-                  }
-                  return out;
-                })()}
+            {!playing && (
+              <div style={pausedTimeFloat}>
+                {frameLabel}{frameTime.isForecast ? " · forecast" : ""}
               </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
-                value={frameIdxRef.current}
-                onChange={(e) => {
-                  playingRef.current = false;
-                  setPlaying(false);
-                  jumpToFrame(parseInt(e.target.value, 10));
+            )}
+            <div style={scrubberRow}>
+              <button
+                type="button"
+                onClick={() => setPlaying((p) => !p)}
+                style={scrubberPlayBtn}
+                aria-label={playing ? "Pause" : "Play"}
+                title={playing ? "Pause" : "Play"}
+              >
+                {playing ? "❚❚" : "▶"}
+              </button>
+              <div style={scrubberTrackWrap}>
+                <div style={tickRowStyle}>
+                  {(() => {
+                    const fr = framesRef.current;
+                    if (!fr) return null;
+                    const out: React.ReactNode[] = [];
+                    for (let i = 0; i < fr.frames.length; i++) {
+                      const f = fr.frames[i];
+                      const d = new Date(f.time * 1000);
+                      if (d.getMinutes() % 30 !== 0) continue;
+                      const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
+                      const hh = d.getHours();
+                      const mm = d.getMinutes().toString().padStart(2, "0");
+                      const h12 = ((hh + 11) % 12) + 1;
+                      out.push(
+                        <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
+                          <div style={tickMark} />
+                          <div style={tickLabel}>{`${h12}:${mm}`}</div>
+                        </div>,
+                      );
+                    }
+                    return out;
+                  })()}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
+                  value={frameIdxRef.current}
+                  onChange={(e) => {
+                    playingRef.current = false;
+                    setPlaying(false);
+                    jumpToFrame(parseInt(e.target.value, 10));
+                  }}
+                  style={scrubStyle}
+                  aria-label="Radar time"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const fr = framesRef.current;
+                  if (!fr) return;
+                  jumpToFrame(fr.frames.length - 1);
+                  setPlaying(true);
                 }}
-                style={scrubStyle}
-                aria-label="Radar time"
-              />
+                style={{
+                  ...nowPillStyle,
+                  ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing ? nowPillLive : {}),
+                }}
+                aria-label="Snap to live"
+                title="Snap to live"
+              >
+                NOW
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const fr = framesRef.current;
-                if (!fr) return;
-                jumpToFrame(fr.frames.length - 1);
-                setPlaying(true);
-              }}
-              style={{
-                ...nowPillStyle,
-                ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing
-                  ? nowPillLive
-                  : {}),
-              }}
-              aria-label="Snap to live"
-              title="Snap to live"
-            >
-              NOW
-            </button>
-          </div>
-        </div>
-      )}
+          </>
+        ) : null}
+      </div>
 
       {/* Mini info card for clicked polygon */}
       {miniCard && (
