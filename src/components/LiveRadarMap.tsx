@@ -791,6 +791,142 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     fitToWarnings(map, data, la, lo);
   }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
+  /* -------------- Rotation signatures overlay (SWDI) -------------- */
+
+  const setRotationData = useCallback((map: mapboxgl.Map, events: RotationEvent[]) => {
+    const features: GeoJSON.Feature[] = events
+      .filter((e) => e.type === 'TVS' || e.type === 'MESO')
+      .map((e) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [e.lon, e.lat] },
+        properties: {
+          kind: e.type,
+          label: e.type === 'TVS' ? 'ROTATION CONFIRMED' : 'ROTATION',
+        },
+      }));
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const existing = map.getSource('rot-signatures') as mapboxgl.GeoJSONSource | undefined;
+    if (existing) { existing.setData(data); return; }
+    map.addSource('rot-signatures', { type: 'geojson', data });
+    map.addLayer({
+      id: 'rot-signatures-circle',
+      type: 'circle',
+      source: 'rot-signatures',
+      layout: { visibility: showRot && rotQualifies ? 'visible' : 'none' },
+      paint: {
+        'circle-radius': 24,
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': ['match', ['get', 'kind'], 'TVS', '#ef4444', '#f97316'] as any,
+      },
+    });
+    map.addLayer({
+      id: 'rot-signatures-label',
+      type: 'symbol',
+      source: 'rot-signatures',
+      layout: {
+        visibility: showRot && rotQualifies ? 'visible' : 'none',
+        'text-field': ['get', 'label'],
+        // JetBrains Mono isn't a Mapbox-hosted font; substitute a mono-ish
+        // weight that ships with the dark style so the layer renders.
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-size': 9,
+        'text-offset': [0, 1.8],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#0b1018',
+        'text-halo-width': 1.2,
+      },
+    });
+  }, [showRot, rotQualifies]);
+
+  /* -------------- Storm motion arrows -------------- */
+
+  const ensureArrowIcon = useCallback((map: mapboxgl.Map) => {
+    if (map.hasImage('storm-arrow')) return;
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Draw an arrow pointing up (will be rotated by icon-rotate).
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Halo for legibility on radar.
+    ctx.shadowColor = 'rgba(11,16,24,0.85)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(size / 2, size - 6);
+    ctx.lineTo(size / 2, 14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(size / 2, 4);
+    ctx.lineTo(size / 2 - 12, 22);
+    ctx.lineTo(size / 2 + 12, 22);
+    ctx.closePath();
+    ctx.fill();
+    const imgData = ctx.getImageData(0, 0, size, size);
+    map.addImage('storm-arrow', imgData, { pixelRatio: 2 });
+  }, []);
+
+  const setStormMotionData = useCallback((
+    map: mapboxgl.Map,
+    warnings: GeoJSON.FeatureCollection,
+  ) => {
+    ensureArrowIcon(map);
+    const features: GeoJSON.Feature[] = [];
+    for (const f of warnings.features ?? []) {
+      const p = (f.properties ?? {}) as Record<string, any>;
+      const lon = p.centroidLon; const lat = p.centroidLat;
+      const deg = p.motionDeg; const mph = p.motionMph;
+      if (typeof lon !== 'number' || typeof lat !== 'number') continue;
+      if (typeof deg !== 'number' || typeof mph !== 'number') continue;
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lon, lat] },
+        properties: {
+          // Mapbox icon-rotate is clockwise from north; matches NWS bearing.
+          rotate: deg,
+          label: `${Math.round(mph)} mph`,
+        },
+      });
+    }
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const existing = map.getSource('storm-motion') as mapboxgl.GeoJSONSource | undefined;
+    if (existing) { existing.setData(data); return; }
+    map.addSource('storm-motion', { type: 'geojson', data });
+    map.addLayer({
+      id: 'storm-motion-arrow',
+      type: 'symbol',
+      source: 'storm-motion',
+      layout: {
+        'icon-image': 'storm-arrow',
+        'icon-size': 0.55,
+        'icon-rotate': ['get', 'rotate'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'text-field': ['get', 'label'],
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-size': 11,
+        'text-offset': [0, 1.6],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'icon-opacity': 1,
+        'text-color': '#ffffff',
+        'text-halo-color': '#0b1018',
+        'text-halo-width': 1.4,
+      },
+    });
+  }, [ensureArrowIcon]);
+
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
     const wrap = document.createElement("div");
