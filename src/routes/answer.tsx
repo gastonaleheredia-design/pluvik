@@ -28,21 +28,77 @@ import {
   answerSevereWeatherQuestion,
   type SevereAnswer,
 } from '../lib/severeWeatherInterpreter';
+import type { InterpreterAlert } from '../lib/severeWeatherInterpreter';
 import { getSevereContext } from '../lib/getSevereContext.functions';
+import { sendSevereWeatherPush } from '../lib/sendSevereWeatherPush.functions';
 
-/* ---------- Severe-weather intercept screen (red, minimal) ---------- */
+/* ---------- Severe-weather intercept screen (emergency mode) ---------- */
+
+/**
+ * Format a millisecond duration as a compact countdown like "8m 42s" or
+ * "1h 12m". Returns "EXPIRED" when the duration is <= 0.
+ */
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return 'EXPIRED';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+function formatAgo(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  return `${m}m ago`;
+}
 
 function SevereInterceptScreen({
   loading,
   answer,
+  activeAlert,
   question,
+  placeLabel,
+  lastUpdatedAt,
+  notifyEnabled,
+  onToggleNotify,
+  onRefresh,
+  refreshing,
   onBack,
 }: {
   loading: boolean;
   answer: SevereAnswer | null;
+  activeAlert: InterpreterAlert | null;
   question: string;
+  placeLabel: string;
+  lastUpdatedAt: number | null;
+  notifyEnabled: boolean;
+  onToggleNotify: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
   onBack: () => void;
 }) {
+  // Live countdown / "updated Xs ago" — re-render every second.
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const expiresMs = activeAlert?.expiresIso ? new Date(activeAlert.expiresIso).getTime() : null;
+  const countdown = expiresMs != null && Number.isFinite(expiresMs)
+    ? formatCountdown(expiresMs - now)
+    : null;
+  const expiryClock = activeAlert?.expiresLocal
+    ?? (expiresMs != null
+      ? new Date(expiresMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : null);
+
+  const updatedAgo = lastUpdatedAt != null ? formatAgo(now - lastUpdatedAt) : null;
+
   return (
     <div
       style={{
@@ -51,104 +107,185 @@ function SevereInterceptScreen({
         color: '#ffffff',
         display: 'flex',
         flexDirection: 'column',
-        padding: '56px 22px 32px',
+        padding: '40px 22px 28px',
       }}
     >
+      <style>{`@keyframes pluvikPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.45)}}`}</style>
+
+      {/* Back */}
       <button
         type="button"
         onClick={onBack}
         style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 0,
-          marginBottom: 20,
-          alignSelf: 'flex-start',
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          marginBottom: 18, alignSelf: 'flex-start',
           fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          fontSize: '0.6rem',
-          letterSpacing: '0.18em',
-          color: 'rgba(255,255,255,0.75)',
-          textTransform: 'uppercase',
+          fontSize: '0.6rem', letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase',
         }}
       >
         ← BACK
       </button>
 
+      {/* Hazard banner: pulsing dot + warning name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 10, height: 10, borderRadius: '50%',
+            backgroundColor: '#ef4444',
+            boxShadow: '0 0 0 4px rgba(239,68,68,0.25)',
+            animation: 'pluvikPulse 1.1s ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.66rem', letterSpacing: '0.2em', fontWeight: 700,
+            color: '#ffffff',
+          }}
+        >
+          {answer?.label ?? (activeAlert?.event?.toUpperCase() ?? 'WARNING') + ' · ACTIVE'}
+        </span>
+      </div>
+
+      {/* Place + question */}
       <div
         style={{
           fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          fontSize: '0.62rem',
-          letterSpacing: '0.2em',
-          fontWeight: 700,
-          color: '#fecaca',
-          marginBottom: '14px',
+          fontSize: '0.56rem', letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase',
+          marginBottom: 22,
         }}
       >
-        {answer?.label ?? 'EMERGENCY · ACTIVE'}
+        {placeLabel}
       </div>
 
-      <h1
-        style={{
-          fontFamily: 'Fraunces, serif',
-          fontWeight: 400,
-          fontSize: 'clamp(1.4rem, 4.5vw, 1.9rem)',
-          lineHeight: 1.15,
-          letterSpacing: '-0.015em',
-          color: '#ffffff',
-          margin: 0,
-          marginBottom: '20px',
-          opacity: 0.92,
-        }}
-      >
-        {question}
-      </h1>
+      {/* Countdown — large, calm, monospaced */}
+      {countdown && (
+        <div style={{ marginBottom: 22 }}>
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.55rem', letterSpacing: '0.2em',
+              color: 'rgba(255,255,255,0.55)', marginBottom: 6,
+              textTransform: 'uppercase',
+            }}
+          >
+            Expires {expiryClock ? `at ${expiryClock}` : ''} · in
+          </div>
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: 'clamp(2.6rem, 9vw, 3.6rem)',
+              fontWeight: 700, letterSpacing: '-0.01em',
+              color: '#ffffff', lineHeight: 1,
+            }}
+          >
+            {countdown}
+          </div>
+        </div>
+      )}
 
+      {/* Answer sentence — calm Fraunces italic, not screaming */}
       <div style={{ flex: 1 }}>
-        {loading ? (
-          <p
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: '1.05rem',
-              color: 'rgba(255,255,255,0.85)',
-            }}
-          >
-            Reading the latest warning…
-          </p>
-        ) : (
-          <p
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: 'clamp(1.1rem, 3.2vw, 1.4rem)',
-              lineHeight: 1.4,
-              color: '#ffffff',
-              margin: 0,
-            }}
-          >
-            {answer?.message}
-          </p>
-        )}
+        <p
+          style={{
+            fontFamily: 'Fraunces, serif', fontStyle: 'italic',
+            fontSize: 'clamp(1.05rem, 3vw, 1.3rem)', lineHeight: 1.45,
+            color: '#ffffff', margin: 0, marginBottom: 6,
+          }}
+        >
+          {loading
+            ? 'Reading the latest warning…'
+            : (answer?.message ?? 'Stay sheltered until the warning expires.')}
+        </p>
+        {/* Echoed question — small, for grounding */}
+        <div
+          style={{
+            fontFamily: 'Fraunces, serif', fontStyle: 'italic',
+            fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)',
+            marginTop: 14,
+          }}
+        >
+          you asked: “{question}”
+        </div>
       </div>
 
+      {/* Refresh / updated stamp */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginTop: 18, marginBottom: 10,
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.52rem', letterSpacing: '0.16em',
+          color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase',
+        }}
+      >
+        <span>{updatedAgo ? `UPDATED ${updatedAgo}` : 'UPDATING…'}</span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          style={{
+            background: 'none', border: 'none',
+            color: refreshing ? 'rgba(255,255,255,0.4)' : '#ffffff',
+            cursor: refreshing ? 'default' : 'pointer', padding: 0,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.52rem', letterSpacing: '0.16em', fontWeight: 700,
+          }}
+        >
+          {refreshing ? 'CHECKING…' : 'REFRESH'}
+        </button>
+      </div>
+
+      {/* Notify when clears */}
+      <button
+        type="button"
+        onClick={onToggleNotify}
+        style={{
+          width: '100%', padding: '13px',
+          backgroundColor: notifyEnabled ? 'rgba(255,255,255,0.18)' : 'transparent',
+          color: '#ffffff',
+          border: '1px solid rgba(255,255,255,0.35)',
+          borderRadius: 10, cursor: 'pointer',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.66rem', letterSpacing: '0.16em', fontWeight: 600,
+          marginBottom: 10, textTransform: 'uppercase',
+        }}
+      >
+        {notifyEnabled ? '✓ Notifying when it clears' : 'Notify me when it clears'}
+      </button>
+
+      {/* Radar */}
       <a
         href="/?radar=1"
         style={{
-          display: 'block',
-          width: '100%',
-          padding: '16px',
-          backgroundColor: '#ffffff',
-          color: '#7f1d1d',
-          borderRadius: 12,
-          textAlign: 'center',
-          textDecoration: 'none',
+          display: 'block', width: '100%', padding: '14px',
+          backgroundColor: '#ffffff', color: '#7f1d1d',
+          borderRadius: 10, textAlign: 'center', textDecoration: 'none',
           fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          fontWeight: 700,
-          fontSize: '0.78rem',
-          letterSpacing: '0.16em',
-          marginTop: '24px',
+          fontWeight: 700, fontSize: '0.74rem', letterSpacing: '0.16em',
+          marginBottom: 10,
         }}
       >
-        VIEW RADAR →
+        VIEW LIVE RADAR →
+      </a>
+
+      {/* Official NWS link */}
+      <a
+        href="https://www.weather.gov/"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'block', width: '100%', textAlign: 'center',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          fontSize: '0.56rem', letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.65)', textDecoration: 'underline',
+          textTransform: 'uppercase',
+        }}
+      >
+        OFFICIAL NWS DETAILS ↗
       </a>
     </div>
   );
@@ -540,7 +677,12 @@ function AnswerPage() {
   // Severe-weather intercept state (parallel to the normal pipeline).
   const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
   const [severeLoading, setSevereLoading] = useState<boolean>(false);
+  const [activeAlert, setActiveAlert] = useState<InterpreterAlert | null>(null);
+  const [severeLastUpdated, setSevereLastUpdated] = useState<number | null>(null);
+  const [severeRefreshing, setSevereRefreshing] = useState<boolean>(false);
+  const [notifyOnClear, setNotifyOnClear] = useState<boolean>(false);
   const fetchSevereContext = useServerFn(getSevereContext);
+  const triggerPush = useServerFn(sendSevereWeatherPush);
 
   // Detected place override from the question text. Computed synchronously so
   // the loading screen can show "↳ FROM YOUR QUESTION" immediately, before the
@@ -649,6 +791,8 @@ function AnswerPage() {
           });
           if (cancelled) return;
           if (isSevereWeatherQuestion(question, ctx.activeAlert)) {
+            setActiveAlert(ctx.activeAlert);
+            setSevereLastUpdated(Date.now());
             setSevereAnswer(
               answerSevereWeatherQuestion(question, {
                 activeAlert: ctx.activeAlert,
@@ -719,6 +863,52 @@ function AnswerPage() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-refresh severe context every 60s while a warning is active.
+  // Detects expiry/cancellation and (if opted-in) fires a "cleared" push.
+  useEffect(() => {
+    if (!severeAnswer || !coords) return;
+    const id = window.setInterval(async () => {
+      try {
+        const ctx = await fetchSevereContext({ data: { lat: coords.lat, lon: coords.lon } });
+        setSevereLastUpdated(Date.now());
+        if (!ctx.activeAlert && activeAlert != null) {
+          if (notifyOnClear) {
+            triggerPush({
+              data: {
+                title: `All clear — ${resolvedAddress || 'your area'}`,
+                body: `The ${activeAlert.event} has expired or been cancelled.`,
+                userId: user?.id ?? null,
+                priority: 'high',
+                url: '/',
+              },
+            }).catch((err) => console.warn('[severe] clear push failed', err));
+          }
+          setActiveAlert(null);
+          setSevereAnswer({
+            kind: 'general',
+            label: 'WARNING · CLEARED',
+            message: 'The warning has expired or been cancelled. Survey for downed power lines and debris before going outside.',
+          });
+        } else if (ctx.activeAlert) {
+          setActiveAlert(ctx.activeAlert);
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: coords.lat,
+              userLon: coords.lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+        }
+      } catch (err) {
+        console.warn('[severe] auto-refresh failed', err);
+      }
+    }, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [severeAnswer != null, coords?.lat, coords?.lon, activeAlert?.event, notifyOnClear]);
 
   const saveAndTrack = async () => {
     if (!answer) return;
@@ -835,16 +1025,83 @@ function AnswerPage() {
     }
   };
 
-  // ── LOADING STATE ──────────────────────────────
-  // Severe-weather intercept: simplified red screen, no confidence ladder,
-  // no tracking prompt. Renders whenever the warning-check resolved into
-  // an answer — regardless of whether the home page predicted it.
+  // ── SEVERE INTERCEPT ──────────────────────────
+  // Emergency-mode red screen with live countdown, auto-refresh, and an
+  // opt-in "notify when it clears" toggle. Renders whenever the warning
+  // check resolved into an answer — regardless of the URL `severe` flag.
   if (severeAnswer || severeLoading) {
+    const refreshSevere = async () => {
+      if (!coords) return;
+      setSevereRefreshing(true);
+      try {
+        const ctx = await fetchSevereContext({ data: { lat: coords.lat, lon: coords.lon } });
+        setSevereLastUpdated(Date.now());
+        // Detect clearance: warning was active, now gone.
+        const wasActive = activeAlert != null;
+        const isActive = ctx.activeAlert != null;
+        if (wasActive && !isActive) {
+          // Warning cleared — fire push if user opted in.
+          if (notifyOnClear) {
+            triggerPush({
+              data: {
+                title: `All clear — ${resolvedAddress || 'your area'}`,
+                body: `The ${activeAlert!.event} has expired or been cancelled.`,
+                userId: user?.id ?? null,
+                priority: 'high',
+                url: '/',
+              },
+            }).catch((err) => console.warn('[severe] clear push failed', err));
+          }
+          // Surface the cleared state in-app.
+          setActiveAlert(null);
+          setSevereAnswer({
+            kind: 'general',
+            label: 'WARNING · CLEARED',
+            message: 'The warning has expired or been cancelled. Survey for downed power lines and debris before going outside.',
+          });
+          return;
+        }
+        if (isActive) {
+          setActiveAlert(ctx.activeAlert);
+          setSevereAnswer(
+            answerSevereWeatherQuestion(question, {
+              activeAlert: ctx.activeAlert,
+              userLat: coords.lat,
+              userLon: coords.lon,
+              rotationSignatures: ctx.rotationSignatures,
+              radarTrend: ctx.radarTrend,
+            }),
+          );
+        }
+      } catch (err) {
+        console.warn('[severe] refresh failed', err);
+      } finally {
+        setSevereRefreshing(false);
+      }
+    };
     return (
       <SevereInterceptScreen
         loading={severeLoading && !severeAnswer}
         answer={severeAnswer}
+        activeAlert={activeAlert}
         question={question}
+        placeLabel={resolvedAddress || address}
+        lastUpdatedAt={severeLastUpdated}
+        notifyEnabled={notifyOnClear}
+        onToggleNotify={async () => {
+          // Toggle local opt-in. If turning on, ensure browser permission
+          // is granted so OneSignal can deliver the push.
+          if (!notifyOnClear && typeof window !== 'undefined' && 'Notification' in window) {
+            try {
+              if (Notification.permission === 'default') {
+                await Notification.requestPermission();
+              }
+            } catch { /* ignore — backend push still attempts via OneSignal */ }
+          }
+          setNotifyOnClear((v) => !v);
+        }}
+        onRefresh={refreshSevere}
+        refreshing={severeRefreshing}
         onBack={() => navigate({ to: '/' })}
       />
     );
