@@ -685,3 +685,172 @@ function EmergencyShelterScreen({
     </div>
   );
 }
+
+/* ---------------- Storm timeline ---------------- */
+
+interface StormTimelineSectionProps {
+  alerts: string[] | undefined;
+  userLat: number | null;
+  userLon: number | null;
+  textColor: string;
+  accentColor: string;
+}
+
+const TIMELINE_HOURS = 4;
+const SEGMENT_MIN = 30;
+const SEGMENT_COUNT = (TIMELINE_HOURS * 60) / SEGMENT_MIN; // 8
+
+type SegmentState = 'overhead' | 'soon' | 'approaching' | 'clearing' | 'clear';
+
+const SEGMENT_COLORS: Record<SegmentState, string> = {
+  overhead: '#ef4444',
+  soon: '#f97316',
+  approaching: '#facc15',
+  clearing: '#6b7280',
+  clear: 'rgba(255,255,255,0.18)',
+};
+
+function classifySegment(
+  startMin: number,
+  endMin: number,
+  timing: StormTiming,
+): SegmentState {
+  // Storm overlaps this segment.
+  if (timing.arrivalMin < endMin && timing.clearMin > startMin) return 'overhead';
+  // Storm has already passed this segment entirely.
+  if (timing.clearMin <= startMin) return 'clearing';
+  // Storm still ahead of this segment.
+  const minutesUntilArrival = timing.arrivalMin - endMin;
+  if (minutesUntilArrival <= 30) return 'soon';
+  if (minutesUntilArrival <= 60) return 'approaching';
+  return 'clear';
+}
+
+function StormTimelineSection({
+  alerts,
+  userLat,
+  userLon,
+  textColor,
+  accentColor,
+}: StormTimelineSectionProps) {
+  const motion: StormMotion | null = parseStormMotionFromAlerts(alerts);
+  const timing: StormTiming | null =
+    motion && userLat != null && userLon != null
+      ? computeStormTiming(motion, { lat: userLat, lon: userLon })
+      : null;
+
+  const hasData =
+    !!motion &&
+    !!timing &&
+    timing.approaching &&
+    timing.arrivalMin < TIMELINE_HOURS * 60;
+
+  return (
+    <div
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.32)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '12px',
+        padding: '14px 16px 16px',
+        marginBottom: '18px',
+        color: textColor,
+      }}
+    >
+      <div
+        className="mono-label"
+        style={{
+          fontSize: '0.55rem',
+          letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,0.7)',
+          marginBottom: '10px',
+        }}
+      >
+        STORM TIMELINE
+      </div>
+
+      {hasData && motion && timing ? (
+        <>
+          <div
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: '1rem',
+              lineHeight: 1.4,
+              marginBottom: '12px',
+              color: textColor,
+            }}
+          >
+            Storm arrives <strong style={{ color: accentColor }}>~{formatClockOffset(timing.arrivalMin)}</strong>
+            {' · '}
+            Clears <strong style={{ color: accentColor }}>~{formatClockOffset(timing.clearMin)}</strong>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 3,
+              borderRadius: 4,
+              overflow: 'hidden',
+              height: 14,
+              marginBottom: 6,
+            }}
+            aria-label="4 hour storm timeline"
+          >
+            {Array.from({ length: SEGMENT_COUNT }).map((_, i) => {
+              const startMin = i * SEGMENT_MIN;
+              const endMin = startMin + SEGMENT_MIN;
+              const state = classifySegment(startMin, endMin, timing);
+              return (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    backgroundColor: SEGMENT_COLORS[state],
+                    transition: 'background-color 200ms ease',
+                  }}
+                  title={`${formatClockOffset(startMin)} – ${formatClockOffset(endMin)} · ${state}`}
+                />
+              );
+            })}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.55rem',
+              letterSpacing: '0.08em',
+              color: 'rgba(255,255,255,0.55)',
+              marginBottom: 10,
+            }}
+          >
+            {Array.from({ length: TIMELINE_HOURS + 1 }).map((_, i) => (
+              <span key={i}>{formatClockOffset(i * 60)}</span>
+            ))}
+          </div>
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.58rem',
+              letterSpacing: '0.12em',
+              color: 'rgba(255,255,255,0.65)',
+            }}
+          >
+            MOVING {compassFromDeg(motion.towardDeg)} AT {Math.round(motion.speedMph)} MPH ·{' '}
+            {timing.distanceMi.toFixed(0)} MI AWAY
+          </div>
+        </>
+      ) : (
+        <p
+          style={{
+            fontFamily: 'Fraunces, serif',
+            fontStyle: 'italic',
+            fontSize: '0.92rem',
+            color: 'rgba(255,255,255,0.78)',
+            margin: 0,
+          }}
+        >
+          Monitor radar for storm timing.
+        </p>
+      )}
+    </div>
+  );
+}
