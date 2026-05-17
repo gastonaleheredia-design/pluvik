@@ -18,6 +18,8 @@ export interface SevereAlertInput {
   expiresLocal: string | null;
 }
 
+import { sendSevereWeatherPush } from './sendSevereWeatherPush.functions';
+
 type Copy = { title: string; body: string; priority: 'high' | 'normal' } | null;
 
 function buildCopy(event: string, expiresLocal: string | null, place: string): Copy {
@@ -76,6 +78,7 @@ export function writeLastAlertId(id: string | null): void {
 export async function notifySevereWeather(
   alert: SevereAlertInput,
   placeLabel: string,
+  userId?: string | null,
 ): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   const id = alertIdOf(alert);
@@ -90,6 +93,22 @@ export async function notifySevereWeather(
 
   // Mark as seen before await so concurrent calls don't double-fire.
   writeLastAlertId(id);
+
+  // Fire the OneSignal REST push server-side so the notification arrives
+  // even when the app is completely closed. Best-effort: failures are
+  // logged but never block the in-app fallback below.
+  sendSevereWeatherPush({
+    data: {
+      title: copy.title,
+      body: copy.body,
+      userId: userId ?? null,
+      priority: copy.priority,
+      url: '/?severe=1',
+      data: { alertId: id, event: alert.event, expiresIso: alert.expiresIso },
+    },
+  }).catch((err) => {
+    console.warn('[severeWeatherPush] OneSignal REST push failed', err);
+  });
 
   if (!('Notification' in window)) return false;
   if (Notification.permission !== 'granted') return false;
