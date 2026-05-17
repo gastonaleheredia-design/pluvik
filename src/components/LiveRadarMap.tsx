@@ -385,63 +385,63 @@ const STYLES = {
 
 /* ---------------- HRRR forecast (FUTURE tab) ---------------- */
 
-const HRRR_API = "https://mesonet.agron.iastate.edu/api/1/radarfcst.json";
+// Discrete forecast hours surfaced in the UI. HRRR runs out to +18h.
+const HRRR_HOURS = [1, 2, 3, 6, 12, 18] as const;
+
+// IEM publishes a tiny JSON metadata file for the latest HRRR REFD run.
+// `model_init_utc` is the run timestamp we plug into the tile URL.
+const HRRR_LATEST_META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/hrrr/refd_1080.json";
 
 interface HrrrFrame {
+  /** Hours ahead of the model init (1, 2, 3, 6, 12, 18). */
+  hoursAhead: number;
   /** Epoch ms of the forecast valid time. */
   validMs: number;
   /** Tile URL template (must contain {z}/{x}/{y}). */
   tileUrl: string;
 }
 
+function pad(n: number, w = 2) { return n.toString().padStart(w, "0"); }
+
+function hrrrInitStamp(initMs: number): string {
+  const d = new Date(initMs);
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+}
+
 /**
- * Fetch IEM's HRRR forecast frame index. Returns a normalized list of
- * { validMs, tileUrl } so the slider can map +Nh → nearest forecast frame.
- * The shape of radarfcst.json varies; this reader is intentionally
- * defensive and falls back to building a tile.py URL when only a
- * timestamp is present.
+ * Fetch the latest HRRR model run and build one tile-template frame per
+ * surfaced forecast hour (+1, +2, +3, +6, +12, +18h). HRRR forecasts are
+ * published in 15-min steps, so hour offsets map cleanly to FXXXX minutes.
  */
 async function fetchHrrrForecastFrames(): Promise<HrrrFrame[]> {
   try {
-    const res = await fetch(HRRR_API);
+    const res = await fetch(HRRR_LATEST_META);
     if (!res.ok) return [];
-    const data = await res.json();
-    const raw: any[] = data?.frames ?? data?.data ?? [];
-    const out: HrrrFrame[] = [];
-    for (const r of raw) {
-      const validIso = r?.valid ?? r?.valid_at ?? r?.time ?? null;
-      const ms = validIso ? new Date(validIso).getTime() : (typeof r?.ts === "number" ? r.ts * 1000 : NaN);
-      if (!Number.isFinite(ms)) continue;
-      let tileUrl: string | null = r?.tile_url ?? r?.url ?? r?.tiles ?? null;
-      if (!tileUrl) {
-        // Derive from timestamp using IEM tile.py convention for HRRR REFD.
-        const d = new Date(ms);
-        const pad = (n: number) => n.toString().padStart(2, "0");
-        const ts = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
-        tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${ts}/{z}/{x}/{y}.png`;
-      }
-      if (!/\{z\}/.test(tileUrl) || !/\{x\}/.test(tileUrl) || !/\{y\}/.test(tileUrl)) continue;
-      out.push({ validMs: ms, tileUrl });
-    }
-    out.sort((a, b) => a.validMs - b.validMs);
-    return out;
+    const meta = await res.json();
+    const initIso: string | undefined = meta?.model_init_utc;
+    if (!initIso) return [];
+    const initMs = new Date(initIso).getTime();
+    if (!Number.isFinite(initMs)) return [];
+    const stamp = hrrrInitStamp(initMs);
+    return HRRR_HOURS.map((h) => {
+      const fMin = pad(h * 60, 4);
+      return {
+        hoursAhead: h,
+        validMs: initMs + h * 3600 * 1000,
+        // REFD = composite reflectivity at the forecast minute, for the
+        // specific model init we just resolved. Explicit init avoids the
+        // cache-vs-latest ambiguity documented by IEM.
+        tileUrl: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/hrrr::REFD-F${fMin}-${stamp}/{z}/{x}/{y}.png`,
+      };
+    });
   } catch {
     return [];
   }
 }
 
-/** Pick the forecast frame closest to (now + hoursAhead). Returns null if no
- *  frame is within ~45 min of the requested time. */
+/** Pick the forecast frame matching the requested hour offset. */
 function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame | null {
-  if (!frames.length) return null;
-  const target = Date.now() + hoursAhead * 3600 * 1000;
-  let best: HrrrFrame | null = null;
-  let bestDiff = Number.POSITIVE_INFINITY;
-  for (const f of frames) {
-    const diff = Math.abs(f.validMs - target);
-    if (diff < bestDiff) { bestDiff = diff; best = f; }
-  }
-  return best && bestDiff <= 45 * 60 * 1000 ? best : null;
+  return frames.find((f) => f.hoursAhead === hoursAhead) ?? null;
 }
 
 /** Keep warning polygons painted above the radar raster after any swap. */
