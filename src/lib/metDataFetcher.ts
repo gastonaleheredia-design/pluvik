@@ -1021,6 +1021,39 @@ export interface NearbyRadarReturns {
   bearing: string;
 }
 
+/**
+ * Map a nearby-radar return (max dBZ + distance from user) into a
+ * comprehensive verdict word, per the home-screen priority hierarchy.
+ * Returns null if no return is meaningful enough to override forecast.
+ *
+ *  dBZ 60+ within 10mi  → 'STORMS'
+ *  dBZ 50+ within 20mi  → 'THUNDERSTORMS'
+ *  dBZ 45+ within 20mi  → 'HEAVY RAIN'
+ *  dBZ 35+ within 30mi  → 'RAIN'
+ *  dBZ 20+ within 15mi  → 'SHOWERS'
+ *  dBZ 20+ within 30mi  → 'DRIZZLE'
+ */
+export type RadarVerdictWord =
+  | 'STORMS'
+  | 'THUNDERSTORMS'
+  | 'HEAVY RAIN'
+  | 'RAIN'
+  | 'SHOWERS'
+  | 'DRIZZLE';
+
+export function classifyRadarReturnWord(
+  maxDbz: number,
+  distanceMiles: number,
+): RadarVerdictWord | null {
+  if (maxDbz >= 60 && distanceMiles <= 10) return 'STORMS';
+  if (maxDbz >= 50 && distanceMiles <= 20) return 'THUNDERSTORMS';
+  if (maxDbz >= 45 && distanceMiles <= 20) return 'HEAVY RAIN';
+  if (maxDbz >= 35 && distanceMiles <= 30) return 'RAIN';
+  if (maxDbz >= 20 && distanceMiles <= 15) return 'SHOWERS';
+  if (maxDbz >= 20 && distanceMiles <= 30) return 'DRIZZLE';
+  return null;
+}
+
 export async function checkNearbyRadarReturns(
   lat: number,
   lon: number,

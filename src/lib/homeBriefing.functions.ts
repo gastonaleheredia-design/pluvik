@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
+import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, classifyRadarReturnWord, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
@@ -122,8 +122,26 @@ interface HomeBriefingRequest {
 }
 
 export interface HomeBriefing {
-  /** Big condition word: DRY, RAIN SOON, RAINING, STORMS, SNOW, CLOUDY */
-  word: 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY' | null;
+  /**
+   * Big condition word. Strict priority hierarchy:
+   *   1) Active NWS warning  → 'STORMS' | 'FLASH FLOOD' | 'BLIZZARD' | 'ICE STORM'
+   *   2) Live radar override → 'STORMS' | 'THUNDERSTORMS' | 'HEAVY RAIN' | 'RAIN' | 'SHOWERS' | 'DRIZZLE'
+   *   3) Rain probability    → 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN'
+   *   4) Cloud cover         → 'OVERCAST' | 'MOSTLY CLOUDY' | 'PARTLY CLOUDY' | 'SUNNY' | 'CLEAR'
+   *   5) Special             → 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY' | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
+   * Legacy values ('DRY', 'RAIN SOON', 'RAINING', 'SNOW', 'CLOUDY') are
+   * retained in the union for backward compatibility with existing UI
+   * checks, but are no longer emitted by the classifier.
+   */
+  word:
+    | 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY'
+    | 'THUNDERSTORMS' | 'HEAVY RAIN' | 'RAIN' | 'SHOWERS' | 'DRIZZLE'
+    | 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN'
+    | 'OVERCAST' | 'MOSTLY CLOUDY' | 'PARTLY CLOUDY' | 'SUNNY' | 'CLEAR'
+    | 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY'
+    | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
+    | 'FLASH FLOOD' | 'BLIZZARD' | 'ICE STORM'
+    | null;
   /** Italic sentence under the word */
   sentence: string;
   /** Caption like "NEXT RAIN · TUE 4 PM", or null when no rain in 7 days */
@@ -178,6 +196,143 @@ const DAY_NAMES_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DAY_NAMES_ES = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 
 /* ---------------------------------------------------------------- */
+/* Comprehensive verdict-word classifier (strict priority hierarchy) */
+/* ---------------------------------------------------------------- */
+
+type ComprehensiveWord = NonNullable<HomeBriefing['word']>;
+
+interface ClassifyCtx {
+  alertEvent: string | null;
+  radar: NearbyRadarReturns | null;
+  rainingNow: boolean;
+  thunderNow: boolean;
+  snowNow: boolean;
+  /** Max probability over next ~6 hours (%). */
+  maxRainProbNear: number;
+  cloudCover: number;
+  isDay: boolean;
+  windMph: number | null;
+  visibilityMi: number | null;
+  heatIndexF: number | null;
+  tempF: number | null;
+}
+
+/** Map an NWS warning event string to its verdict word. */
+function wordFromWarning(event: string): ComprehensiveWord | null {
+  const e = event.toLowerCase();
+  if (/tornado warning/.test(e)) return 'STORMS';
+  if (/flash flood warning/.test(e)) return 'FLASH FLOOD';
+  if (/severe thunderstorm warning/.test(e)) return 'STORMS';
+  if (/blizzard warning/.test(e)) return 'BLIZZARD';
+  if (/winter storm warning/.test(e)) return 'BLIZZARD';
+  if (/ice storm warning/.test(e)) return 'ICE STORM';
+  return null;
+}
+
+function classifyComprehensive(ctx: ClassifyCtx): ComprehensiveWord {
+  // PRIORITY 1 — Active NWS warnings.
+  if (ctx.alertEvent) {
+    const w = wordFromWarning(ctx.alertEvent);
+    if (w) return w;
+  }
+  // Active precip on the point still beats forecast-based fallbacks.
+  if (ctx.thunderNow) return 'STORMS';
+  if (ctx.snowNow) return 'BLIZZARD';
+
+  // PRIORITY 2 — Live radar override.
+  if (ctx.radar) {
+    const rw = classifyRadarReturnWord(ctx.radar.maxDbz, ctx.radar.distanceMiles);
+    if (rw) return rw;
+  }
+  if (ctx.rainingNow) return 'RAIN';
+
+  // PRIORITY 3 — Rain probability.
+  const p = ctx.maxRainProbNear;
+  if (p > 70) return 'RAIN LIKELY';
+  if (p >= 40) return 'SHOWERS LIKELY';
+  if (p >= 25) return 'CHANCE OF RAIN';
+
+  // PRIORITY 5 (checked before cloud cover for hazards that override sky).
+  if (ctx.visibilityMi != null && ctx.visibilityMi < 0.25) return 'FOGGY';
+  if (ctx.heatIndexF != null && ctx.heatIndexF > 110) return 'DANGEROUSLY HOT';
+  if (ctx.heatIndexF != null && ctx.heatIndexF > 100) return 'HOT';
+  if (ctx.windMph != null && ctx.windMph > 40) return 'VERY WINDY';
+  if (ctx.windMph != null && ctx.windMph >= 25) return 'WINDY';
+  if (ctx.tempF != null && ctx.tempF < 32) return 'FREEZING';
+
+  // PRIORITY 4 — Cloud cover.
+  if (ctx.cloudCover > 85) return 'OVERCAST';
+  if (ctx.cloudCover >= 60) return 'MOSTLY CLOUDY';
+  if (ctx.cloudCover >= 30) return 'PARTLY CLOUDY';
+
+  // Otherwise low cloud — special "breezy when otherwise clear" case.
+  if (ctx.windMph != null && ctx.windMph >= 15) return 'BREEZY';
+  return ctx.isDay ? 'SUNNY' : 'CLEAR';
+}
+
+/** Localised italic sentence for the comprehensive vocabulary. */
+function sentenceForComprehensive(
+  word: ComprehensiveWord,
+  ctx: ClassifyCtx,
+  isEs: boolean,
+): string | null {
+  if (isEs) {
+    switch (word) {
+      case 'SUNNY':
+      case 'CLEAR': return 'Cielo despejado ahora mismo.';
+      case 'PARTLY CLOUDY': return 'Algunas nubes, sin lluvia.';
+      case 'MOSTLY CLOUDY': return 'Cielo mayormente nublado, seco por ahora.';
+      case 'OVERCAST': return 'Cielo cubierto, sin lluvia por ahora.';
+      case 'CHANCE OF RAIN': return 'Posible lluvia más tarde — no es seguro.';
+      case 'SHOWERS LIKELY': return 'Se esperan chubascos dispersos.';
+      case 'RAIN LIKELY': return 'Lluvia probable — planifica con eso.';
+      case 'BREEZY': return 'Brisa ligera, por lo demás despejado.';
+      case 'WINDY': return 'Viento fuerte en la zona.';
+      case 'VERY WINDY': return 'Vientos muy fuertes — precaución al aire libre.';
+      case 'FOGGY': return 'Niebla densa — reduce la velocidad al manejar.';
+      case 'HOT': return `Sensación térmica ${ctx.heatIndexF ?? '?'}°F — limita la exposición al sol.`;
+      case 'DANGEROUSLY HOT': return `Calor peligroso (${ctx.heatIndexF ?? '?'}°F) — evita el exterior.`;
+      case 'FREEZING': return 'Temperaturas bajo cero — abrígate bien.';
+      case 'DRIZZLE': return 'Llovizna ligera cerca.';
+      case 'SHOWERS': return 'Chubascos cerca.';
+      case 'RAIN': return 'Está lloviendo cerca.';
+      case 'HEAVY RAIN': return 'Lluvia intensa cerca — tráfico afectado.';
+      case 'THUNDERSTORMS': return 'Tormentas eléctricas en el área.';
+      case 'FLASH FLOOD': return 'Aviso de inundación repentina — busca terreno alto.';
+      case 'BLIZZARD': return 'Ventisca activa — evita viajar.';
+      case 'ICE STORM': return 'Tormenta de hielo — superficies peligrosas.';
+      default: return null;
+    }
+  }
+  switch (word) {
+    case 'SUNNY': return 'Clear skies right now.';
+    case 'CLEAR': return 'Clear skies right now.';
+    case 'PARTLY CLOUDY': return 'Some clouds, staying dry.';
+    case 'MOSTLY CLOUDY': return 'Mostly cloudy, dry for now.';
+    case 'OVERCAST': return 'Overcast, dry for now.';
+    case 'CHANCE OF RAIN': return 'Rain possible later — not certain.';
+    case 'SHOWERS LIKELY': return 'Expect scattered showers.';
+    case 'RAIN LIKELY': return 'Rain expected — plan accordingly.';
+    case 'BREEZY': return 'Breezy conditions, otherwise clear.';
+    case 'WINDY': return 'Windy across the area.';
+    case 'VERY WINDY': return 'Very strong winds — use caution outdoors.';
+    case 'FOGGY': return 'Dense fog — reduce speed if driving.';
+    case 'HOT': return `Heat index ${ctx.heatIndexF ?? '?'}°F — limit outdoor exposure.`;
+    case 'DANGEROUSLY HOT': return `Dangerously hot (${ctx.heatIndexF ?? '?'}°F) — avoid being outdoors.`;
+    case 'FREEZING': return 'Freezing temps — bundle up.';
+    case 'DRIZZLE': return 'Light drizzle nearby.';
+    case 'SHOWERS': return 'Showers nearby.';
+    case 'RAIN': return 'Rain falling nearby.';
+    case 'HEAVY RAIN': return 'Heavy rain nearby — expect slow traffic.';
+    case 'THUNDERSTORMS': return 'Thunderstorms in the area.';
+    case 'FLASH FLOOD': return 'Flash flood warning in effect — seek higher ground.';
+    case 'BLIZZARD': return 'Blizzard conditions — avoid travel.';
+    case 'ICE STORM': return 'Ice storm — surfaces dangerously slick.';
+    default: return null;
+  }
+}
+
+/* ---------------------------------------------------------------- */
 /* Alert severity classification                                     */
 /* ---------------------------------------------------------------- */
 
@@ -210,7 +365,16 @@ export function getAlertSeverity(alertType: string | null | undefined): AlertSev
 /* ---------------------------------------------------------------- */
 
 interface OpenMeteoLite {
-  current: { weather_code: number; precipitation: number; cloud_cover: number; temperature_2m?: number };
+  current: {
+    weather_code: number;
+    precipitation: number;
+    cloud_cover: number;
+    temperature_2m?: number;
+    wind_speed_10m?: number;
+    visibility?: number;
+    apparent_temperature?: number;
+    is_day?: number;
+  };
   hourly: {
     time: string[];
     precipitation_probability: number[];
@@ -379,9 +543,10 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // Open-Meteo: current + 168h hourly precipitation.
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=precipitation,weather_code,cloud_cover,temperature_2m` +
+      `&current=precipitation,weather_code,cloud_cover,temperature_2m,wind_speed_10m,visibility,apparent_temperature,is_day` +
       `&hourly=precipitation_probability,precipitation,weather_code` +
-      `&forecast_days=7&timezone=auto&temperature_unit=fahrenheit`;
+      `&forecast_days=7&timezone=auto&temperature_unit=fahrenheit` +
+      `&wind_speed_unit=mph`;
 
     // Resilient fetch: 8s timeout + one retry on network/5xx errors.
     const fetchOnce = async (): Promise<Response> => {
@@ -729,6 +894,49 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       }
     }
 
+    // ─── Comprehensive verdict-word classifier ───────────────────────────
+    // Apply the strict priority hierarchy AFTER all upstream signals have
+    // been collected. This replaces the legacy verdict word with the new
+    // comprehensive vocabulary (RAIN LIKELY, OVERCAST, FOGGY, etc.).
+    const maxRainProbNear = (() => {
+      const start = Math.max(nowIdx, 0);
+      const end = Math.min(start + 6, probs.length);
+      let m = nextHourProb;
+      for (let i = start; i < end; i++) {
+        const v = probs[i];
+        if (Number.isFinite(v) && v > m) m = v;
+      }
+      return m;
+    })();
+    const cur = j.current as OpenMeteoLite['current'];
+    const windMph = typeof cur.wind_speed_10m === 'number' ? Math.round(cur.wind_speed_10m) : null;
+    const visibilityMi = typeof cur.visibility === 'number' ? cur.visibility / 1609.34 : null;
+    const heatIndexF = typeof cur.apparent_temperature === 'number' ? Math.round(cur.apparent_temperature) : null;
+    const tempF = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : null;
+    const isDay = cur.is_day != null ? cur.is_day === 1 : (() => {
+      try {
+        const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date()), 10);
+        return h >= 6 && h < 19;
+      } catch { return true; }
+    })();
+    const comprehensive = classifyComprehensive({
+      alertEvent: activeAlert?.event ?? null,
+      radar: radarReturns,
+      rainingNow: liveRainingNow,
+      thunderNow,
+      snowNow,
+      maxRainProbNear,
+      cloudCover,
+      isDay,
+      windMph,
+      visibilityMi,
+      heatIndexF,
+      tempF,
+    });
+    // Preserve the legacy word for the sentence builder below, then override.
+    const legacyWord = word;
+    word = comprehensive;
+
     // One-line italic summary.
     let sentence: string;
     if (activeAlert) {
@@ -753,63 +961,84 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
           : 'Storm moving in — tap the alert for details.';
       }
     } else if (language.startsWith('es')) {
-      if (word === 'STORMS' && stormOverride)
+      if (legacyWord === 'STORMS' && stormOverride)
         sentence = `Tormenta acercándose desde el ${stormOverride.bearing ?? 'oeste'} — ~${stormOverride.eta} min al impacto.`;
-      else if (word === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
-      else if (word === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
-      else if (word === 'SNOW') sentence = 'Está nevando.';
-      else if (word === 'RAIN SOON') sentence = nextHourProb >= 60
+      else if (legacyWord === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
+      else if (legacyWord === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
+      else if (legacyWord === 'SNOW') sentence = 'Está nevando.';
+      else if (legacyWord === 'RAIN SOON') sentence = nextHourProb >= 60
         ? `Lluvia esperada en aprox. ${hoursUntilRain} h.`
         : `Lluvia posible en aprox. ${hoursUntilRain} h (${nextHourProb}% prob).`;
-      else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
-      else if (word === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
+      else if (legacyWord === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
+      else if (legacyWord === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
       else if (nextRainIdx < 0) sentence = 'Despejado por los próximos 7 días.';
       else sentence = 'Despejado por ahora.';
     } else {
-      if (word === 'STORMS' && stormOverride)
+      if (legacyWord === 'STORMS' && stormOverride)
         sentence = `Storms approaching from the ${stormOverride.bearing ?? 'west'} — ~${stormOverride.eta} min to impact.`;
-      else if (word === 'STORMS' && nearbyProbe)
+      else if (legacyWord === 'STORMS' && nearbyProbe)
         sentence = `Storm cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser} — closing in.`;
-      else if (word === 'STORMS') sentence = 'Thunderstorms in the area.';
-      else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
+      else if (legacyWord === 'STORMS') sentence = 'Thunderstorms in the area.';
+      else if (legacyWord === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
         sentence = `Rain right above you — cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}.`;
-      else if (word === 'RAINING') sentence = 'Rain falling right now.';
-      else if (word === 'SNOW') sentence = 'Snow falling.';
-      else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+      else if (legacyWord === 'RAINING') sentence = 'Rain falling right now.';
+      else if (legacyWord === 'SNOW') sentence = 'Snow falling.';
+      else if (legacyWord === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
         sentence = nextHourProb >= 60
           ? 'Rain starting within the hour.'
           : `Rain possible within the hour (${nextHourProb}% chance).`;
-      else if (word === 'RAIN SOON')
+      else if (legacyWord === 'RAIN SOON')
         sentence = nextHourProb >= 60
           ? `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`
           : `Rain possible in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'} (${nextHourProb}% chance).`;
-      else if (word === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
-      else if (word === 'CLOUDY') sentence = 'Overcast, dry for now.';
+      else if (legacyWord === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
+      else if (legacyWord === 'CLOUDY') sentence = 'Overcast, dry for now.';
       else if (nextRainIdx < 0) sentence = 'Clear through the next 7 days.';
       else sentence = 'Clear right now.';
     }
 
     // Spanish equivalents for the new branches.
     if (language.startsWith('es') && !activeAlert) {
-      if (word === 'STORMS' && nearbyProbe && !stormOverride)
+      if (legacyWord === 'STORMS' && nearbyProbe && !stormOverride)
         sentence = `Celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser} — acercándose.`;
-      else if (word === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
+      else if (legacyWord === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
         sentence = `Lluvia justo encima — celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}.`;
-      else if (word === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+      else if (legacyWord === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
         sentence = nextHourProb >= 60
           ? 'Lluvia comenzando en la próxima hora.'
           : `Lluvia posible en la próxima hora (${nextHourProb}% prob).`;
     }
 
+    // Override the sentence for any new comprehensive-vocabulary word.
+    if (!activeAlert) {
+      const ctxForSentence: ClassifyCtx = {
+        alertEvent: null,
+        radar: radarReturns,
+        rainingNow: liveRainingNow,
+        thunderNow,
+        snowNow,
+        maxRainProbNear,
+        cloudCover,
+        isDay,
+        windMph,
+        visibilityMi,
+        heatIndexF,
+        tempF,
+      };
+      const s = sentenceForComprehensive(word as ComprehensiveWord, ctxForSentence, language.startsWith('es'));
+      if (s) sentence = s;
+    }
+
     // Confidence stamp for the headline word — used by UI to soften copy.
     let confidence: 'high' | 'medium' | 'low' = 'medium';
     if (activeAlert || stormOverride) confidence = 'high';
-    else if (word === 'RAINING' || word === 'STORMS' || word === 'SNOW') confidence = 'high';
-    else if (word === 'RAIN SOON') {
+    else if (word === 'STORMS' || word === 'THUNDERSTORMS' || word === 'HEAVY RAIN' || word === 'RAIN' || word === 'FLASH FLOOD' || word === 'BLIZZARD' || word === 'ICE STORM') confidence = 'high';
+    else if (word === 'RAIN LIKELY' || word === 'SHOWERS LIKELY') {
       if (nextHourProb >= 70) confidence = 'high';
       else if (nextHourProb >= 50) confidence = 'medium';
       else confidence = 'low';
-    } else if (word === 'DRY' || word === 'CLOUDY') confidence = 'high';
+    } else if (word === 'CHANCE OF RAIN') confidence = 'low';
+    else if (word === 'SUNNY' || word === 'CLEAR' || word === 'OVERCAST' || word === 'MOSTLY CLOUDY' || word === 'PARTLY CLOUDY') confidence = 'high';
 
     // Local "updated at" string in the address's timezone.
     const updatedLocal = new Date().toLocaleTimeString(language.startsWith('es') ? 'es-US' : 'en-US', {
