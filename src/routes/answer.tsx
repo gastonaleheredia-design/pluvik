@@ -302,6 +302,7 @@ async function renderShareCardBlob(opts: {
   summary: string;
   location: string;
   dateLabel: string;
+  title?: string;
 }): Promise<Blob | null> {
   if (typeof document === 'undefined') return null;
   const size = 1080;
@@ -321,6 +322,20 @@ async function renderShareCardBlob(opts: {
   // Background
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, size, size);
+
+  // Subtle grid texture — 10px grid, very low-opacity ink
+  ctx.strokeStyle = 'rgba(11,16,24,0.04)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= size; x += 10) {
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, size);
+  }
+  for (let y = 0; y <= size; y += 10) {
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(size, y + 0.5);
+  }
+  ctx.stroke();
 
   // Accent corner bar
   ctx.fillStyle = ACCENT;
@@ -351,16 +366,37 @@ async function renderShareCardBlob(opts: {
   const verdictY = size / 2 - verdictFontSize / 2 - 40;
   ctx.fillText(opts.verdictWord.toUpperCase(), PADDING, verdictY);
 
+  // Event title (optional) — Inter 32px just under the verdict
+  let cursorY = verdictY + verdictFontSize + 24;
+  if (opts.title && opts.title.trim()) {
+    ctx.fillStyle = INK;
+    ctx.font = '600 32px Inter, system-ui, sans-serif';
+    const titleLines = wrapText(ctx, opts.title, PADDING, cursorY, MAX_W, 40, 2);
+    cursorY += titleLines * 40 + 16;
+  }
+
   // Summary sentence — wrapped
   ctx.fillStyle = INK;
   ctx.font = '400 italic 40px Fraunces, Georgia, serif';
-  const summaryY = verdictY + verdictFontSize + 40;
-  wrapText(ctx, opts.summary, PADDING, summaryY, MAX_W, 54, 4);
+  wrapText(ctx, opts.summary, PADDING, cursorY, MAX_W, 54, 4);
 
   // Footer: location + date
   ctx.fillStyle = MUTED;
   ctx.font = '500 26px "JetBrains Mono", ui-monospace, monospace';
   ctx.fillText(opts.location.toUpperCase(), PADDING, size - PADDING - 32);
+
+  // Bottom accent strip with pluvik.com
+  const STRIP_H = 12;
+  ctx.fillStyle = ACCENT;
+  ctx.fillRect(0, size - STRIP_H, size, STRIP_H);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '600 18px "JetBrains Mono", ui-monospace, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('pluvik.com', size / 2, size - STRIP_H / 2);
+  // Reset text defaults for safety
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
 
   return await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((b) => resolve(b), 'image/png');
@@ -375,7 +411,7 @@ function wrapText(
   maxWidth: number,
   lineHeight: number,
   maxLines: number,
-) {
+): number {
   const words = text.split(/\s+/);
   let line = '';
   let lines: string[] = [];
@@ -398,6 +434,7 @@ function wrapText(
     lines[maxLines - 1] = last + '…';
   }
   lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+  return lines.length;
 }
 
 async function shareForecast(opts: {
