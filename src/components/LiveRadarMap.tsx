@@ -727,12 +727,12 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     }
     const empty = { type: "FeatureCollection" as const, features: [] };
     const data = (fc ?? empty) as GeoJSON.FeatureCollection;
+    warningsDataRef.current = data;
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
       enforceLayerOrder(map);
       fitToWarnings(map, data, la, lo);
-      setStormMotionData(map, data);
       return;
     }
     map.addSource("nws-warnings", { type: "geojson", data });
@@ -790,8 +790,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     wireWarningInteractions(map);
     enforceLayerOrder(map);
     fitToWarnings(map, data, la, lo);
-    setStormMotionData(map, data);
-  }, [showWarnings, wireWarningInteractions, fitToWarnings, setStormMotionData]);
+  }, [showWarnings, wireWarningInteractions, fitToWarnings]);
 
   /* -------------- Rotation signatures overlay (SWDI) -------------- */
 
