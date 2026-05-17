@@ -16,6 +16,7 @@ import { reverseGeocodeShort } from "@/lib/shortPlace";
 import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 import { fetchNearbyStorms } from "@/lib/fetchers/fetchNhcStorm";
 import { fetchRotationSignatureEvents, type RotationEvent } from "@/lib/fetchers/fetchRotationSignatures";
+import { fetchStormReports, type StormReport } from "@/lib/fetchers/fetchStormReports";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -506,6 +507,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const rotQualifies = severity === 'high' || severity === 'critical';
   const [showRot, setShowRot] = useState<boolean>(true);
   const [rotEvents, setRotEvents] = useState<RotationEvent[]>([]);
+  // Storm motion arrows + Local Storm Reports — gated to active severe
+  // weather. Both default ON when a qualifying warning is in effect.
+  const severeActive = severity === 'high' || severity === 'critical';
+  const [showMotion, setShowMotion] = useState<boolean>(true);
+  const [showReports, setShowReports] = useState<boolean>(true);
+  const [reports, setReports] = useState<StormReport[]>([]);
+  const reportMarkersRef = useRef<mapboxgl.Marker[]>([]);
   // Arrow-pulse tick (drives the storm-motion icon-opacity oscillation).
   const [arrowPulse, setArrowPulse] = useState<number>(1);
   // Latest active-warning FeatureCollection — kept in a ref so the
@@ -894,13 +902,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       const deg = p.motionDeg; const mph = p.motionMph;
       if (typeof lon !== 'number' || typeof lat !== 'number') continue;
       if (typeof deg !== 'number' || typeof mph !== 'number') continue;
+      // 16-point compass for the label ("NW 35 mph"). Bearing is the
+      // direction the storm is MOVING TO (NWS convention in TIME...MOT...LOC).
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      const compass = dirs[Math.round(((deg % 360) / 22.5)) % 16];
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [lon, lat] },
         properties: {
           // Mapbox icon-rotate is clockwise from north; matches NWS bearing.
           rotate: deg,
-          label: `${Math.round(mph)} mph`,
+          label: `${compass} ${Math.round(mph)} mph`,
         },
       });
     }
@@ -913,6 +925,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       type: 'symbol',
       source: 'storm-motion',
       layout: {
+        visibility: severeActive && showMotion ? 'visible' : 'none',
         'icon-image': 'storm-arrow',
         'icon-size': 0.55,
         'icon-rotate': ['get', 'rotate'],
@@ -932,7 +945,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         'text-halo-width': 1.4,
       },
     });
-  }, [ensureArrowIcon]);
+  }, [ensureArrowIcon, severeActive, showMotion]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
@@ -1332,10 +1345,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     return () => { clearInterval(id); cancelAnimationFrame(raf); };
   }, [setStormMotionData]);
 
-  // Arrow pulse (1.0 ↔ 0.45 once per second) — gives the static SDF icon a
-  // sense of motion without re-rendering React tree.
+  // Arrow pulse — full bright→dim→bright cycle every 2 seconds.
   useEffect(() => {
-    const id = setInterval(() => setArrowPulse((p) => (p > 0.6 ? 0.45 : 1)), 600);
+    const id = setInterval(() => setArrowPulse((p) => (p > 0.6 ? 0.4 : 1)), 1000);
     return () => clearInterval(id);
   }, []);
   useEffect(() => {
@@ -1345,6 +1357,79 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       map.setPaintProperty("storm-motion-arrow", "icon-opacity", arrowPulse);
     }
   }, [arrowPulse]);
+
+  // MOTION layer visibility — hide when severity drops below qualifying.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const v = severeActive && showMotion ? 'visible' : 'none';
+    if (map.getLayer('storm-motion-arrow')) {
+      map.setLayoutProperty('storm-motion-arrow', 'visibility', v);
+    }
+  }, [severeActive, showMotion]);
+
+  /* ---- Storm reports (LSR): fetch every 2 minutes when severe is active ---- */
+  useEffect(() => {
+    if (!severeActive) { setReports([]); return; }
+    let cancelled = false;
+    const load = () => {
+      fetchStormReports(2).then((rs) => { if (!cancelled) setReports(rs); });
+    };
+    load();
+    const id = setInterval(load, 120_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [severeActive]);
+
+  // Render LSR markers as DOM elements (emoji icon + tap-to-expand popup).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Always tear down existing markers before re-rendering.
+    for (const m of reportMarkersRef.current) m.remove();
+    reportMarkersRef.current = [];
+    if (!severeActive || !showReports || reports.length === 0) return;
+    for (const r of reports) {
+      const el = document.createElement('div');
+      el.style.cssText = [
+        'width:28px','height:28px','borderRadius:50%',
+        'display:flex','alignItems:center','justifyContent:center',
+        'fontSize:16px','lineHeight:1',
+        'background:rgba(11,16,24,0.88)',
+        'border:1.5px solid #faf7f0',
+        'box-shadow:0 2px 6px rgba(0,0,0,0.5)',
+        'cursor:pointer',
+      ].join(';');
+      const icon = r.kind === 'tornado' ? '🌪' : r.kind === 'hail' ? '⚪' : '💨';
+      el.textContent = icon;
+
+      const validLocal = r.validUtc
+        ? new Date(r.validUtc).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        : '';
+      const heading = r.kind === 'tornado' ? 'TORNADO REPORT'
+        : r.kind === 'hail' ? `HAIL · ${r.magnitude ?? '?'}"`
+        : `WIND DAMAGE${r.magnitude ? ` · ${Math.round(r.magnitude)} mph` : ''}`;
+      const remark = r.remark ? `<div style="margin-top:6px;color:rgba(250,247,240,0.85);">${r.remark.replace(/</g,'&lt;')}</div>` : '';
+      const html = `
+        <div style="font-family:'JetBrains Mono',ui-monospace,monospace;color:#faf7f0;min-width:180px;">
+          <div style="font-size:0.7rem;letter-spacing:0.14em;font-weight:700;color:#fca5a5;">${heading}</div>
+          <div style="margin-top:4px;font-size:0.78rem;">${r.city || '—'}${r.state ? ', ' + r.state : ''}</div>
+          <div style="margin-top:2px;font-size:0.68rem;color:rgba(250,247,240,0.6);">${validLocal} · ${r.source || 'Report'}</div>
+          ${remark}
+        </div>
+      `;
+      const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, className: 'lsr-popup' })
+        .setHTML(html);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([r.lon, r.lat])
+        .setPopup(popup)
+        .addTo(map);
+      reportMarkersRef.current.push(marker);
+    }
+    return () => {
+      for (const m of reportMarkersRef.current) m.remove();
+      reportMarkersRef.current = [];
+    };
+  }, [reports, severeActive, showReports]);
 
   // Basemap swap
   useEffect(() => {
@@ -1766,6 +1851,12 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
         {rotQualifies && (
           <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
+        )}
+        {severeActive && (
+          <>
+            <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
+            <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
+          </>
         )}
         <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
           {basemap === "satellite" ? "SAT" : "MAP"}
