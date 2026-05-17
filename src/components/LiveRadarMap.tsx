@@ -1623,139 +1623,78 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* Top-left: live indicator only */}
-      {view === "radar" ? (
-        <div style={pillTopLeft}>
-          <span style={liveDot} />
-          {source === "station" && stationId
-            ? `Live · ${stationId}`
-            : "Live · Mosaic"}
-        </div>
-      ) : (
-        <div
-          style={{
-            ...pillTopLeft,
-            backgroundColor: "rgba(120,53,15,0.85)",
-            color: "#fbbf24",
-            borderColor: "rgba(251,191,36,0.55)",
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: "#fbbf24",
-              marginRight: 6,
-              display: "inline-block",
-            }}
-          />
-          PREDICTED ·{" "}
-          {(() => {
-            const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
-            const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
-            return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
-          })()}
-        </div>
-      )}
-
-      {/* RADAR / FUTURE tabs */}
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: "inline-flex",
-          backgroundColor: "rgba(11,16,24,0.78)",
-          border: "1px solid rgba(250,247,240,0.18)",
-          borderRadius: 999,
-          padding: 3,
-          zIndex: 5,
-          fontFamily: "JetBrains Mono, ui-monospace, monospace",
-          fontSize: "0.6rem",
-          letterSpacing: "0.16em",
-        }}
-      >
-        {(["radar", "future"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setView(v)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 700,
-              letterSpacing: "0.16em",
-              backgroundColor: view === v
-                ? (v === "future" ? "#fbbf24" : "#faf7f0")
-                : "transparent",
-              color: view === v
-                ? (v === "future" ? "#451a03" : "#0b1018")
-                : "rgba(250,247,240,0.7)",
-              fontFamily: "inherit",
-              fontSize: "inherit",
-            }}
-          >
-            {v === "radar" ? "RADAR" : "FUTURE"}
-          </button>
-        ))}
-      </div>
-
-      {/* FUTURE hour selector — replaces the live scrubber in FUTURE mode */}
-      {view === "future" && (
-        <div style={futurePanelStyle}>
-          <div style={futurePanelHeader}>
-            <span>HRRR FORECAST · +{forecastHour}H</span>
-            <span style={{ color: "rgba(250,247,240,0.55)" }}>
-              {forecastLoading
-                ? "LOADING…"
-                : forecastFrames && forecastFrames.length > 0
-                  ? "LATEST RUN"
-                  : "UNAVAILABLE"}
-            </span>
-          </div>
-          <div style={futureHoursRow}>
-            {HRRR_HOURS.map((h) => {
-              const active = forecastHour === h;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setForecastHour(h)}
-                  style={{
-                    ...futureHourBtn,
-                    ...(active ? futureHourBtnActive : {}),
-                  }}
-                  aria-pressed={active}
-                >
-                  +{h}h
-                </button>
-              );
-            })}
-          </div>
-          {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
-            <div style={futureMissingStyle}>
-              Model data not yet available for this hour
+      {/* ============== TOP BAR ============== */}
+      <div style={topBarStyle}>
+        <div style={topBarLeft}>
+          {onMinimize && (
+            <button type="button" onClick={onMinimize} style={topBarIconBtn} aria-label="Minimize">▾</button>
+          )}
+          {view === "radar" ? (
+            <div style={statusLabelLive}>
+              <span style={liveDot} />
+              {source === "station" && stationId ? `LIVE · ${stationId}` : "LIVE · MOSAIC"}
+            </div>
+          ) : (
+            <div style={statusLabelFuture}>
+              <span style={amberDot} />
+              PREDICTED ·{" "}
+              {(() => {
+                const frame = forecastFrames ? pickForecastFrame(forecastFrames, forecastHour) : null;
+                const ms = frame ? frame.validMs : Date.now() + forecastHour * 3600 * 1000;
+                return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
+              })()}
             </div>
           )}
         </div>
-      )}
-
-      {/* Right toolbar — only the essentials */}
-      <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
-        <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
-        <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
-        <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
-        <ToolBtn
-          label={gpsBusy ? "…" : "📍"}
-          title="My location"
-          onClick={useMyLocation}
-          accent={precise}
-        />
+        <div style={topBarRight}>
+          <div style={segmentedWrap}>
+            {(["radar", "future"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                style={{
+                  ...segmentedBtn,
+                  ...(view === v
+                    ? (v === "future" ? segmentedBtnActiveAmber : segmentedBtnActive)
+                    : {}),
+                }}
+              >
+                {v === "radar" ? "RADAR" : "FUTURE"}
+              </button>
+            ))}
+          </div>
+          {onClose && (
+            <button type="button" onClick={onClose} style={topBarIconBtn} aria-label="Close">✕</button>
+          )}
+        </div>
       </div>
+
+      {/* ============== RIGHT CONTROLS (vertically centered) ============== */}
+      <div style={rightControlsStyle}>
+        <button type="button" onClick={() => mapRef.current?.zoomIn()} style={rightCtrlBtn} aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" onClick={() => mapRef.current?.zoomOut()} style={rightCtrlBtn} aria-label="Zoom out" title="Zoom out">−</button>
+        <button
+          type="button"
+          onClick={useMyLocation}
+          style={{ ...rightCtrlBtn, ...(precise ? rightCtrlBtnAccent : {}) }}
+          aria-label="Center on my location"
+          title="Center on my location"
+        >
+          {gpsBusy ? "…" : "⊕"}
+        </button>
+      </div>
+
+      {/* ============== LAYER TOGGLES (severe only) ============== */}
+      {severeActive && (
+        <div style={layerTogglesStyle}>
+          {rotQualifies && (
+            <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
+          )}
+          <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
+          <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
+        </div>
+      )}
 
       {/* Source picker panel */}
       {sourceMenuOpen && (
