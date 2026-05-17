@@ -1606,60 +1606,41 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         ))}
       </div>
 
-      {/* FUTURE slider + missing-frame message */}
+      {/* FUTURE hour selector — replaces the live scrubber in FUTURE mode */}
       {view === "future" && (
-        <div
-          style={{
-            position: "absolute",
-            left: 16,
-            right: 16,
-            bottom: 110,
-            zIndex: 5,
-            backgroundColor: "rgba(11,16,24,0.82)",
-            border: "1px solid rgba(251,191,36,0.35)",
-            borderRadius: 12,
-            padding: "10px 14px 12px",
-            color: "#faf7f0",
-            fontFamily: "JetBrains Mono, ui-monospace, monospace",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontSize: "0.58rem",
-              letterSpacing: "0.16em",
-              marginBottom: 6,
-              color: "#fbbf24",
-            }}
-          >
+        <div style={futurePanelStyle}>
+          <div style={futurePanelHeader}>
             <span>HRRR FORECAST · +{forecastHour}H</span>
             <span style={{ color: "rgba(250,247,240,0.55)" }}>
-              {forecastLoading ? "LOADING…" : `${forecastFrames?.length ?? 0} FRAMES`}
+              {forecastLoading
+                ? "LOADING…"
+                : forecastFrames && forecastFrames.length > 0
+                  ? "LATEST RUN"
+                  : "UNAVAILABLE"}
             </span>
           </div>
-          <input
-            type="range"
-            min={1}
-            max={18}
-            step={1}
-            value={forecastHour}
-            onChange={(e) => setForecastHour(parseInt(e.target.value, 10))}
-            style={{ width: "100%", accentColor: "#fbbf24" }}
-            aria-label="Forecast hour offset"
-          />
+          <div style={futureHoursRow}>
+            {HRRR_HOURS.map((h) => {
+              const active = forecastHour === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setForecastHour(h)}
+                  style={{
+                    ...futureHourBtn,
+                    ...(active ? futureHourBtnActive : {}),
+                  }}
+                  aria-pressed={active}
+                >
+                  +{h}h
+                </button>
+              );
+            })}
+          </div>
           {!forecastLoading && forecastFrames && !pickForecastFrame(forecastFrames, forecastHour) && (
-            <div
-              style={{
-                marginTop: 8,
-                fontFamily: "Fraunces, serif",
-                fontStyle: "italic",
-                fontSize: "0.85rem",
-                color: "#fde68a",
-              }}
-            >
-              Forecast not yet available
+            <div style={futureMissingStyle}>
+              Model data not yet available for this hour
             </div>
           )}
         </div>
@@ -1791,8 +1772,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </Toggle>
       </div>
 
-      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW */}
-      {frameTime && framesRef.current && (
+      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW (RADAR mode only) */}
+      {view === "radar" && frameTime && framesRef.current && (
         <div style={scrubberBarStyle}>
           {!playing && (
             <div style={pausedTimeStyle}>
