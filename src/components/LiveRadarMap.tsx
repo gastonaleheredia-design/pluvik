@@ -902,13 +902,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       const deg = p.motionDeg; const mph = p.motionMph;
       if (typeof lon !== 'number' || typeof lat !== 'number') continue;
       if (typeof deg !== 'number' || typeof mph !== 'number') continue;
+      // 16-point compass for the label ("NW 35 mph"). Bearing is the
+      // direction the storm is MOVING TO (NWS convention in TIME...MOT...LOC).
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      const compass = dirs[Math.round(((deg % 360) / 22.5)) % 16];
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [lon, lat] },
         properties: {
           // Mapbox icon-rotate is clockwise from north; matches NWS bearing.
           rotate: deg,
-          label: `${Math.round(mph)} mph`,
+          label: `${compass} ${Math.round(mph)} mph`,
         },
       });
     }
@@ -921,6 +925,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
       type: 'symbol',
       source: 'storm-motion',
       layout: {
+        visibility: severeActive && showMotion ? 'visible' : 'none',
         'icon-image': 'storm-arrow',
         'icon-size': 0.55,
         'icon-rotate': ['get', 'rotate'],
@@ -940,7 +945,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         'text-halo-width': 1.4,
       },
     });
-  }, [ensureArrowIcon]);
+  }, [ensureArrowIcon, severeActive, showMotion]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
