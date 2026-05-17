@@ -31,9 +31,41 @@ export interface RotationSummary {
   threatLevel: 'EXTREME' | 'HIGH' | 'MODERATE' | 'LOW' | 'NONE';
 }
 
-function degreesToCompass(deg: number): string {
-  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+/**
+ * Convert an initial bearing in degrees (0-360, measured clockwise from
+ * true north) to an 8-point compass string using the standard ±22.5°
+ * sectors:  N covers 337.5-360 ∪ 0-22.5, NE 22.5-67.5, E 67.5-112.5, etc.
+ */
+export function degreesToCompass(deg: number): string {
+  const d = (((deg % 360) + 360) % 360);
+  if (d >= 337.5 || d < 22.5)  return 'N';
+  if (d < 67.5)                return 'NE';
+  if (d < 112.5)               return 'E';
+  if (d < 157.5)               return 'SE';
+  if (d < 202.5)               return 'S';
+  if (d < 247.5)               return 'SW';
+  if (d < 292.5)               return 'W';
+  return 'NW';
+}
+
+/**
+ * Initial great-circle bearing FROM (userLat, userLon) TO (eventLat, eventLon),
+ * in degrees clockwise from true north (0-360). Spherical formula:
+ *   θ = atan2( sin(Δλ)·cos(φ2),  cos(φ1)·sin(φ2) − sin(φ1)·cos(φ2)·cos(Δλ) )
+ * where φ = latitude, λ = longitude (radians), Δλ = λ2 − λ1.
+ */
+export function bearingFromTo(
+  userLat: number, userLon: number,
+  eventLat: number, eventLon: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(userLat);
+  const φ2 = toRad(eventLat);
+  const Δλ = toRad(eventLon - userLon);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  return ((θ * 180) / Math.PI + 360) % 360;
 }
 
 function distanceBearing(
@@ -43,7 +75,7 @@ function distanceBearing(
   const dLat = (eventLat - userLat) * 69;
   const dLon = (eventLon - userLon) * 69 * Math.cos(userLat * Math.PI / 180);
   const distMi = Math.round(Math.sqrt(dLat * dLat + dLon * dLon));
-  const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+  const bearingDeg = bearingFromTo(userLat, userLon, eventLat, eventLon);
   return { distMi, bearing: degreesToCompass(bearingDeg) };
 }
 
