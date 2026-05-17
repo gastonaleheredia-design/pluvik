@@ -16,6 +16,7 @@ import { reverseGeocodeShort } from "@/lib/shortPlace";
 import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 import { fetchNearbyStorms } from "@/lib/fetchers/fetchNhcStorm";
 import { fetchRotationSignatureEvents, type RotationEvent } from "@/lib/fetchers/fetchRotationSignatures";
+import { fetchStormReports, type StormReport } from "@/lib/fetchers/fetchStormReports";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -506,6 +507,13 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const rotQualifies = severity === 'high' || severity === 'critical';
   const [showRot, setShowRot] = useState<boolean>(true);
   const [rotEvents, setRotEvents] = useState<RotationEvent[]>([]);
+  // Storm motion arrows + Local Storm Reports — gated to active severe
+  // weather. Both default ON when a qualifying warning is in effect.
+  const severeActive = severity === 'high' || severity === 'critical';
+  const [showMotion, setShowMotion] = useState<boolean>(true);
+  const [showReports, setShowReports] = useState<boolean>(true);
+  const [reports, setReports] = useState<StormReport[]>([]);
+  const reportMarkersRef = useRef<mapboxgl.Marker[]>([]);
   // Arrow-pulse tick (drives the storm-motion icon-opacity oscillation).
   const [arrowPulse, setArrowPulse] = useState<number>(1);
   // Latest active-warning FeatureCollection — kept in a ref so the
