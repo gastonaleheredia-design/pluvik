@@ -15,6 +15,7 @@ import { useAddress } from "@/lib/addressContext";
 import { reverseGeocodeShort } from "@/lib/shortPlace";
 import { loadActiveSbwGeo, pointInGeometry } from "@/lib/fetchers/fetchNearbyHazards";
 import { fetchNearbyStorms } from "@/lib/fetchers/fetchNhcStorm";
+import { fetchRotationSignatureEvents, type RotationEvent } from "@/lib/fetchers/fetchRotationSignatures";
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -24,6 +25,12 @@ interface LiveRadarMapProps {
   height?: number | string;
   /** When true, the map is rendered edge-to-edge inside a full-screen sheet. */
   isFullscreen?: boolean;
+  /**
+   * Bucketed alert severity. When `'high'` or `'critical'`, the radar exposes
+   * a `ROT` toggle in the bottom controls and renders the SWDI rotation
+   * signatures overlay (TVS + mesocyclone circles + labels).
+   */
+  severity?: 'critical' | 'high' | 'elevated' | 'low' | 'none';
 }
 
 const RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
@@ -142,6 +149,9 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
 
       const expires: string | null = p.expire ?? p.expires ?? null;
       const containsUser = pointInGeometry(lat, lon, f.geometry);
+      const desc = String(p.description ?? p.headline ?? "");
+      const motion = parseStormMotion(desc);
+      const ctr = polygonCentroidLngLat(f.geometry);
 
       // Pre-populate the alert cache so tapping a polygon opens the detail
       // page instantly. The detail page falls back to NWS by id when missing.
@@ -164,7 +174,13 @@ async function fetchActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event: eventName, expires, containsUser, phenomena: ph },
+        properties: {
+          id, event: eventName, expires, containsUser, phenomena: ph,
+          motionDeg: motion?.deg ?? null,
+          motionMph: motion?.mph ?? null,
+          centroidLon: ctr?.lon ?? null,
+          centroidLat: ctr?.lat ?? null,
+        },
       });
     }
 
@@ -236,6 +252,9 @@ async function fetchNwsActiveWarningPolygons(lat: number, lon: number) {
       }
       const id = String(p.id ?? `nws-${event}-${p.sent ?? ""}`);
       const containsUser = pointInGeometry(lat, lon, f.geometry);
+      const desc = String(p.description ?? p.headline ?? "");
+      const motion = parseStormMotion(desc);
+      const centroid = polygonCentroidLngLat(f.geometry);
       cacheAlert({
         id,
         event,
@@ -253,7 +272,13 @@ async function fetchNwsActiveWarningPolygons(lat: number, lon: number) {
       out.push({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id, event, expires: p.expires ?? null, containsUser, phenomena: ph },
+        properties: {
+          id, event, expires: p.expires ?? null, containsUser, phenomena: ph,
+          motionDeg: motion?.deg ?? null,
+          motionMph: motion?.mph ?? null,
+          centroidLon: centroid?.lon ?? null,
+          centroidLat: centroid?.lat ?? null,
+        },
       });
     }
     if (!out.length) return null;
@@ -277,6 +302,40 @@ function polygonCentroidLngLat(geom: any): { lat: number; lon: number } | null {
   }
   if (n === 0) return null;
   return { lat: sy / n, lon: sx / n };
+}
+
+/**
+ * Parse "Movement was northeast at 35 mph" (and variants) out of an NWS
+ * warning description. Returns degrees clockwise from north + speed in mph,
+ * or null when no motion phrase is found.
+ */
+const COMPASS_TO_DEG: Record<string, number> = {
+  n: 0, north: 0,
+  nne: 22.5, 'north-northeast': 22.5,
+  ne: 45, northeast: 45,
+  ene: 67.5, 'east-northeast': 67.5,
+  e: 90, east: 90,
+  ese: 112.5, 'east-southeast': 112.5,
+  se: 135, southeast: 135,
+  sse: 157.5, 'south-southeast': 157.5,
+  s: 180, south: 180,
+  ssw: 202.5, 'south-southwest': 202.5,
+  sw: 225, southwest: 225,
+  wsw: 247.5, 'west-southwest': 247.5,
+  w: 270, west: 270,
+  wnw: 292.5, 'west-northwest': 292.5,
+  nw: 315, northwest: 315,
+  nnw: 337.5, 'north-northwest': 337.5,
+};
+function parseStormMotion(text: string | null | undefined): { deg: number; mph: number } | null {
+  if (!text) return null;
+  const m = text.match(/mov(?:ement|ing)\s+(?:was\s+|toward\s+the\s+|to\s+the\s+)?([a-z-]+)\s+at\s+(\d{1,3})\s*mph/i);
+  if (!m) return null;
+  const dir = m[1].toLowerCase();
+  const mph = parseInt(m[2], 10);
+  const deg = COMPASS_TO_DEG[dir];
+  if (deg == null || !Number.isFinite(mph)) return null;
+  return { deg, mph };
 }
 
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -395,7 +454,7 @@ interface MiniCardData {
   phenomena?: string;
 }
 
-export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: LiveRadarMapProps) {
+export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, severity = 'none' }: LiveRadarMapProps) {
   const navigate = useNavigate();
   const { setAddress, resumeFollowing } = useAddress();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -437,6 +496,18 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
   const [forecastHour, setForecastHour] = useState<number>(1);
   const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
   const [forecastLoading, setForecastLoading] = useState<boolean>(false);
+
+  // Rotation signatures (SWDI TVS + MDA). Only fetched + shown when the
+  // active alert severity is high or critical and the user has not toggled
+  // the ROT layer off. Re-fetched on lat/lon change; cached map-side.
+  const rotQualifies = severity === 'high' || severity === 'critical';
+  const [showRot, setShowRot] = useState<boolean>(true);
+  const [rotEvents, setRotEvents] = useState<RotationEvent[]>([]);
+  // Arrow-pulse tick (drives the storm-motion icon-opacity oscillation).
+  const [arrowPulse, setArrowPulse] = useState<number>(1);
+  // Latest active-warning FeatureCollection — kept in a ref so the
+  // storm-motion overlay can re-sync without rebuilding the warnings layer.
+  const warningsDataRef = useRef<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] });
 
   // Close every floating panel/tool — used when opening a new one so they
   // don't stack on top of each other.
@@ -659,6 +730,7 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     }
     const empty = { type: "FeatureCollection" as const, features: [] };
     const data = (fc ?? empty) as GeoJSON.FeatureCollection;
+    warningsDataRef.current = data;
     const existing = map.getSource("nws-warnings") as mapboxgl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
@@ -722,6 +794,142 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     enforceLayerOrder(map);
     fitToWarnings(map, data, la, lo);
   }, [showWarnings, wireWarningInteractions, fitToWarnings]);
+
+  /* -------------- Rotation signatures overlay (SWDI) -------------- */
+
+  const setRotationData = useCallback((map: mapboxgl.Map, events: RotationEvent[]) => {
+    const features: GeoJSON.Feature[] = events
+      .filter((e) => e.type === 'TVS' || e.type === 'MESO')
+      .map((e) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [e.lon, e.lat] },
+        properties: {
+          kind: e.type,
+          label: e.type === 'TVS' ? 'ROTATION CONFIRMED' : 'ROTATION',
+        },
+      }));
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const existing = map.getSource('rot-signatures') as mapboxgl.GeoJSONSource | undefined;
+    if (existing) { existing.setData(data); return; }
+    map.addSource('rot-signatures', { type: 'geojson', data });
+    map.addLayer({
+      id: 'rot-signatures-circle',
+      type: 'circle',
+      source: 'rot-signatures',
+      layout: { visibility: showRot && rotQualifies ? 'visible' : 'none' },
+      paint: {
+        'circle-radius': 24,
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': ['match', ['get', 'kind'], 'TVS', '#ef4444', '#f97316'] as any,
+      },
+    });
+    map.addLayer({
+      id: 'rot-signatures-label',
+      type: 'symbol',
+      source: 'rot-signatures',
+      layout: {
+        visibility: showRot && rotQualifies ? 'visible' : 'none',
+        'text-field': ['get', 'label'],
+        // JetBrains Mono isn't a Mapbox-hosted font; substitute a mono-ish
+        // weight that ships with the dark style so the layer renders.
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-size': 9,
+        'text-offset': [0, 1.8],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#0b1018',
+        'text-halo-width': 1.2,
+      },
+    });
+  }, [showRot, rotQualifies]);
+
+  /* -------------- Storm motion arrows -------------- */
+
+  const ensureArrowIcon = useCallback((map: mapboxgl.Map) => {
+    if (map.hasImage('storm-arrow')) return;
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Draw an arrow pointing up (will be rotated by icon-rotate).
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Halo for legibility on radar.
+    ctx.shadowColor = 'rgba(11,16,24,0.85)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(size / 2, size - 6);
+    ctx.lineTo(size / 2, 14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(size / 2, 4);
+    ctx.lineTo(size / 2 - 12, 22);
+    ctx.lineTo(size / 2 + 12, 22);
+    ctx.closePath();
+    ctx.fill();
+    const imgData = ctx.getImageData(0, 0, size, size);
+    map.addImage('storm-arrow', imgData, { pixelRatio: 2 });
+  }, []);
+
+  const setStormMotionData = useCallback((
+    map: mapboxgl.Map,
+    warnings: GeoJSON.FeatureCollection,
+  ) => {
+    ensureArrowIcon(map);
+    const features: GeoJSON.Feature[] = [];
+    for (const f of warnings.features ?? []) {
+      const p = (f.properties ?? {}) as Record<string, any>;
+      const lon = p.centroidLon; const lat = p.centroidLat;
+      const deg = p.motionDeg; const mph = p.motionMph;
+      if (typeof lon !== 'number' || typeof lat !== 'number') continue;
+      if (typeof deg !== 'number' || typeof mph !== 'number') continue;
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lon, lat] },
+        properties: {
+          // Mapbox icon-rotate is clockwise from north; matches NWS bearing.
+          rotate: deg,
+          label: `${Math.round(mph)} mph`,
+        },
+      });
+    }
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const existing = map.getSource('storm-motion') as mapboxgl.GeoJSONSource | undefined;
+    if (existing) { existing.setData(data); return; }
+    map.addSource('storm-motion', { type: 'geojson', data });
+    map.addLayer({
+      id: 'storm-motion-arrow',
+      type: 'symbol',
+      source: 'storm-motion',
+      layout: {
+        'icon-image': 'storm-arrow',
+        'icon-size': 0.55,
+        'icon-rotate': ['get', 'rotate'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'text-field': ['get', 'label'],
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-size': 11,
+        'text-offset': [0, 1.6],
+        'text-anchor': 'top',
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'icon-opacity': 1,
+        'text-color': '#ffffff',
+        'text-halo-color': '#0b1018',
+        'text-halo-width': 1.4,
+      },
+    });
+  }, [ensureArrowIcon]);
 
   // Build the you-are-here DOM element (pulsing blue dot with white ring).
   const buildMarkerEl = useCallback(() => {
@@ -1073,7 +1281,67 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
     const v = showWarnings ? "visible" : "none";
     if (map.getLayer("nws-warnings-fill")) map.setLayoutProperty("nws-warnings-fill", "visibility", v);
     if (map.getLayer("nws-warnings-line")) map.setLayoutProperty("nws-warnings-line", "visibility", v);
+    // Storm-motion arrows live on top of warnings; keep them paired with the
+    // warnings toggle so the user can clear the screen with one tap.
+    if (map.getLayer("storm-motion-arrow")) map.setLayoutProperty("storm-motion-arrow", "visibility", v);
   }, [showWarnings]);
+
+  /* ---- Rotation signatures: fetch + push to map ---- */
+  useEffect(() => {
+    if (!rotQualifies) { setRotEvents([]); return; }
+    let cancelled = false;
+    fetchRotationSignatureEvents(meLat, meLon).then((evs) => {
+      if (!cancelled) setRotEvents(evs);
+    });
+    return () => { cancelled = true; };
+  }, [rotQualifies, meLat, meLon]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    setRotationData(map, rotEvents);
+  }, [rotEvents, setRotationData]);
+
+  // ROT layer visibility — also hide when severity drops below qualifying.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const v = showRot && rotQualifies ? "visible" : "none";
+    if (map.getLayer("rot-signatures-circle")) map.setLayoutProperty("rot-signatures-circle", "visibility", v);
+    if (map.getLayer("rot-signatures-label"))  map.setLayoutProperty("rot-signatures-label",  "visibility", v);
+  }, [showRot, rotQualifies]);
+
+  /* ---- Storm motion arrows: re-sync whenever the warnings layer refreshes ---- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let raf = 0;
+    const sync = () => {
+      if (!map.isStyleLoaded()) {
+        raf = requestAnimationFrame(sync);
+        return;
+      }
+      setStormMotionData(map, warningsDataRef.current);
+    };
+    // Push on mount + every time warnings change (we re-fetch on 120s).
+    sync();
+    const id = setInterval(sync, 30_000);
+    return () => { clearInterval(id); cancelAnimationFrame(raf); };
+  }, [setStormMotionData]);
+
+  // Arrow pulse (1.0 ↔ 0.45 once per second) — gives the static SDF icon a
+  // sense of motion without re-rendering React tree.
+  useEffect(() => {
+    const id = setInterval(() => setArrowPulse((p) => (p > 0.6 ? 0.45 : 1)), 600);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (map.getLayer("storm-motion-arrow")) {
+      map.setPaintProperty("storm-motion-arrow", "icon-opacity", arrowPulse);
+    }
+  }, [arrowPulse]);
 
   // Basemap swap
   useEffect(() => {
@@ -1545,6 +1813,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false }: L
       <div style={togglesStyle}>
         <Toggle on={showRadar} onClick={() => setShowRadar((s) => !s)}>RADAR</Toggle>
         <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
+        {rotQualifies && (
+          <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
+        )}
         <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
           {basemap === "satellite" ? "SAT" : "MAP"}
         </Toggle>

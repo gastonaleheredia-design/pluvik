@@ -21,12 +21,14 @@ interface AlertSheetProps {
   lon: number;
   /** When null, sheet is in radar-only mode (no alert text). */
   alert: AlertSheetAlert | null;
+  /** Bucketed severity of the active warning (drives the ROT overlay button). */
+  severity?: 'critical' | 'high' | 'elevated' | 'low' | 'none';
   onClose: () => void;
 }
 
 const SNAP_POINTS = [0.7, 1] as const;
 
-export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
+export function AlertSheet({ lat, lon, alert, severity = 'none', onClose }: AlertSheetProps) {
   const [snap, setSnap] = useState<number | string | null>(SNAP_POINTS[0]);
   const isFull = snap === 1;
   const isRadarOnly = !alert;
@@ -147,7 +149,7 @@ export function AlertSheet({ lat, lon, alert, onClose }: AlertSheetProps) {
               }}
               data-vaul-no-drag
             >
-              <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} />
+              <LiveRadarMap lat={lat} lon={lon} height={radarHeight} isFullscreen={isFull} severity={severity} />
             </div>
 
             {/* Floating controls in fullscreen */}
