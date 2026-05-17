@@ -318,7 +318,19 @@ function sentenceForComprehensive(
     case 'VERY WINDY': return 'Very strong winds — use caution outdoors.';
     case 'FOGGY': return 'Dense fog — reduce speed if driving.';
     case 'HOT': return `Heat index ${ctx.heatIndexF ?? '?'}°F — limit outdoor exposure.`;
-    case 'DANGEROUSLY HOT': return `
+    case 'DANGEROUSLY HOT': return `Dangerously hot (${ctx.heatIndexF ?? '?'}°F) — avoid being outdoors.`;
+    case 'FREEZING': return 'Freezing temps — bundle up.';
+    case 'DRIZZLE': return 'Light drizzle nearby.';
+    case 'SHOWERS': return 'Showers nearby.';
+    case 'RAIN': return 'Rain falling nearby.';
+    case 'HEAVY RAIN': return 'Heavy rain nearby — expect slow traffic.';
+    case 'THUNDERSTORMS': return 'Thunderstorms in the area.';
+    case 'FLASH FLOOD': return 'Flash flood warning in effect — seek higher ground.';
+    case 'BLIZZARD': return 'Blizzard conditions — avoid travel.';
+    case 'ICE STORM': return 'Ice storm — surfaces dangerously slick.';
+    default: return null;
+  }
+}
 
 /* ---------------------------------------------------------------- */
 /* Alert severity classification                                     */
