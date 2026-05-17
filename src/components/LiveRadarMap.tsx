@@ -1852,6 +1852,12 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         {rotQualifies && (
           <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
         )}
+        {severeActive && (
+          <>
+            <Toggle on={showMotion} onClick={() => setShowMotion((s) => !s)}>MOTION</Toggle>
+            <Toggle on={showReports} onClick={() => setShowReports((s) => !s)}>REPORTS</Toggle>
+          </>
+        )}
         <Toggle on={basemap === "satellite"} onClick={() => setBasemap((b) => (b === "streets" ? "satellite" : "streets"))}>
           {basemap === "satellite" ? "SAT" : "MAP"}
         </Toggle>
