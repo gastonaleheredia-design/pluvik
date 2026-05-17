@@ -854,8 +854,21 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     const curCode: number = j.current?.weather_code ?? 0;
     const curPrecip: number = j.current?.precipitation ?? 0;
-    const cloudCover: number = j.current?.cloud_cover ?? 0;
+    // cloudCover starts as Open-Meteo's value; overridden below by METAR
+    // sky-cover groups when a fresh airport observation is in range.
+    let cloudCover: number = j.current?.cloud_cover ?? 0;
     const tz: string = j.timezone ?? 'UTC';
+
+    // ─── Observation-first: fetch the nearest METAR up front so every
+    // "current conditions" field downstream (temp, wind, visibility, sky
+    // cover, present-weather) can prefer the airport's actual sensors over
+    // Open-Meteo's gridded model output. Open-Meteo is only used as a
+    // fallback when no station within 25 mi has reported in the last 90 min.
+    const metarObsEarly = await fetchNearestMetar(lat, lon).catch(() => null);
+    const metarFresh = metarObsEarly && metarObsEarly.ageMinutes <= 90 ? metarObsEarly : null;
+    if (metarFresh && metarFresh.cloudCoverPct != null) {
+      cloudCover = metarFresh.cloudCoverPct;
+    }
 
     const rainingNow = curPrecip > 0.05 || (curCode >= 51 && curCode <= 67) || (curCode >= 80 && curCode <= 82);
     const snowNow = (curCode >= 71 && curCode <= 77) || (curCode >= 85 && curCode <= 86);
@@ -1155,10 +1168,44 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       return m;
     })();
     const cur = j.current as OpenMeteoLite['current'];
-    const windMph = typeof cur.wind_speed_10m === 'number' ? Math.round(cur.wind_speed_10m) : null;
-    const visibilityMi = typeof cur.visibility === 'number' ? cur.visibility / 1609.34 : null;
+    let windMph = typeof cur.wind_speed_10m === 'number' ? Math.round(cur.wind_speed_10m) : null;
+    let visibilityMi = typeof cur.visibility === 'number' ? cur.visibility / 1609.34 : null;
     let heatIndexF = typeof cur.apparent_temperature === 'number' ? Math.round(cur.apparent_temperature) : null;
     let tempF = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : null;
+
+    // Override every numeric "current conditions" field with the METAR
+    // observation when fresh. Wind knots → mph (×1.15078). Heat index is
+    // recomputed from observed T + dewpoint via the Rothfusz regression.
+    if (metarFresh) {
+      if (metarFresh.tempC != null) {
+        tempF = Math.round(metarFresh.tempC * 9 / 5 + 32);
+      }
+      if (metarFresh.windKt != null) {
+        // Use gust if reported (more conservative for "windy" classification),
+        // else sustained wind. Both arrive in knots.
+        const kt = metarFresh.windGustKt ?? metarFresh.windKt;
+        windMph = Math.round(kt * 1.15078);
+      }
+      if (metarFresh.visibilityMi != null) {
+        visibilityMi = metarFresh.visibilityMi;
+      }
+      if (tempF != null && metarFresh.tempC != null && metarFresh.dewpointC != null) {
+        if (tempF >= 80) {
+          const a = 17.625, b = 243.04;
+          const tC = metarFresh.tempC;
+          const tdC = metarFresh.dewpointC;
+          const rh = 100 * (Math.exp((a * tdC) / (b + tdC)) / Math.exp((a * tC) / (b + tC)));
+          const T = tempF;
+          const R = Math.max(0, Math.min(100, rh));
+          const hi = -42.379 + 2.04901523 * T + 10.14333127 * R
+            - 0.22475541 * T * R - 0.00683783 * T * T - 0.05481717 * R * R
+            + 0.00122874 * T * T * R + 0.00085282 * T * R * R - 0.00000199 * T * T * R * R;
+          heatIndexF = Math.round(hi);
+        } else {
+          heatIndexF = tempF;
+        }
+      }
+    }
     const isDay = cur.is_day != null ? cur.is_day === 1 : (() => {
       try {
         const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date()), 10);
@@ -1191,36 +1238,12 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     // sky cover, the legacy radar-based STORMS/THUNDERSTORMS verdicts
     // are kept so we don't downgrade a real nearby storm.
     try {
-      const [metarObs, overheadRadar, modelAgreement] = await Promise.all([
-        fetchNearestMetar(lat, lon).catch(() => null),
+      // metar already fetched above; only need radar + model here.
+      const metarObs = metarObsEarly;
+      const [overheadRadar, modelAgreement] = await Promise.all([
         fetchOverheadDbz(lat, lon).catch(() => null),
         fetchHrrrRapAgreement(lat, lon).catch(() => null),
       ]);
-      // Prefer observed METAR temperature over model output when fresh.
-      // METAR is the ground truth airports report; Open-Meteo can drift
-      // several degrees from what's actually being measured nearby.
-      if (metarObs && metarObs.tempC != null && metarObs.ageMinutes <= 90) {
-        const obsTempF = Math.round(metarObs.tempC * 9 / 5 + 32);
-        tempF = obsTempF;
-        // Recompute heat index from observed T + dewpoint when available
-        // (Rothfusz regression). Falls back to the model apparent_temperature.
-        if (metarObs.dewpointC != null && obsTempF >= 80) {
-          const dewF = metarObs.dewpointC * 9 / 5 + 32;
-          // Approximate RH from T and Td (Magnus formula).
-          const a = 17.625, b = 243.04;
-          const tC = metarObs.tempC;
-          const tdC = metarObs.dewpointC;
-          const rh = 100 * (Math.exp((a * tdC) / (b + tdC)) / Math.exp((a * tC) / (b + tC)));
-          const T = obsTempF;
-          const R = Math.max(0, Math.min(100, rh));
-          const hi = -42.379 + 2.04901523 * T + 10.14333127 * R
-            - 0.22475541 * T * R - 0.00683783 * T * T - 0.05481717 * R * R
-            + 0.00122874 * T * T * R + 0.00085282 * T * R * R - 0.00000199 * T * T * R * R;
-          heatIndexF = Math.round(hi);
-        } else if (obsTempF < 80) {
-          heatIndexF = obsTempF;
-        }
-      }
       const hierarchy = classifyByMetHierarchy({
         metar: metarObs,
         overhead: overheadRadar,
