@@ -1112,15 +1112,20 @@ function HomePage() {
                 alignItems: 'flex-start',
                 justifyContent: 'center',
                 gap: 14,
+                width: '100%',
+                maxWidth: '100%',
               }}
             >
               <div
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
-                  fontSize: 'clamp(4rem, 18vw, 7rem)',
+                  fontSize: `clamp(2.5rem, ${Math.min(18, 150 / Math.max((briefing.word ?? '').length, 1)).toFixed(2)}vw, 7rem)`,
                   lineHeight: 0.95,
                   letterSpacing: '-0.02em',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
                 }}
               >
                 {briefing.word}
