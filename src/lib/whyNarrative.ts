@@ -323,12 +323,19 @@ function headlineFor(scenario: WhyScenario, severe: SevereType, inputs: WhyInput
         : `Hot and humid${inputs.tempF ? ` (${inputs.tempF}°F)` : ''} — heat-index will run high.`;
     case 'fog_visibility':
       return es ? 'Aire cerca de la saturación — posible niebla.' : 'Air near saturation — fog possible.';
-    case 'far_out_rain':
-      return inputs.nextRainCaption
+    case 'far_out_rain': {
+      // Strip any leading "NEXT RAIN ·" / "PRÓXIMA LLUVIA ·" prefix from the
+      // caption so we don't end up with "next rain next rain · sun 1 pm".
+      const cap = inputs.nextRainCaption
+        ?.replace(/^\s*(next rain|próxima lluvia)\s*[·:\-]?\s*/i, '')
+        .toLowerCase()
+        .trim();
+      return cap
         ? (es
-            ? `Sin lluvia ahora, próxima esperada ${inputs.nextRainCaption.toLowerCase()}.`
-            : `Dry now; next rain ${inputs.nextRainCaption.toLowerCase()}.`)
+            ? `Sin lluvia ahora, próxima esperada ${cap}.`
+            : `Dry now; next rain ${cap}.`)
         : (es ? 'Despejado por ahora.' : 'Clear for now.');
+    }
     case 'tropical_watch':
       return es ? 'Producto tropical activo cerca.' : 'Active tropical product nearby.';
     case 'benign_clear':
