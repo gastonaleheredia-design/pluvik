@@ -2086,6 +2086,48 @@ const nowPillLive: React.CSSProperties = {
   borderColor: "#ef4444",
 };
 
+const futurePanelStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 16, right: 16, bottom: 18,
+  zIndex: 5,
+  backgroundColor: "rgba(11,16,24,0.88)",
+  border: "1px solid rgba(251,191,36,0.4)",
+  borderRadius: 14,
+  padding: "10px 12px 12px",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  backdropFilter: "blur(6px)",
+};
+const futurePanelHeader: React.CSSProperties = {
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+  color: "#fbbf24",
+  marginBottom: 8,
+};
+const futureHoursRow: React.CSSProperties = {
+  display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "space-between",
+};
+const futureHourBtn: React.CSSProperties = {
+  flex: 1, minWidth: 44,
+  padding: "8px 4px", borderRadius: 100,
+  border: "1px solid rgba(251,191,36,0.35)",
+  backgroundColor: "transparent",
+  color: "#faf7f0",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.7rem", letterSpacing: "0.08em", fontWeight: 700,
+  cursor: "pointer",
+};
+const futureHourBtnActive: React.CSSProperties = {
+  backgroundColor: "#fbbf24",
+  color: "#451a03",
+  borderColor: "#fbbf24",
+};
+const futureMissingStyle: React.CSSProperties = {
+  marginTop: 10,
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.85rem", color: "#fde68a", textAlign: "center",
+};
+
 const legendWrapStyle: React.CSSProperties = {
   position: "absolute", bottom: 78, right: 10,
   backgroundColor: "rgba(11,16,24,0.82)",
