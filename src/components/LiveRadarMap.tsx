@@ -1834,6 +1834,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
 
       {/* ============== BOTTOM BAR ============== */}
       <div style={bottomBarStyle}>
+        {prefetching && (
+          <div style={prefetchHintStyle}>Loading future data…</div>
+        )}
         {view === "future" ? (
           <div style={futureRowStyle}>
             {HRRR_HOURS.map((h) => {
