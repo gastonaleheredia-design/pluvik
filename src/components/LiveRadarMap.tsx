@@ -107,7 +107,10 @@ function buildIemMosaicFrames(): PreparedFrames {
   // Round down to nearest 5-min mark.
   const latest = Math.floor(nowSec / 300) * 300;
   const frames: RVFrame[] = [];
-  for (let i = 11; i >= 0; i--) {
+  // 2-hour loop at 5-min cadence = 24 frames. The last frame is "live"; the
+  // auto-play ticker wraps back to frame 0 when it reaches the end so the
+  // loop replays the last two hours and settles on live again.
+  for (let i = 23; i >= 0; i--) {
     const t = latest - i * 300;
     frames.push({ time: t, path: `iem-mosaic-${t}` });
   }
@@ -1662,49 +1665,17 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </div>
       )}
 
-      {/* Right toolbar */}
+      {/* Right toolbar — only the essentials */}
       <div style={isFullscreen ? toolbarStyleFullscreen : toolbarStyle}>
         <ToolBtn label={playing ? "❚❚" : "▶"} title={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)} />
         <ToolBtn label="+" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
         <ToolBtn label="−" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
-        <ToolBtn label="◎" title="Recenter" onClick={recenter} />
         <ToolBtn
           label={gpsBusy ? "…" : "📍"}
-          title="My location (GPS)"
+          title="My location"
           onClick={useMyLocation}
           accent={precise}
         />
-        <ToolBtn
-          label="📡"
-          title="Radar source"
-          onClick={() => {
-            const willOpen = !sourceMenuOpen;
-            closeAllPanels();
-            setSourceMenuOpen(willOpen);
-          }}
-        />
-        {isFullscreen && (
-          <>
-            <ToolBtn
-              label="📏"
-              title={tool === "ruler" ? "Exit ruler" : "Measure distance"}
-              onClick={() => {
-                const next = tool === "ruler" ? "none" : "ruler";
-                closeAllPanels();
-                setTool(next);
-              }}
-            />
-            <ToolBtn
-              label="🎯"
-              title={tool === "pin" ? "Exit pin" : "Drop a pin"}
-              onClick={() => {
-                const next = tool === "pin" ? "none" : "pin";
-                closeAllPanels();
-                setTool(next);
-              }}
-            />
-          </>
-        )}
       </div>
 
       {/* Source picker panel */}
@@ -1809,9 +1780,8 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         )}
       </div>
 
-      {/* Bottom toggles */}
-      <div style={togglesStyle}>
-        <Toggle on={showRadar} onClick={() => setShowRadar((s) => !s)}>RADAR</Toggle>
+      {/* Layer toggles — compact row top-left, below the LIVE pill */}
+      <div style={topToggleRowStyle}>
         <Toggle on={showWarnings} onClick={() => setShowWarnings((s) => !s)}>WARNINGS</Toggle>
         {rotQualifies && (
           <Toggle on={showRot} onClick={() => setShowRot((s) => !s)}>ROT</Toggle>
@@ -1821,38 +1791,85 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
         </Toggle>
       </div>
 
-      {/* Frame clock + progress strip, bottom-center */}
-      {frameTime && (
-        <div style={clockWrapStyle}>
-          <div style={clockRow}>
-            <span style={clockText}>
+      {/* Bottom scrubber: PAUSE · [tick scrubber] · NOW */}
+      {frameTime && framesRef.current && (
+        <div style={scrubberBarStyle}>
+          {!playing && (
+            <div style={pausedTimeStyle}>
               {frameLabel}
-              {frameTime.isForecast ? " · forecast" : " · now"}
-            </span>
-          </div>
-          {isFullscreen && framesRef.current ? (
-            <input
-              type="range"
-              min={0}
-              max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
-              value={frameIdxRef.current}
-              onChange={(e) => {
-                playingRef.current = false;
-                setPlaying(false);
-                jumpToFrame(parseInt(e.target.value, 10));
-              }}
-              style={scrubStyle}
-            />
-          ) : (
-            <div style={progressTrack}>
-              <div
-                style={{
-                  ...progressFill,
-                  width: `${Math.round(frameProgress * 100)}%`,
-                }}
-              />
+              {frameTime.isForecast ? " · forecast" : ""}
             </div>
           )}
+          <div style={scrubberRow}>
+            <button
+              type="button"
+              onClick={() => setPlaying((p) => !p)}
+              style={scrubberPlayBtn}
+              aria-label={playing ? "Pause" : "Play"}
+              title={playing ? "Pause" : "Play"}
+            >
+              {playing ? "❚❚" : "▶"}
+            </button>
+            <div style={scrubberTrackWrap}>
+              <div style={tickRowStyle}>
+                {(() => {
+                  const fr = framesRef.current;
+                  if (!fr) return null;
+                  const out: React.ReactNode[] = [];
+                  // Tick every 30 minutes (= every 6 frames at 5-min cadence).
+                  for (let i = 0; i < fr.frames.length; i++) {
+                    const f = fr.frames[i];
+                    const d = new Date(f.time * 1000);
+                    const isHalfHour = d.getMinutes() % 30 === 0;
+                    if (!isHalfHour) continue;
+                    const pct = (i / Math.max(1, fr.frames.length - 1)) * 100;
+                    const hh = d.getHours();
+                    const mm = d.getMinutes().toString().padStart(2, "0");
+                    const h12 = ((hh + 11) % 12) + 1;
+                    out.push(
+                      <div key={i} style={{ ...tickWrap, left: `${pct}%` }}>
+                        <div style={tickMark} />
+                        <div style={tickLabel}>{`${h12}:${mm}`}</div>
+                      </div>,
+                    );
+                  }
+                  return out;
+                })()}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, (framesRef.current.frames.length ?? 1) - 1)}
+                value={frameIdxRef.current}
+                onChange={(e) => {
+                  playingRef.current = false;
+                  setPlaying(false);
+                  jumpToFrame(parseInt(e.target.value, 10));
+                }}
+                style={scrubStyle}
+                aria-label="Radar time"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const fr = framesRef.current;
+                if (!fr) return;
+                jumpToFrame(fr.frames.length - 1);
+                setPlaying(true);
+              }}
+              style={{
+                ...nowPillStyle,
+                ...(frameIdxRef.current >= (framesRef.current.frames.length - 1) && playing
+                  ? nowPillLive
+                  : {}),
+              }}
+              aria-label="Snap to live"
+              title="Snap to live"
+            >
+              NOW
+            </button>
+          </div>
         </div>
       )}
 
