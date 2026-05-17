@@ -253,6 +253,31 @@ function HomePage() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Updated forecasts: user's tracked events whose verdict / percentage
+  // changed within the last 24 hours.
+  useEffect(() => {
+    if (!user) { setUpdatedEvents([]); return; }
+    let cancelled = false;
+    (async () => {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('tracked_events')
+        .select('id, question, current_verdict_word, last_significant_change_at')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .gte('last_significant_change_at', since)
+        .order('last_significant_change_at', { ascending: false })
+        .limit(2);
+      if (cancelled) return;
+      setUpdatedEvents((data ?? []).map((r) => ({
+        id: r.id as string,
+        question: (r.question as string) ?? '',
+        verdict_word: (r.current_verdict_word as string | null) ?? null,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
   // Consume any question prefilled by onboarding step 3.
   useEffect(() => {
     if (typeof window === 'undefined') return;
