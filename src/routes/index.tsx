@@ -1153,31 +1153,38 @@ function HomePage() {
                   gap: 8, maxWidth: 420,
                 }}>
                   {(() => {
-                    // Verdict-driven pill logic.
-                    //   STORMS / HEAVY RAIN  → no pill (radar + why only)
-                    //   RAIN SOON            → "APPROACHING · {N} MI {DIR}"
-                    //   RAINING (RAIN)       → "RAINING NEARBY"
-                    //   DRY / CLOUDY / CLEAR → "NEXT RAIN · {time}" (from briefing)
+                    // Verdict-driven pill logic — never contradict the verdict word.
+                    //   Active precip / warnings → hide pill (RADAR + WHY only)
+                    //   CHANCE OF RAIN           → "RAIN POSSIBLE · {time}"
+                    //   DRIZZLE / SHOWERS        → "LIGHT RAIN · NEARBY"
+                    //   Calm verdicts (sun/clouds/wind/heat/fog) → "NEXT RAIN · {time}"
                     const w = briefing.word;
-                    const cell = briefing.nearby_cell;
-                    const isHeavyRain = w === 'RAINING'
-                      && cell != null
-                      && cell.distance_mi <= 5;
+                    const nextRain = briefing.next_rain_caption ?? null;
 
-                    if (w === 'STORMS' || isHeavyRain) {
-                      return null; // hide pill entirely
-                    }
+                    // Hide pill for active precip / warnings — those verdicts
+                    // ARE the rain story; a future-time pill would contradict.
+                    const HIDE_PILL = new Set([
+                      'STORMS', 'THUNDERSTORMS', 'HEAVY RAIN',
+                      'RAIN LIKELY', 'SHOWERS LIKELY',
+                      'FLASH FLOOD', 'BLIZZARD', 'ICE STORM',
+                      // Legacy values still emitted by some upstream paths.
+                      'RAINING', 'SNOW',
+                    ]);
+                    if (w && HIDE_PILL.has(w)) return null;
 
                     let pillText: string | null = null;
-                    if (w === 'RAIN SOON') {
-                      pillText = cell
-                        ? `APPROACHING · ${cell.distance_mi} MI ${cell.bearing}`
-                        : (briefing.next_rain_caption ?? null);
-                    } else if (w === 'RAINING') {
-                      pillText = 'RAINING NEARBY';
+                    if (w === 'CHANCE OF RAIN') {
+                      // Strip any "NEXT RAIN · " prefix from the briefing caption
+                      // and re-label as "RAIN POSSIBLE · …".
+                      const tail = nextRain?.replace(/^(?:NEXT RAIN|PRÓXIMA LLUVIA)\s*·\s*/i, '');
+                      pillText = tail ? `RAIN POSSIBLE · ${tail}` : null;
+                    } else if (w === 'DRIZZLE' || w === 'SHOWERS') {
+                      pillText = 'LIGHT RAIN · NEARBY';
                     } else {
-                      // DRY / CLOUDY / CLEAR (SNOW falls through to its caption too)
-                      pillText = briefing.next_rain_caption ?? null;
+                      // SUNNY / CLEAR / PARTLY CLOUDY / MOSTLY CLOUDY / OVERCAST /
+                      // BREEZY / WINDY / VERY WINDY / HOT / DANGEROUSLY HOT /
+                      // FREEZING / FOGGY / DRY / CLOUDY → normal NEXT RAIN caption.
+                      pillText = nextRain;
                     }
 
                     if (!pillText) return null;
