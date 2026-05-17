@@ -445,6 +445,15 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
   const [forecastLoading, setForecastLoading] = useState<boolean>(false);
 
+  // Rotation signatures (SWDI TVS + MDA). Only fetched + shown when the
+  // active alert severity is high or critical and the user has not toggled
+  // the ROT layer off. Re-fetched on lat/lon change; cached map-side.
+  const rotQualifies = severity === 'high' || severity === 'critical';
+  const [showRot, setShowRot] = useState<boolean>(true);
+  const [rotEvents, setRotEvents] = useState<RotationEvent[]>([]);
+  // Arrow-pulse tick (drives the storm-motion icon-opacity oscillation).
+  const [arrowPulse, setArrowPulse] = useState<number>(1);
+
   // Close every floating panel/tool — used when opening a new one so they
   // don't stack on top of each other.
   const closeAllPanels = useCallback(() => {
