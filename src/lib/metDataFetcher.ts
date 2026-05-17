@@ -267,6 +267,110 @@ export async function fetchNearestMetar(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Overhead radar (IEM NEXRAD point query)
+//
+// Step 2 of the new current-conditions hierarchy: the dBZ value at the
+// user's EXACT lat/lon — i.e. what is directly overhead — plus the nearest
+// serving NEXRAD site. Higher priority than nearby-cell scans for the
+// "what's happening here right now" verdict.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OverheadRadar {
+  /** dBZ reflectivity at the user's grid point. null when off-radar or no return. */
+  dbz: number | null;
+  /** Nearest serving NEXRAD station ICAO id (e.g. KHGX). */
+  stationId: string | null;
+  stationName?: string;
+  /** Distance from user to that station, miles. */
+  stationDistanceMi: number | null;
+  /** ISO timestamp of the radar sample, if reported. */
+  sampledAt: string | null;
+}
+
+/** Pick the nearest NEXRAD site from the IEM radar_stations endpoint. */
+async function fetchNearestNexradStation(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<{ id: string; name?: string; distMi: number } | null> {
+  const url = `https://mesonet.agron.iastate.edu/api/1/radar_stations.json?lat=${lat}&lon=${lon}`;
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) {
+      console.warn(`[overhead-radar] stations returned ${res.status}`);
+      return null;
+    }
+    const json = await res.json();
+    const list: any[] = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+    if (list.length === 0) return null;
+    let best: { id: string; name?: string; distMi: number } | null = null;
+    for (const s of list) {
+      const sLat = typeof s.lat === 'number' ? s.lat : parseFloat(s.lat);
+      const sLon = typeof s.lon === 'number' ? s.lon : parseFloat(s.lon);
+      const id = String(s.id ?? s.station ?? s.icao ?? '').trim();
+      if (!id || !Number.isFinite(sLat) || !Number.isFinite(sLon)) continue;
+      // Prefer NEXRAD (WSR-88D) sites when classification is provided.
+      const type = String(s.type ?? s.network ?? '').toUpperCase();
+      if (type && !/NEXRAD|WSR|88D/.test(type) && list.some((o) => /NEXRAD|WSR|88D/.test(String(o.type ?? o.network ?? '').toUpperCase()))) continue;
+      const d = haversineMi(lat, lon, sLat, sLon);
+      if (!best || d < best.distMi) best = { id, name: s.name, distMi: d };
+    }
+    return best;
+  } catch (err) {
+    if ((err as any)?.name !== 'AbortError') {
+      console.warn('[overhead-radar] station lookup failed', err);
+    }
+    return null;
+  }
+}
+
+/**
+ * Read the dBZ value at (lat, lon) from the IEM N0Q composite. Returns
+ * `null` when the point is outside coverage or the API call fails.
+ */
+export async function fetchOverheadDbz(
+  lat: number,
+  lon: number,
+  opts?: { signal?: AbortSignal },
+): Promise<OverheadRadar> {
+  const signal = opts?.signal;
+  const stationPromise = fetchNearestNexradStation(lat, lon, signal);
+
+  let dbz: number | null = null;
+  let sampledAt: string | null = null;
+  try {
+    const url = `https://mesonet.agron.iastate.edu/json/n0q_xy.py?lon=${lon}&lat=${lat}`;
+    const res = await fetch(url, { signal });
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      const raw = json?.n0q ?? json?.dbz ?? json?.value;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        dbz = raw;
+      } else if (typeof raw === 'string') {
+        const n = parseFloat(raw);
+        if (Number.isFinite(n)) dbz = n;
+      }
+      if (typeof json?.valid === 'string') sampledAt = json.valid;
+    } else {
+      console.warn(`[overhead-radar] n0q returned ${res.status}`);
+    }
+  } catch (err) {
+    if ((err as any)?.name !== 'AbortError') {
+      console.warn('[overhead-radar] n0q fetch failed', err);
+    }
+  }
+
+  const station = await stationPromise;
+  return {
+    dbz,
+    stationId: station?.id ?? null,
+    stationName: station?.name,
+    stationDistanceMi: station?.distMi ?? null,
+    sampledAt,
+  };
+}
+
 function putStructuredCells(key: string, cells: StormInterceptResult[]) {
   radarCellsByKey.set(key, cells);
   if (radarCellsByKey.size > 200) {
