@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { probeImminentStorm, probeNearbyCell, getActiveWarning, type NearbyCellProbe, type ActiveAlert } from './metDataFetcher';
+import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
