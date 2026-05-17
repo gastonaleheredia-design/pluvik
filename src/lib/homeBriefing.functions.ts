@@ -164,6 +164,8 @@ async function buildWhyPayload(args: BuildWhyArgs): Promise<WhyNarrative | undef
       hazards,
       spc,
       afdSnippet,
+      userLat: args.lat,
+      userLon: args.lon,
     });
   } catch (err) {
     console.warn('[homeBriefing] buildWhyPayload failed:', (err as Error)?.message);
