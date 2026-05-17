@@ -1313,7 +1313,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}@keyframes waveBar {0%,100%{transform:scaleY(0.3)}50%{transform:scaleY(1)}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
@@ -1559,30 +1559,58 @@ function HomePage() {
             padding: '6px 6px 6px 18px',
           }}
         >
-          <input
-            ref={questionInputRef}
-            className={isDarkMode ? 'severe-input' : undefined}
-            value={questionText}
-            onChange={(e) => {
-              setQuestionText(e.target.value);
-            }}
-            placeholder={
-              micState === 'recording' ? t('home.mic_listening', { defaultValue: 'Listening…' }) :
-              micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
-              t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
-            }
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: '0.95rem',
-              color: isDarkMode ? severeWhite : INK,
-              minWidth: 0,
-            }}
-          />
+          {micState === 'recording' ? (
+            <div
+              aria-label="Recording"
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                minWidth: 0,
+                height: 24,
+              }}
+            >
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: 'inline-block',
+                    width: 3,
+                    height: 20,
+                    background: '#c2410c',
+                    borderRadius: 2,
+                    transformOrigin: 'center',
+                    animation: `waveBar 0.9s ease-in-out ${i * 0.12}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <input
+              ref={questionInputRef}
+              className={isDarkMode ? 'severe-input' : undefined}
+              value={questionText}
+              onChange={(e) => {
+                setQuestionText(e.target.value);
+              }}
+              placeholder={
+                micState === 'transcribing' ? t('home.mic_transcribing', { defaultValue: 'Transcribing…' }) :
+                t('home.question_placeholder_1', { defaultValue: 'Ask about a specific time…' })
+              }
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontFamily: 'Fraunces, serif',
+                fontStyle: 'italic',
+                fontSize: '0.95rem',
+                color: isDarkMode ? severeWhite : INK,
+                minWidth: 0,
+              }}
+            />
+          )}
           <button
               type="button"
               onClick={() => {
