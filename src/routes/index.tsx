@@ -889,14 +889,14 @@ function HomePage() {
               gap: 10,
             }}
           >
-            {severity === 'critical' && (
+            {(severity === 'critical' || (palette && severity !== 'low' && severity !== 'none')) && (
               <span
                 aria-hidden
                 style={{
                   width: 9,
                   height: 9,
                   borderRadius: '50%',
-                  backgroundColor: '#ef4444',
+                  backgroundColor: severityAccent,
                   animation: 'homePulse 1.1s ease-in-out infinite',
                   flexShrink: 0,
                 }}
