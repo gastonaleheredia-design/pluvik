@@ -449,6 +449,35 @@ function pickForecastFrame(frames: HrrrFrame[], hoursAhead: number): HrrrFrame |
   return frames.find((f) => f.hoursAhead === hoursAhead) ?? null;
 }
 
+/**
+ * Warm the browser HTTP cache for an HRRR forecast frame by pre-fetching
+ * the handful of XYZ tiles that cover the user's ~300 mi bbox at the zoom
+ * levels Mapbox most often requests (z=6,7). When the user later opens
+ * FUTURE, Mapbox finds these tiles already in cache and paints instantly.
+ */
+function warmHrrrTiles(tileUrl: string, lat: number, lon: number, signal?: AbortSignal): Promise<void> {
+  const lon2tileX = (l: number, z: number) => Math.floor(((l + 180) / 360) * Math.pow(2, z));
+  const lat2tileY = (l: number, z: number) => {
+    const r = (l * Math.PI) / 180;
+    return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z));
+  };
+  const urls: string[] = [];
+  for (const z of [6, 7]) {
+    const xMin = lon2tileX(lon - 3.5, z);
+    const xMax = lon2tileX(lon + 3.5, z);
+    const yMin = lat2tileY(lat + 2.5, z);
+    const yMax = lat2tileY(lat - 2.5, z);
+    for (let x = xMin; x <= xMax; x++) {
+      for (let y = yMin; y <= yMax; y++) {
+        urls.push(tileUrl.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y)));
+      }
+    }
+  }
+  return Promise.all(
+    urls.map((u) => fetch(u, { signal, cache: "force-cache" }).then(() => undefined).catch(() => undefined)),
+  ).then(() => undefined);
+}
+
 /** Keep warning polygons painted above the radar raster after any swap. */
 function enforceLayerOrder(map: mapboxgl.Map) {
   if (map.getLayer("nws-warnings-fill")) map.moveLayer("nws-warnings-fill");
@@ -503,6 +532,11 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [forecastHour, setForecastHour] = useState<number>(1);
   const [forecastFrames, setForecastFrames] = useState<HrrrFrame[] | null>(null);
   const [forecastLoading, setForecastLoading] = useState<boolean>(false);
+  // Hours whose tiles have already been warmed in the browser cache. Drives
+  // the "instant FUTURE" behavior — when the user taps FUTURE, any hour in
+  // this set paints immediately because Mapbox finds the tiles cached.
+  const prefetchedHoursRef = useRef<Set<number>>(new Set());
+  const [prefetching, setPrefetching] = useState<boolean>(false);
 
   // Rotation signatures (SWDI TVS + MDA). Only fetched + shown when the
   // active alert severity is high or critical and the user has not toggled
@@ -1228,18 +1262,40 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     }
   }, [showRadar]);
 
-  // Lazy-load HRRR forecast frames the first time the FUTURE tab is opened.
+  // Eagerly fetch HRRR frame metadata + warm tile caches for the most-used
+  // future hours as soon as the radar mounts (in LIVE mode). When the user
+  // taps FUTURE, the +1/+2/+3 (and shortly after, +6) frames paint instantly
+  // because Mapbox finds tiles already in the browser HTTP cache.
   useEffect(() => {
-    if (view !== "future" || forecastFrames !== null || forecastLoading) return;
+    if (forecastFrames !== null || forecastLoading) return;
+    const ctrl = new AbortController();
     let cancelled = false;
     setForecastLoading(true);
-    fetchHrrrForecastFrames().then((frames) => {
+    setPrefetching(true);
+    fetchHrrrForecastFrames().then(async (frames) => {
       if (cancelled) return;
       setForecastFrames(frames);
       setForecastLoading(false);
+      if (!frames.length) { setPrefetching(false); return; }
+      const { lat: la, lon: lo } = coordsRef.current;
+      const warm = async (hours: number[]) => {
+        await Promise.all(hours.map(async (h) => {
+          const f = pickForecastFrame(frames, h);
+          if (!f || prefetchedHoursRef.current.has(h)) return;
+          await warmHrrrTiles(f.tileUrl, la, lo, ctrl.signal);
+          prefetchedHoursRef.current.add(h);
+        }));
+      };
+      try {
+        await warm([1, 2, 3]);
+        if (cancelled) return;
+        await warm([6]);
+      } finally {
+        if (!cancelled) setPrefetching(false);
+      }
     });
-    return () => { cancelled = true; };
-  }, [view, forecastFrames, forecastLoading]);
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [forecastFrames, forecastLoading]);
 
   // Drive the HRRR forecast raster layer. Adds the layer on first use,
   // updates its tiles when the selected hour changes, and toggles
@@ -1778,6 +1834,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
 
       {/* ============== BOTTOM BAR ============== */}
       <div style={bottomBarStyle}>
+        {prefetching && (
+          <div style={prefetchHintStyle}>Loading future data…</div>
+        )}
         {view === "future" ? (
           <div style={futureRowStyle}>
             {HRRR_HOURS.map((h) => {
@@ -2546,6 +2605,18 @@ const futureMissingInline: React.CSSProperties = {
   fontFamily: "Fraunces, serif", fontStyle: "italic",
   fontSize: "0.78rem", color: "#fde68a",
   whiteSpace: "nowrap", marginLeft: 8,
+};
+const prefetchHintStyle: React.CSSProperties = {
+  position: "absolute",
+  top: -22, right: 12,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.52rem", letterSpacing: "0.14em", fontWeight: 700,
+  color: "rgba(250,247,240,0.55)",
+  backgroundColor: "rgba(0,0,0,0.55)",
+  padding: "3px 8px", borderRadius: 100,
+  pointerEvents: "none",
+  whiteSpace: "nowrap",
+  textTransform: "uppercase",
 };
 const pausedTimeFloat: React.CSSProperties = {
   position: "absolute",
