@@ -371,6 +371,126 @@ export async function fetchOverheadDbz(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HRRR + RAP point forecasts (0–6 h guidance)
+//
+// Step 3 of the new current-conditions hierarchy: short-range hourly QPF at
+// the user's grid point from two independent NOAA models. We compare model
+// agreement to derive a confidence band the verdict logic can lean on.
+//
+// We use Open-Meteo's NOAA model endpoints — they expose HRRR (ncep_hrrr)
+// and RAP (ncep_rap) as first-class `models` parameters with hourly
+// precipitation at arbitrary lat/lon, no API key required.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ModelAgreementConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface PointModelForecast {
+  /** Per-hour precipitation in mm, ordered hour 1..N from "now". */
+  hourlyPrecipMm: Array<number | null>;
+  /** Hours-from-now offset (1..N) at which precip first exceeds the threshold; null if none. */
+  firstHourWithPrecip: number | null;
+  /** Total accumulation over the window, mm. */
+  totalMm: number;
+}
+
+export interface HrrrRapAgreement {
+  hrrr: PointModelForecast | null;
+  rap: PointModelForecast | null;
+  /**
+   * Confidence in any "rain soon" claim:
+   * - HIGH: both models show precip starting within 2 h
+   * - MEDIUM: exactly one model shows precip within 2 h
+   * - LOW: neither model shows precip in the next 2 h
+   */
+  confidence: ModelAgreementConfidence;
+  /** Convenience: did either model show precip within the next 2 h? */
+  precipSoon: boolean;
+  /** Earliest hour either model shows precip starting (1..6); null if none. */
+  earliestPrecipHour: number | null;
+}
+
+/** Per-hour threshold (mm) above which we count a model as "showing precipitation". */
+const MODEL_PRECIP_THRESHOLD_MM = 0.1;
+
+async function fetchOpenMeteoModel(
+  lat: number,
+  lon: number,
+  model: 'ncep_hrrr' | 'ncep_rap',
+  signal?: AbortSignal,
+): Promise<PointModelForecast | null> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&hourly=precipitation&forecast_hours=6&models=${model}&timezone=UTC`;
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) {
+      console.warn(`[hrrr-rap] ${model} returned ${res.status}`);
+      return null;
+    }
+    const json = await res.json().catch(() => null);
+    const arr = json?.hourly?.precipitation;
+    if (!Array.isArray(arr)) return null;
+    // First 6 values correspond to the next 6 hours.
+    const hourlyPrecipMm: Array<number | null> = arr.slice(0, 6).map((v: unknown) =>
+      typeof v === 'number' && Number.isFinite(v) ? v : null,
+    );
+    let firstHourWithPrecip: number | null = null;
+    let totalMm = 0;
+    hourlyPrecipMm.forEach((v, i) => {
+      if (v != null) {
+        totalMm += v;
+        if (firstHourWithPrecip == null && v >= MODEL_PRECIP_THRESHOLD_MM) {
+          firstHourWithPrecip = i + 1;
+        }
+      }
+    });
+    return { hourlyPrecipMm, firstHourWithPrecip, totalMm };
+  } catch (err) {
+    if ((err as any)?.name !== 'AbortError') {
+      console.warn(`[hrrr-rap] ${model} fetch failed`, err);
+    }
+    return null;
+  }
+}
+
+/**
+ * Fetch the next 6 hours of QPF from HRRR and RAP at (lat, lon) and
+ * return a model-agreement confidence band for any near-term rain claim.
+ */
+export async function fetchHrrrRapAgreement(
+  lat: number,
+  lon: number,
+  opts?: { signal?: AbortSignal },
+): Promise<HrrrRapAgreement> {
+  const [hrrr, rap] = await Promise.all([
+    fetchOpenMeteoModel(lat, lon, 'ncep_hrrr', opts?.signal),
+    fetchOpenMeteoModel(lat, lon, 'ncep_rap', opts?.signal),
+  ]);
+
+  const hrrrSoon = !!(hrrr?.firstHourWithPrecip && hrrr.firstHourWithPrecip <= 2);
+  const rapSoon = !!(rap?.firstHourWithPrecip && rap.firstHourWithPrecip <= 2);
+
+  let confidence: ModelAgreementConfidence;
+  if (hrrrSoon && rapSoon) confidence = 'HIGH';
+  else if (hrrrSoon || rapSoon) confidence = 'MEDIUM';
+  else confidence = 'LOW';
+
+  const earliestCandidates: number[] = [];
+  if (hrrr?.firstHourWithPrecip) earliestCandidates.push(hrrr.firstHourWithPrecip);
+  if (rap?.firstHourWithPrecip) earliestCandidates.push(rap.firstHourWithPrecip);
+  const earliestPrecipHour = earliestCandidates.length ? Math.min(...earliestCandidates) : null;
+
+  return {
+    hrrr,
+    rap,
+    confidence,
+    precipSoon: hrrrSoon || rapSoon,
+    earliestPrecipHour,
+  };
+}
+
 function putStructuredCells(key: string, cells: StormInterceptResult[]) {
   radarCellsByKey.set(key, cells);
   if (radarCellsByKey.size > 200) {
