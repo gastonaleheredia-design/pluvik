@@ -29,8 +29,20 @@ export function WhySheet({ briefing, onOpenRadar, onClose }: WhySheetProps) {
   const whatToDo = alert?.instruction?.trim() || null;
   const decisionWindow: string | null = null;
 
+  // Verdicts where a "next rain" line contradicts the headline — the Why?
+  // sheet should explain WHY the verdict is what it is, not duplicate the
+  // pill info that's already shown above.
+  const HIDE_NEXT_RAIN = new Set([
+    'STORMS', 'THUNDERSTORMS', 'HEAVY RAIN', 'RAIN LIKELY', 'SHOWERS LIKELY',
+    'FLASH FLOOD', 'BLIZZARD', 'ICE STORM', 'RAINING', 'SNOW',
+  ]);
+  const hideNextRain = HIDE_NEXT_RAIN.has(String(briefing.word ?? '').toUpperCase());
+
   // Hide raw AFD ("Synoptic context") bullet — it's forecaster jargon.
-  const filteredBullets = (why?.bullets ?? []).filter((b) => b.icon !== 'afd');
+  // Also drop the forecast "next rain" bullet when it contradicts the verdict.
+  const filteredBullets = (why?.bullets ?? []).filter(
+    (b) => b.icon !== 'afd' && !(hideNextRain && b.icon === 'forecast'),
+  );
 
   return (
     <Drawer.Root open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -102,7 +114,7 @@ export function WhySheet({ briefing, onOpenRadar, onClose }: WhySheetProps) {
                 </>
               ) : (
                 <>
-                  {briefing.next_rain_caption && (
+                  {briefing.next_rain_caption && !hideNextRain && (
                     <SignalRow icon="⛆" label="Next rain" value={briefing.next_rain_caption} />
                   )}
                   {cell && (
