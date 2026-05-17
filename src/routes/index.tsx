@@ -801,10 +801,17 @@ function HomePage() {
     ? { bg: 'rgba(255,255,255,0.08)', border: palette.accent, color: palette.text }
     : SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
 
-  // Resolve text colors used throughout the hero based on severeMode.
-  const txtPrimary = severeMode ? severeWhite : INK;
-  const txtMuted = severeMode ? severeMuted : MUTED;
-  const chipBorder = severeMode ? 'rgba(255,255,255,0.5)' : 'rgba(11,16,24,0.12)';
+  // Dark-mode home screen: any active NWS warning OR a dark-bg verdict word
+  // forces every text element to white. Do NOT rely on CSS inheritance —
+  // each element below sets `color` explicitly using `isDarkMode`.
+  const DARK_VERDICTS = new Set([
+    'STORMS', 'THUNDERSTORMS', 'HEAVY RAIN',
+    'FLASH FLOOD', 'BLIZZARD', 'ICE STORM',
+  ]);
+  const isDarkMode = !!warning || (!!briefing?.word && DARK_VERDICTS.has(briefing.word));
+  const txtPrimary = isDarkMode ? severeWhite : INK;
+  const txtMuted = isDarkMode ? severeWhite : MUTED;
+  const chipBorder = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
 
   return (
     <div
@@ -813,7 +820,7 @@ function HomePage() {
         minHeight: '100vh',
         position: 'relative',
         backgroundColor: severeMode ? severeBg : pageBg,
-        color: severeMode ? severeWhite : (isDarkSeverity ? severityText : INK),
+        color: isDarkMode ? severeWhite : (isDarkSeverity ? severityText : INK),
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
@@ -1192,7 +1199,7 @@ function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRainSheetOpen(true)}
-                        style={{ ...chipBase, color: severeMode ? severeWhite : ACCENT, borderColor: severeMode ? chipBorder : `${ACCENT}55`, cursor: 'pointer' }}
+                        style={{ ...chipBase, color: isDarkMode ? severeWhite : ACCENT, borderColor: isDarkMode ? 'rgba(255,255,255,0.6)' : `${ACCENT}55`, cursor: 'pointer' }}
                       >
                         <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                         {pillText}
@@ -1249,7 +1256,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.5) !important;}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
@@ -1280,9 +1287,9 @@ function HomePage() {
                 flexShrink: 0,
                 padding: '7px 14px',
                 borderRadius: 100,
-                border: `1px solid rgba(11,16,24,0.12)`,
-                backgroundColor: PAGE_BG,
-                color: INK,
+                border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)'}`,
+                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : PAGE_BG,
+                color: isDarkMode ? severeWhite : INK,
                 fontFamily: 'Inter, system-ui, sans-serif',
                 fontSize: '0.78rem',
                 cursor: 'pointer',
@@ -1418,15 +1425,15 @@ function HomePage() {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: severeMode ? 'rgba(255,255,255,0.1)' : '#fff',
-            border: severeMode ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(11,16,24,0.08)',
+            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#fff',
+            border: isDarkMode ? '1px solid rgba(255,255,255,0.6)' : '1px solid rgba(11,16,24,0.08)',
             borderRadius: '100px',
             padding: '6px 6px 6px 18px',
           }}
         >
           <input
             ref={questionInputRef}
-            className={severeMode ? 'severe-input' : undefined}
+            className={isDarkMode ? 'severe-input' : undefined}
             value={questionText}
             onChange={(e) => {
               setQuestionText(e.target.value);
@@ -1444,7 +1451,7 @@ function HomePage() {
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
               fontSize: '0.95rem',
-              color: severeMode ? severeWhite : INK,
+              color: isDarkMode ? severeWhite : INK,
               minWidth: 0,
             }}
           />
@@ -1460,8 +1467,8 @@ function HomePage() {
                 height: '34px',
                 borderRadius: '50%',
                 border: 'none',
-                backgroundColor: micState === 'recording' ? ACCENT : '#f1ede4',
-                color: micState === 'recording' ? PAGE_BG : INK,
+                backgroundColor: micState === 'recording' ? ACCENT : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#f1ede4'),
+                color: micState === 'recording' ? PAGE_BG : (isDarkMode ? severeWhite : INK),
                 cursor: micState === 'transcribing' ? 'default' : 'pointer',
                 opacity: micState === 'transcribing' ? 0.6 : 1,
                 display: 'flex',
@@ -1508,8 +1515,8 @@ function HomePage() {
               height: '36px',
               borderRadius: '50%',
               border: 'none',
-              backgroundColor: questionText.trim() ? ACCENT : '#e5e7eb',
-              color: questionText.trim() ? PAGE_BG : '#9ca3af',
+              backgroundColor: questionText.trim() ? ACCENT : (isDarkMode ? 'rgba(255,255,255,0.12)' : '#e5e7eb'),
+              color: questionText.trim() ? (isDarkMode ? severeWhite : PAGE_BG) : (isDarkMode ? 'rgba(255,255,255,0.4)' : '#9ca3af'),
               cursor: questionText.trim() ? 'pointer' : 'default',
               fontSize: '1rem',
               flexShrink: 0,
