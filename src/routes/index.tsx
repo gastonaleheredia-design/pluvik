@@ -5,6 +5,7 @@ import { BottomNav } from '../components/BottomNav';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, getAlertSeverity, type HomeBriefing, type AlertSeverity } from '../lib/homeBriefing.functions';
+import { getSeverityColors, STORMS_PALETTE } from '../lib/severityColors';
 import { extractEventTimeFromQuestion } from '../lib/extractEventTimeFromQuestion';
 import { extractPlaceFromQuestion } from '../lib/extractPlaceFromQuestion';
 import { classifyIntent } from '../lib/weatherIntelligence';
