@@ -961,7 +961,7 @@ function HomePage() {
             <span
               suppressHydrationWarning
               style={{
-                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: INK,
+                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
@@ -989,7 +989,7 @@ function HomePage() {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.55rem', letterSpacing: '0.16em', color: MUTED,
+                fontSize: '0.55rem', letterSpacing: '0.16em', color: txtMuted,
                 display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
               }}
             >
