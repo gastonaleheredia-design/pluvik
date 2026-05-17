@@ -1262,18 +1262,40 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
     }
   }, [showRadar]);
 
-  // Lazy-load HRRR forecast frames the first time the FUTURE tab is opened.
+  // Eagerly fetch HRRR frame metadata + warm tile caches for the most-used
+  // future hours as soon as the radar mounts (in LIVE mode). When the user
+  // taps FUTURE, the +1/+2/+3 (and shortly after, +6) frames paint instantly
+  // because Mapbox finds tiles already in the browser HTTP cache.
   useEffect(() => {
-    if (view !== "future" || forecastFrames !== null || forecastLoading) return;
+    if (forecastFrames !== null || forecastLoading) return;
+    const ctrl = new AbortController();
     let cancelled = false;
     setForecastLoading(true);
-    fetchHrrrForecastFrames().then((frames) => {
+    setPrefetching(true);
+    fetchHrrrForecastFrames().then(async (frames) => {
       if (cancelled) return;
       setForecastFrames(frames);
       setForecastLoading(false);
+      if (!frames.length) { setPrefetching(false); return; }
+      const { lat: la, lon: lo } = coordsRef.current;
+      const warm = async (hours: number[]) => {
+        await Promise.all(hours.map(async (h) => {
+          const f = pickForecastFrame(frames, h);
+          if (!f || prefetchedHoursRef.current.has(h)) return;
+          await warmHrrrTiles(f.tileUrl, la, lo, ctrl.signal);
+          prefetchedHoursRef.current.add(h);
+        }));
+      };
+      try {
+        await warm([1, 2, 3]);
+        if (cancelled) return;
+        await warm([6]);
+      } finally {
+        if (!cancelled) setPrefetching(false);
+      }
     });
-    return () => { cancelled = true; };
-  }, [view, forecastFrames, forecastLoading]);
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [forecastFrames, forecastLoading]);
 
   // Drive the HRRR forecast raster layer. Adds the layer on first use,
   // updates its tiles when the selected hour changes, and toggles
