@@ -2419,3 +2419,168 @@ const legendNoteStyle: React.CSSProperties = {
   fontSize: "0.6rem", color: "#cfd2d9", lineHeight: 1.3,
   maxWidth: 140,
 };
+
+/* ============== NEW LAYOUT STYLES (non-overlapping zones) ============== */
+
+// Reserve room for Mapbox attribution (~24px) at the very bottom so the
+// bottom bar never covers the © Mapbox / improve-this-map link.
+const BOTTOM_BAR_OFFSET = 24;
+const BOTTOM_BAR_HEIGHT = 56;
+const TOP_BAR_HEIGHT = 48;
+
+const topBarStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 0, left: 0, right: 0,
+  height: TOP_BAR_HEIGHT,
+  paddingTop: isFullscreenSafeArea(),
+  paddingLeft: 12, paddingRight: 12,
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  gap: 10,
+  backgroundColor: "rgba(0,0,0,0.75)",
+  backdropFilter: "blur(8px)",
+  zIndex: 6,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+};
+function isFullscreenSafeArea(): string { return "env(safe-area-inset-top, 0px)"; }
+const topBarLeft: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1,
+};
+const topBarRight: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto",
+};
+const topBarIconBtn: React.CSSProperties = {
+  width: 32, height: 32, borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(255,255,255,0.06)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: 14, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  flex: "0 0 auto",
+};
+const statusLabelLive: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center",
+  color: "#22c55e",
+  fontSize: "0.62rem", letterSpacing: "0.16em", fontWeight: 700,
+  textTransform: "uppercase",
+  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+};
+const statusLabelFuture: React.CSSProperties = {
+  ...statusLabelLive,
+  color: "#fbbf24",
+};
+const amberDot: React.CSSProperties = {
+  width: 6, height: 6, borderRadius: "50%",
+  backgroundColor: "#fbbf24",
+  marginRight: 6, display: "inline-block",
+};
+const segmentedWrap: React.CSSProperties = {
+  display: "inline-flex",
+  backgroundColor: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  borderRadius: 999, padding: 2,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+};
+const segmentedBtn: React.CSSProperties = {
+  padding: "5px 12px", borderRadius: 999,
+  border: "none", background: "transparent",
+  color: "rgba(250,247,240,0.7)", cursor: "pointer",
+  fontFamily: "inherit",
+  fontSize: "0.58rem", letterSpacing: "0.16em", fontWeight: 700,
+};
+const segmentedBtnActive: React.CSSProperties = {
+  backgroundColor: "#faf7f0", color: "#0b1018",
+};
+const segmentedBtnActiveAmber: React.CSSProperties = {
+  backgroundColor: "#fbbf24", color: "#451a03",
+};
+
+const rightControlsStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  top: "50%",
+  transform: "translateY(-50%)",
+  display: "flex", flexDirection: "column", gap: 8,
+  zIndex: 5,
+};
+const rightCtrlBtn: React.CSSProperties = {
+  width: 40, height: 40, borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(0,0,0,0.75)",
+  color: "#faf7f0", cursor: "pointer", padding: 0,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: 16, fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  backdropFilter: "blur(6px)",
+};
+const rightCtrlBtnAccent: React.CSSProperties = {
+  border: "1px solid rgba(34,197,94,0.7)",
+  color: "#22c55e",
+};
+
+const layerTogglesStyle: React.CSSProperties = {
+  position: "absolute",
+  top: TOP_BAR_HEIGHT + 8,
+  left: 12,
+  display: "flex", gap: 6, flexWrap: "wrap",
+  zIndex: 5,
+};
+
+const legendPillWrap: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  bottom: BOTTOM_BAR_OFFSET + BOTTOM_BAR_HEIGHT + 10,
+  display: "flex", flexDirection: "column",
+  alignItems: "flex-end", gap: 6,
+  zIndex: 5,
+};
+const legendPillBtn: React.CSSProperties = {
+  padding: "5px 10px", borderRadius: 100,
+  border: "1px solid rgba(255,255,255,0.18)",
+  backgroundColor: "rgba(0,0,0,0.75)",
+  color: "#faf7f0", cursor: "pointer",
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.58rem", letterSpacing: "0.14em", fontWeight: 700,
+  backdropFilter: "blur(6px)",
+};
+const legendOverlayBody: React.CSSProperties = {
+  backgroundColor: "rgba(0,0,0,0.85)",
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 10,
+  padding: "8px 10px",
+  display: "flex", flexDirection: "column", gap: 3,
+  minWidth: 130, maxWidth: 160,
+  backdropFilter: "blur(8px)",
+};
+
+const bottomBarStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 0, right: 0,
+  bottom: BOTTOM_BAR_OFFSET,
+  minHeight: BOTTOM_BAR_HEIGHT,
+  padding: "8px 12px",
+  backgroundColor: "rgba(0,0,0,0.9)",
+  display: "flex", alignItems: "center",
+  zIndex: 6,
+  backdropFilter: "blur(8px)",
+};
+const futureRowStyle: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8,
+  overflowX: "auto", width: "100%",
+  WebkitOverflowScrolling: "touch",
+};
+const futureMissingInline: React.CSSProperties = {
+  fontFamily: "Fraunces, serif", fontStyle: "italic",
+  fontSize: "0.78rem", color: "#fde68a",
+  whiteSpace: "nowrap", marginLeft: 8,
+};
+const pausedTimeFloat: React.CSSProperties = {
+  position: "absolute",
+  top: -36, left: "50%", transform: "translateX(-50%)",
+  backgroundColor: "rgba(0,0,0,0.92)", color: "#faf7f0",
+  padding: "5px 12px", borderRadius: 100,
+  fontFamily: "JetBrains Mono, ui-monospace, monospace",
+  fontSize: "0.72rem", letterSpacing: "0.16em", fontWeight: 700,
+  border: "1px solid rgba(250,247,240,0.25)",
+  whiteSpace: "nowrap",
+};
