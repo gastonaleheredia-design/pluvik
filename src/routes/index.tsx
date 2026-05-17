@@ -761,6 +761,14 @@ function HomePage() {
   const nearbyLine = renderNearby();
   const warning = briefing?.alert ?? null;
   const severity: AlertSeverity = getAlertSeverity(warning?.event);
+  // Severe-warning takeover: when an active NWS Tornado / Flash Flood /
+  // Severe Thunderstorm Warning is in effect, force the home screen into
+  // a high-contrast dark mode so every text element stays readable.
+  const severeMode = !!warning && /(Tornado|Flash Flood|Severe Thunderstorm)\s+Warning/i.test(warning.event);
+  const severeBg = '#1a0808';
+  const severeAccent = '#ff4444';
+  const severeWhite = '#ffffff';
+  const severeMuted = 'rgba(255,255,255,0.75)';
   const SEVERITY_PAGE_BG: Record<AlertSeverity, string> = {
     critical: '#7f1d1d',
     high: '#431407',
@@ -793,14 +801,19 @@ function HomePage() {
     ? { bg: 'rgba(255,255,255,0.08)', border: palette.accent, color: palette.text }
     : SEVERITY_BANNER[severity] ?? { bg: WARN_BG, border: WARN, color: WARN };
 
+  // Resolve text colors used throughout the hero based on severeMode.
+  const txtPrimary = severeMode ? severeWhite : INK;
+  const txtMuted = severeMode ? severeMuted : MUTED;
+  const chipBorder = severeMode ? 'rgba(255,255,255,0.5)' : 'rgba(11,16,24,0.12)';
+
   return (
     <div
       key={i18n.language}
       style={{
         minHeight: '100vh',
         position: 'relative',
-        backgroundColor: pageBg,
-        color: isDarkSeverity ? severityText : INK,
+        backgroundColor: severeMode ? severeBg : pageBg,
+        color: severeMode ? severeWhite : (isDarkSeverity ? severityText : INK),
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '96px',
@@ -872,16 +885,16 @@ function HomePage() {
               width: '100%',
               maxWidth: '480px',
               marginBottom: '20px',
-              padding: severity === 'elevated' || severity === 'critical' ? '14px 16px' : '10px 14px',
+              padding: severeMode || severity === 'elevated' || severity === 'critical' ? '14px 16px' : '10px 14px',
               borderRadius: '10px',
-              backgroundColor: bannerStyle.bg,
-              border: `${severity === 'elevated' || severity === 'critical' ? 2 : 1}px solid ${bannerStyle.border}`,
+              backgroundColor: severeMode ? 'rgba(255,255,255,0.06)' : bannerStyle.bg,
+              border: `${severeMode || severity === 'elevated' || severity === 'critical' ? 2 : 1}px solid ${severeMode ? severeAccent : bannerStyle.border}`,
               textAlign: 'center',
               cursor: 'pointer',
               fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: severity === 'elevated' || severity === 'critical' ? '0.7rem' : '0.62rem',
+              fontSize: severeMode || severity === 'elevated' || severity === 'critical' ? '0.7rem' : '0.62rem',
               letterSpacing: '0.18em',
-              color: bannerStyle.color,
+              color: severeMode ? severeWhite : bannerStyle.color,
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
@@ -889,14 +902,14 @@ function HomePage() {
               gap: 10,
             }}
           >
-            {(severity === 'critical' || (palette && severity !== 'low' && severity !== 'none')) && (
+            {(severeMode || severity === 'critical' || (palette && severity !== 'low' && severity !== 'none')) && (
               <span
                 aria-hidden
                 style={{
                   width: 9,
                   height: 9,
                   borderRadius: '50%',
-                  backgroundColor: severityAccent,
+                  backgroundColor: severeMode ? severeAccent : severityAccent,
                   animation: 'homePulse 1.1s ease-in-out infinite',
                   flexShrink: 0,
                 }}
@@ -948,7 +961,7 @@ function HomePage() {
             <span
               suppressHydrationWarning
               style={{
-                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: INK,
+                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
@@ -976,7 +989,7 @@ function HomePage() {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.55rem', letterSpacing: '0.16em', color: MUTED,
+                fontSize: '0.55rem', letterSpacing: '0.16em', color: txtMuted,
                 display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
               }}
             >
@@ -1091,7 +1104,7 @@ function HomePage() {
                     fontWeight: 400,
                     fontSize: 'clamp(1.2rem, 5vw, 2rem)',
                     lineHeight: 1,
-                    color: MUTED,
+                    color: txtMuted,
                     marginTop: '0.4em',
                     letterSpacing: '-0.01em',
                   }}
@@ -1109,7 +1122,7 @@ function HomePage() {
                 fontSize: 'clamp(1rem, 4.5vw, 1.35rem)',
                 lineHeight: 1.35,
                 maxWidth: '420px',
-                color: INK,
+                color: txtPrimary,
               }}
             >
               {briefing.sentence}
@@ -1128,7 +1141,7 @@ function HomePage() {
               const chipBase: React.CSSProperties = {
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '7px 13px', borderRadius: 100,
-                border: `1px solid rgba(11,16,24,0.12)`, background: 'transparent',
+                border: `1px solid ${chipBorder}`, background: 'transparent',
                 cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                 fontSize: '0.6rem', letterSpacing: '0.16em',
@@ -1172,7 +1185,7 @@ function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRainSheetOpen(true)}
-                        style={{ ...chipBase, color: ACCENT, borderColor: `${ACCENT}55`, cursor: 'pointer' }}
+                        style={{ ...chipBase, color: severeMode ? severeWhite : ACCENT, borderColor: severeMode ? chipBorder : `${ACCENT}55`, cursor: 'pointer' }}
                       >
                         <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                         {pillText}
@@ -1180,7 +1193,7 @@ function HomePage() {
                     );
                   })()}
                   {showRadarChip && (
-                    <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: INK }}>
+                    <button type="button" onClick={() => setSheetMode('radar')} style={{ ...chipBase, color: txtPrimary }}>
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>◎</span>
                       {t('home.radar_chip', { defaultValue: 'RADAR' })}
                     </button>
@@ -1191,7 +1204,7 @@ function HomePage() {
                       onClick={() => setWhyOpen(true)}
                       aria-label={t('home.because_aria', { defaultValue: 'Why this verdict' })}
                       title={briefing.verdict_reason.detail}
-                      style={{ ...chipBase, color: INK }}
+                      style={{ ...chipBase, color: txtPrimary }}
                     >
                       <span aria-hidden style={{ fontSize: '0.75rem' }}>ⓘ</span>
                       {t('home.why', { defaultValue: 'WHY' })}
@@ -1229,7 +1242,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.5) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
@@ -1398,14 +1411,15 @@ function HomePage() {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: '#fff',
-            border: '1px solid rgba(11,16,24,0.08)',
+            backgroundColor: severeMode ? 'rgba(255,255,255,0.1)' : '#fff',
+            border: severeMode ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(11,16,24,0.08)',
             borderRadius: '100px',
             padding: '6px 6px 6px 18px',
           }}
         >
           <input
             ref={questionInputRef}
+            className={severeMode ? 'severe-input' : undefined}
             value={questionText}
             onChange={(e) => {
               setQuestionText(e.target.value);
@@ -1423,7 +1437,7 @@ function HomePage() {
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
               fontSize: '0.95rem',
-              color: INK,
+              color: severeMode ? severeWhite : INK,
               minWidth: 0,
             }}
           />
