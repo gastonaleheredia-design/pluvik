@@ -1717,7 +1717,10 @@ function RainWindowSheet({
   onClose: () => void;
 }) {
   const data = hours.slice(0, 48);
-  const maxProb = Math.max(10, ...data.map((h) => h.prob));
+  const BAR_MAX_PX = 80;
+  const THRESHOLD = 40;
+  const RED = '#c2410c';
+  const GRAY = '#d1c5b0';
   return (
     <div
       onClick={onClose}
@@ -1752,7 +1755,7 @@ function RainWindowSheet({
             fontSize: '1.4rem',
             color: INK,
           }}>
-            Rain window
+            Rain chance
           </h2>
           <span style={{
             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
@@ -1761,7 +1764,7 @@ function RainWindowSheet({
             color: MUTED,
             textTransform: 'uppercase',
           }}>
-            Next 48 h
+            Next 48h
           </span>
         </div>
         {data.length === 0 ? (
@@ -1778,51 +1781,86 @@ function RainWindowSheet({
             WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
             paddingBottom: 6,
           }}>
-            <div style={{
-              display: 'flex', alignItems: 'flex-end',
-              gap: 6, height: 170, paddingLeft: 4, paddingRight: 4,
-            }}>
-              {data.map((h, i) => {
-                const d = new Date(h.time);
-                const hr = d.getHours();
-                const label = hr === 0 ? '12a' : hr === 12 ? '12p' : hr > 12 ? `${hr - 12}p` : `${hr}a`;
-                const heightPct = Math.max(2, (h.prob / maxProb) * 100);
-                const color = h.prob > 40 ? ACCENT : 'rgba(11,16,24,0.18)';
-                const showDayMark = i === 0 || hr === 0;
-                return (
-                  <div key={h.time + i} style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    flexShrink: 0, width: 22, gap: 4,
-                  }}>
-                    <div style={{
-                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.5rem', color: h.prob > 40 ? ACCENT : MUTED,
-                      height: 12, lineHeight: '12px',
-                    }}>
-                      {h.prob >= 10 ? `${h.prob}` : ''}
-                    </div>
-                    <div style={{
-                      width: '100%', height: 120,
-                      display: 'flex', alignItems: 'flex-end',
-                    }}>
-                      <div style={{
-                        width: '100%', height: `${heightPct}%`,
+            {/* Chart area: bars + dashed 40% threshold line + axis label */}
+            <div style={{ display: 'flex', paddingLeft: 4, paddingRight: 4 }}>
+              {/* Left axis with 40% label */}
+              <div style={{
+                width: 28, height: BAR_MAX_PX, position: 'relative',
+                flexShrink: 0, marginRight: 4,
+              }}>
+                <div style={{
+                  position: 'absolute', left: 0, right: 2,
+                  bottom: (THRESHOLD / 100) * BAR_MAX_PX - 5,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: 9, color: MUTED, textAlign: 'right',
+                  lineHeight: '10px',
+                }}>
+                  40%
+                </div>
+              </div>
+              {/* Bars + dashed threshold line overlay */}
+              <div style={{ position: 'relative', flex: '0 0 auto' }}>
+                <div style={{
+                  position: 'absolute', left: 0, right: 0,
+                  bottom: (THRESHOLD / 100) * BAR_MAX_PX,
+                  borderTop: `1px dashed ${MUTED}`,
+                  pointerEvents: 'none', zIndex: 1,
+                }} />
+                <div style={{
+                  display: 'flex', alignItems: 'flex-end',
+                  gap: 6, height: BAR_MAX_PX, position: 'relative', zIndex: 2,
+                }}>
+                  {data.map((h, i) => {
+                    const d = new Date(h.time);
+                    const hr = d.getHours();
+                    const heightPx = Math.max(1, (h.prob / 100) * BAR_MAX_PX);
+                    const isHigh = h.prob > THRESHOLD;
+                    const color = isHigh ? RED : GRAY;
+                    const showLabel = h.prob > 25;
+                    return (
+                      <div key={h.time + i} style={{
+                        width: 22, height: `${heightPx}px`,
                         background: color, borderRadius: 3,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
                         transition: 'height 200ms ease',
-                      }} />
-                    </div>
-                    <div style={{
-                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.5rem', letterSpacing: '0.04em',
-                      color: showDayMark ? INK : MUTED,
-                      fontWeight: showDayMark ? 600 : 400,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {label}
-                    </div>
-                  </div>
-                );
-              })}
+                      }}>
+                        {showLabel && (
+                          <span style={{
+                            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                            fontSize: 10, color: '#ffffff', lineHeight: 1,
+                          }}>
+                            {h.prob}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Hour labels under bars */}
+                <div style={{
+                  display: 'flex', gap: 6, marginTop: 4,
+                }}>
+                  {data.map((h, i) => {
+                    const d = new Date(h.time);
+                    const hr = d.getHours();
+                    const label = hr === 0 ? '12a' : hr === 12 ? '12p' : hr > 12 ? `${hr - 12}p` : `${hr}a`;
+                    const showDayMark = i === 0 || hr === 0;
+                    return (
+                      <div key={'lbl' + h.time + i} style={{
+                        width: 22, flexShrink: 0,
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.5rem', letterSpacing: '0.04em',
+                        color: showDayMark ? INK : MUTED,
+                        fontWeight: showDayMark ? 600 : 400,
+                        whiteSpace: 'nowrap', textAlign: 'center',
+                      }}>
+                        {label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1834,11 +1872,11 @@ function RainWindowSheet({
           textTransform: 'uppercase', color: MUTED,
         }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 10, height: 10, background: ACCENT, borderRadius: 2 }} />
+            <span style={{ width: 10, height: 10, background: RED, borderRadius: 2 }} />
             &gt; 40%
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 10, height: 10, background: 'rgba(11,16,24,0.18)', borderRadius: 2 }} />
+            <span style={{ width: 10, height: 10, background: GRAY, borderRadius: 2 }} />
             &le; 40%
           </span>
         </div>
