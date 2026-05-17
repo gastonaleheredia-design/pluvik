@@ -1242,7 +1242,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}.severe-input::placeholder{color:rgba(255,255,255,0.5) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
@@ -1411,14 +1411,15 @@ function HomePage() {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: '#fff',
-            border: '1px solid rgba(11,16,24,0.08)',
+            backgroundColor: severeMode ? 'rgba(255,255,255,0.1)' : '#fff',
+            border: severeMode ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(11,16,24,0.08)',
             borderRadius: '100px',
             padding: '6px 6px 6px 18px',
           }}
         >
           <input
             ref={questionInputRef}
+            className={severeMode ? 'severe-input' : undefined}
             value={questionText}
             onChange={(e) => {
               setQuestionText(e.target.value);
@@ -1436,7 +1437,7 @@ function HomePage() {
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
               fontSize: '0.95rem',
-              color: INK,
+              color: severeMode ? severeWhite : INK,
               minWidth: 0,
             }}
           />
