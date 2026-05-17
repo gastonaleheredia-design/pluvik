@@ -59,7 +59,7 @@ export interface WhyNarrative {
 
 export interface WhyInputs {
   language: string;
-  word: 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY' | null;
+  word: string | null;
   tempF: number | null;
   cloudCover: number;
   hoursUntilRain: number | null;
