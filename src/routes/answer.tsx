@@ -1911,6 +1911,8 @@ function AnswerPage() {
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
           saving={saving}
+          userLat={coords?.lat ?? null}
+          userLon={coords?.lon ?? null}
         />
       ) : answer.mode === 'hurricane' ? (
         <HurricaneAnswerScreen
