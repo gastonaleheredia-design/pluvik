@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
-import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
+import { probeImminentStorm, probeNearbyCell, getActiveWarning, checkNearbyRadarReturns, classifyRadarReturnWord, type NearbyCellProbe, type ActiveAlert, type NearbyRadarReturns } from './metDataFetcher';
 import { fetchSpcOutlook, type SpcSnapshot } from './fetchers/fetchSpcOutlook';
 import { fetchNearbyHazards, type NearbyHazard } from './fetchers/fetchNearbyHazards';
 import { composeWhyNarrative, type WhyNarrative } from './whyNarrative';
@@ -122,8 +122,26 @@ interface HomeBriefingRequest {
 }
 
 export interface HomeBriefing {
-  /** Big condition word: DRY, RAIN SOON, RAINING, STORMS, SNOW, CLOUDY */
-  word: 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY' | null;
+  /**
+   * Big condition word. Strict priority hierarchy:
+   *   1) Active NWS warning  → 'STORMS' | 'FLASH FLOOD' | 'BLIZZARD' | 'ICE STORM'
+   *   2) Live radar override → 'STORMS' | 'THUNDERSTORMS' | 'HEAVY RAIN' | 'RAIN' | 'SHOWERS' | 'DRIZZLE'
+   *   3) Rain probability    → 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN'
+   *   4) Cloud cover         → 'OVERCAST' | 'MOSTLY CLOUDY' | 'PARTLY CLOUDY' | 'SUNNY' | 'CLEAR'
+   *   5) Special             → 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY' | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
+   * Legacy values ('DRY', 'RAIN SOON', 'RAINING', 'SNOW', 'CLOUDY') are
+   * retained in the union for backward compatibility with existing UI
+   * checks, but are no longer emitted by the classifier.
+   */
+  word:
+    | 'DRY' | 'RAIN SOON' | 'RAINING' | 'STORMS' | 'SNOW' | 'CLOUDY'
+    | 'THUNDERSTORMS' | 'HEAVY RAIN' | 'RAIN' | 'SHOWERS' | 'DRIZZLE'
+    | 'RAIN LIKELY' | 'SHOWERS LIKELY' | 'CHANCE OF RAIN'
+    | 'OVERCAST' | 'MOSTLY CLOUDY' | 'PARTLY CLOUDY' | 'SUNNY' | 'CLEAR'
+    | 'VERY WINDY' | 'WINDY' | 'BREEZY' | 'FOGGY'
+    | 'DANGEROUSLY HOT' | 'HOT' | 'FREEZING'
+    | 'FLASH FLOOD' | 'BLIZZARD' | 'ICE STORM'
+    | null;
   /** Italic sentence under the word */
   sentence: string;
   /** Caption like "NEXT RAIN · TUE 4 PM", or null when no rain in 7 days */
@@ -210,7 +228,16 @@ export function getAlertSeverity(alertType: string | null | undefined): AlertSev
 /* ---------------------------------------------------------------- */
 
 interface OpenMeteoLite {
-  current: { weather_code: number; precipitation: number; cloud_cover: number; temperature_2m?: number };
+  current: {
+    weather_code: number;
+    precipitation: number;
+    cloud_cover: number;
+    temperature_2m?: number;
+    wind_speed_10m?: number;
+    visibility?: number;
+    apparent_temperature?: number;
+    is_day?: number;
+  };
   hourly: {
     time: string[];
     precipitation_probability: number[];
