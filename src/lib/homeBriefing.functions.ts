@@ -1328,6 +1328,51 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
       if (s) sentence = s;
     }
 
+    // ─── Step 5: nearby-activity summary (sentence only, never word) ────
+    // When radar shows organized activity 5–30 mi away but NOT at the
+    // user's point, mention it in the summary so a "PARTLY CLOUDY" or
+    // "RAIN POSSIBLE" verdict isn't silent about an approaching cell.
+    // - 5–15 mi:  "Storms X miles DIR — could reach you within Y minutes."
+    // - 15–30 mi: "Active storms X miles DIR — monitoring."
+    // - >30 mi:   only mention if motion is approaching/drifting_toward.
+    if (!activeAlert && nearbyProbe && (nearbyProbe.dbz ?? 0) >= 35) {
+      const dist = nearbyProbe.distanceMiles;
+      const dir = nearbyProbe.bearingFromUser;
+      const motion = nearbyProbe.motionRelativeToUser;
+      const closing = motion === 'approaching' || motion === 'drifting_toward';
+      // Skip when conditions at the user's point are already precip-bearing
+      // (the verdict + its own sentence already describe the active weather).
+      const userIsWet =
+        word === 'HEAVY RAIN' || word === 'RAIN' || word === 'LIGHT RAIN' ||
+        word === 'SHOWERS' || word === 'DRIZZLE' || word === 'SHOWERS NEARBY' ||
+        word === 'THUNDERSTORMS' || word === 'STORMS' ||
+        word === 'HAIL' || word === 'FREEZING RAIN' || word === 'SLEET' ||
+        word === 'SNOW' || word === 'HEAVY SNOW' ||
+        word === 'FLASH FLOOD' || word === 'BLIZZARD' || word === 'ICE STORM' ||
+        word === 'RAINING';
+      if (!userIsWet && dist >= 5) {
+        let line: string | null = null;
+        if (dist <= 15) {
+          // Approximate closing speed: prefer "approaching" assumption of
+          // ~25 mph, fall back to 20 mph otherwise. ETA in minutes.
+          const closingMph = closing ? 25 : 20;
+          const etaMin = Math.max(5, Math.round((dist / closingMph) * 60));
+          line = isEs
+            ? `Tormentas a ${Math.round(dist)} mi al ${dir} — podrían llegar en ~${etaMin} min.`
+            : `Storms ${Math.round(dist)} miles ${dir} — could reach you within ${etaMin} minutes.`;
+        } else if (dist <= 30) {
+          line = isEs
+            ? `Tormentas activas a ${Math.round(dist)} mi al ${dir} — en monitoreo.`
+            : `Active storms ${Math.round(dist)} miles ${dir} — monitoring.`;
+        } else if (closing) {
+          line = isEs
+            ? `Tormentas a ${Math.round(dist)} mi al ${dir} — acercándose.`
+            : `Storms ${Math.round(dist)} miles ${dir} — approaching.`;
+        }
+        if (line) sentence = line;
+      }
+    }
+
     // Confidence stamp for the headline word — used by UI to soften copy.
     let confidence: 'high' | 'medium' | 'low' = 'medium';
     if (activeAlert || stormOverride) confidence = 'high';
