@@ -505,6 +505,9 @@ export function LiveRadarMap({ lat, lon, height = 320, isFullscreen = false, sev
   const [rotEvents, setRotEvents] = useState<RotationEvent[]>([]);
   // Arrow-pulse tick (drives the storm-motion icon-opacity oscillation).
   const [arrowPulse, setArrowPulse] = useState<number>(1);
+  // Latest active-warning FeatureCollection — kept in a ref so the
+  // storm-motion overlay can re-sync without rebuilding the warnings layer.
+  const warningsDataRef = useRef<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] });
 
   // Close every floating panel/tool — used when opening a new one so they
   // don't stack on top of each other.
