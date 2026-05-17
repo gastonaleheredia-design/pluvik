@@ -21,8 +21,15 @@ const PayloadSchema = z.object({
   userId: z.string().min(1).max(255).nullable().optional(),
   data: z.record(z.string().min(1).max(255), z.unknown()).optional(),
   priority: z.enum(['high', 'normal']).optional(),
-  // Allow empty string (callers sometimes pass '') as well as a valid URL.
-  url: z.union([z.string().url().max(2048), z.literal('')]).optional(),
+  // Allow empty string, an absolute URL, or an app-relative path (e.g. "/?severe=1").
+  url: z
+    .string()
+    .max(2048)
+    .refine(
+      (v) => v === '' || v.startsWith('/') || /^https?:\/\//i.test(v),
+      { message: 'Must be a relative path or http(s) URL' },
+    )
+    .optional(),
 });
 
 export const sendSevereWeatherPush = createServerFn({ method: 'POST' })
