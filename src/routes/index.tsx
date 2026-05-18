@@ -100,7 +100,6 @@ function HomePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
-  const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
 
   // Load the signed-in user's avatar + display name for the top-right circle.
