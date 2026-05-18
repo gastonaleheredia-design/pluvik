@@ -1611,7 +1611,8 @@ function HomePage() {
             </p>
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 requestAnimationFrame(() => questionInputRef.current?.focus());
               }}
               style={{
