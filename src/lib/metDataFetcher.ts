@@ -1450,7 +1450,11 @@ export async function probeNearbyCell(lat: number, lon: number): Promise<NearbyC
     for (const p of arr) {
       const precip: number[] = p.minutely_15?.precipitation ?? [];
       const max15 = precip.length ? Math.max(...precip) : 0;
-      if (max15 < 0.02) continue;                      // very low floor here — caller filters by distance
+      // Raised from 0.02" to 0.04" per 15-min bucket. The old floor (~30 dBZ
+      // synthetic) was easy for HRRR to clear in haze/shallow-moisture
+      // regimes that produce no real radar echo, creating ghost cells on
+      // the home screen. 0.04" ≈ 35 dBZ synthetic — closer to "real shower".
+      if (max15 < 0.04) continue;
       const mmPerHr = max15 * 4 * 25.4;
       const dbz = Math.max(15, Math.round(10 * Math.log10(200 * Math.pow(mmPerHr, 1.6))));
       const dy = (p.latitude - lat) * 69;
