@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../lib/auth';
@@ -93,31 +93,33 @@ function BusinessPage() {
   const [inviteSuccess, setInviteSuccess] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
 
-  useEffect(() => {
+  const loadBusiness = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
     }
+    setLoading(true);
+    const [{ data: bizRows }, { data: teamRows }] = await Promise.all([
+      supabase
+        .from('business_profiles')
+        .select('id, business_name, industry')
+        .order('created_at', { ascending: true })
+        .limit(1),
+      supabase.rpc('get_team_tracked_events'),
+    ]);
+    setBusiness((bizRows?.[0] as Business) ?? null);
+    setEvents((teamRows as TeamEvent[]) ?? []);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
-      const [{ data: bizRows }, { data: teamRows }] = await Promise.all([
-        supabase
-          .from('business_profiles')
-          .select('id, business_name, industry')
-          .order('created_at', { ascending: true })
-          .limit(1),
-        supabase.rpc('get_team_tracked_events'),
-      ]);
       if (cancelled) return;
-      setBusiness((bizRows?.[0] as Business) ?? null);
-      setEvents((teamRows as TeamEvent[]) ?? []);
-      setLoading(false);
+      await loadBusiness();
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [loadBusiness]);
 
   const handleInvite = async () => {
     if (!business) return;
@@ -168,7 +170,7 @@ function BusinessPage() {
   }
 
   if (!business) {
-    return <BusinessSetup userId={user.id} />;
+    return <BusinessSetup userId={user.id} onCreated={loadBusiness} />;
   }
 
   const now = Date.now();
@@ -415,13 +417,14 @@ function InviteSheet(props: {
 const INDUSTRY_OPTIONS = [
   'Construction',
   'Car Wash',
-  'Events & Concerts',
-  'Landscaping',
   'Roofing',
+  'Landscaping',
+  'Events & Concerts',
+  'Transportation',
   'Other',
 ] as const;
 
-function BusinessSetup({ userId }: { userId: string }) {
+function BusinessSetup({ userId, onCreated }: { userId: string; onCreated: () => Promise<void> | void }) {
   const [name, setName] = useState('');
   const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
   const [submitting, setSubmitting] = useState(false);
@@ -447,7 +450,7 @@ function BusinessSetup({ userId }: { userId: string }) {
       setError(insertErr.message);
       return;
     }
-    if (typeof window !== 'undefined') window.location.reload();
+    await onCreated();
   };
 
   const inputStyle: CSSProperties = {
@@ -474,7 +477,7 @@ function BusinessSetup({ userId }: { userId: string }) {
   return (
     <div style={styles.page}>
       <p style={styles.screenLabel}>TEAM</p>
-      <h1 style={styles.title}>Set up your business</h1>
+      <h1 style={styles.title}>Set up your team account.</h1>
       <p style={{ ...styles.subText, marginBottom: 24 }}>
         Create a business account to share tracked forecasts with your team.
       </p>
@@ -513,7 +516,7 @@ function BusinessSetup({ userId }: { userId: string }) {
           disabled={submitting}
           style={{ ...styles.primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }}
         >
-          {submitting ? 'Creating…' : 'Create business'}
+          {submitting ? 'Creating…' : 'Create team account'}
         </button>
       </form>
       <BottomNav />
