@@ -706,6 +706,7 @@ function AnswerPage() {
   const [showWhy, setShowWhy] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   // Severe-weather intercept state (parallel to the normal pipeline).
   const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
@@ -1055,6 +1056,24 @@ function AnswerPage() {
         console.error('[answer] guest save failed', e);
       }
       setShowAuthModal(true);
+    }
+  };
+
+  const handleThumbsDown = async () => {
+    if (feedbackSent || !answer) return;
+    setFeedbackSent(true);
+    try {
+      await supabase.from('answer_feedback').insert({
+        event_question: question ?? null,
+        address: resolvedAddress ?? null,
+        verdict: (answer.verdict as string) ?? null,
+        percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
+        lat: coords?.lat ?? null,
+        lon: coords?.lon ?? null,
+        feedback: 'wrong',
+      });
+    } catch (err) {
+      console.warn('[answer] feedback insert failed', err);
     }
   };
 
@@ -2058,6 +2077,30 @@ function AnswerPage() {
               >
                 + Group Event
               </button>
+              {feedbackSent ? (
+                <span
+                  style={{
+                    fontFamily: 'Fraunces, Georgia, serif',
+                    fontStyle: 'italic',
+                    fontSize: '0.85rem',
+                    color: MUTED,
+                  }}
+                >
+                  Thanks — we'll use this to improve.
+                </span>
+              ) : (
+                <button
+                  onClick={handleThumbsDown}
+                  aria-label="Mark this answer as wrong"
+                  title="This forecast seems wrong"
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: '0.95rem', color: MUTED, lineHeight: 1,
+                  }}
+                >
+                  👎
+                </button>
+              )}
             </div>
           </div>
         </div>
