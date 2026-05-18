@@ -32,7 +32,7 @@ export interface CpcDiscussion {
   fetchedAt: string;
 }
 
-const CACHE = new Map<CpcHorizon, { value: CpcDiscussion | null; expires: number }>();
+const CACHE = new Map<CpcHorizon, { rawText: string; expires: number }>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** Map a CONUS lat/lon to a coarse CPC region label. */
@@ -100,48 +100,42 @@ export async function fetchCpcDiscussion(
   lat: number,
   lon: number,
 ): Promise<CpcDiscussion | null> {
-  const hit = CACHE.get(horizon);
-  if (hit && hit.expires > Date.now()) {
-    // Re-pick region in case lat/lon differs from the cached fetch — the
-    // raw paragraph extraction is cheap, but we cache the response only.
-    return hit.value;
-  }
-
   const url = PRODUCT_URLS[horizon];
   let text = '';
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 10_000);
-    const res = await fetch(url, {
-      signal: ctl.signal,
-      headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
-    }).finally(() => clearTimeout(t));
-    if (!res.ok) {
-      console.warn('[cpcDiscussion] non-ok', { horizon, status: res.status });
-      CACHE.set(horizon, { value: null, expires: Date.now() + 60_000 });
+
+  const hit = CACHE.get(horizon);
+  if (hit && hit.expires > Date.now()) {
+    // Cache hit — reuse raw text and re-pick region for this caller's lat/lon.
+    text = hit.rawText;
+  } else {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 10_000);
+      const res = await fetch(url, {
+        signal: ctl.signal,
+        headers: { 'User-Agent': 'Pluvik Weather App (support@pluvik.app)' },
+      }).finally(() => clearTimeout(t));
+      if (!res.ok) {
+        console.warn('[cpcDiscussion] non-ok', { horizon, status: res.status });
+        return null;
+      }
+      text = await res.text();
+      CACHE.set(horizon, { rawText: text, expires: Date.now() + CACHE_TTL_MS });
+    } catch (err) {
+      console.warn('[cpcDiscussion] fetch failed', { horizon, err: (err as Error).message });
       return null;
     }
-    text = await res.text();
-  } catch (err) {
-    console.warn('[cpcDiscussion] fetch failed', { horizon, err: (err as Error).message });
-    CACHE.set(horizon, { value: null, expires: Date.now() + 60_000 });
-    return null;
   }
 
   const region = regionForLatLon(lat, lon);
   const paragraph = pickRegionParagraph(text, region);
-  if (!paragraph) {
-    CACHE.set(horizon, { value: null, expires: Date.now() + CACHE_TTL_MS });
-    return null;
-  }
+  if (!paragraph) return null;
 
-  const value: CpcDiscussion = {
+  return {
     horizon,
     region,
     paragraph,
     url,
     fetchedAt: new Date().toISOString(),
   };
-  CACHE.set(horizon, { value, expires: Date.now() + CACHE_TTL_MS });
-  return value;
 }
