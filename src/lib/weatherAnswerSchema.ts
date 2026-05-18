@@ -17,6 +17,15 @@ const NON_VERDICT_STAGES: ForecastStage[] = ['climate', 'outlook'];
 export const WeatherAnswerSchema = z.object({
   verdict: z.enum(['GO', 'CAUTION', 'NO-GO', 'UNKNOWN']).nullable(),
 
+  /** Classification of the user's question shape. */
+  question_type: z.enum(['decision', 'measurement', 'timing', 'comparison', 'severe']).optional(),
+
+  /** Plain-English description of what each atmospheric layer is doing. Exactly 3 entries. */
+  atmo_layers: z.array(z.object({
+    level: z.enum(['UPPER', 'MID', 'SURFACE']),
+    desc: z.string(),
+  })).length(3).optional(),
+
   // Forecast-maturity layer (Phase 2)
   forecast_stage: z.enum(['climate', 'outlook', 'model_trend', 'short_range', 'live']).optional(),
   decision_label: z.string().optional(),
