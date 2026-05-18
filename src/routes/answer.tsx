@@ -1268,7 +1268,7 @@ function AnswerPage() {
             maxWidth: '36ch',
           }}
         >
-          &ldquo;{question}&rdquo;
+          &ldquo;{displayQuestion}&rdquo;
         </p>
 
         <div
