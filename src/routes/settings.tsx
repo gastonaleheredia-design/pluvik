@@ -37,6 +37,24 @@ type Industry = typeof INDUSTRIES[number]['value'];
 type Business = { id: string; business_name: string; industry: string };
 type TeamMember = { id: string; invited_email: string | null; role: string; accepted_at: string | null };
 type CompanyRow = { id: string; company_name: string; industry: string | null };
+type ApiKey = { id: string; label: string | null; created_at: string; last_used_at: string | null; request_count: number };
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function generateRandomKey(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < 32; i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
 
 const styles = {
   page: {
@@ -274,6 +292,13 @@ function SettingsPage() {
   const [coCreating, setCoCreating] = useState(false);
   const [coError, setCoError] = useState<string | null>(null);
 
+  // API keys state (Pro only)
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
   const isPro = tier === 'pro';
   const isBusiness = tier === 'business';
 
@@ -323,6 +348,51 @@ function SettingsPage() {
     })();
     return () => { cancelled = true; };
   }, [user, tier]);
+
+  useEffect(() => {
+    if (!user || !isPro) { setApiKeys([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('api_keys')
+        .select('id, label, created_at, last_used_at, request_count')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (!cancelled) setApiKeys((data as ApiKey[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [user, isPro]);
+
+  const handleGenerateApiKey = async () => {
+    if (!user) return;
+    setGeneratingKey(true);
+    setKeyError(null);
+    try {
+      const plaintext = generateRandomKey();
+      const key_hash = await sha256Hex(plaintext);
+      const { data, error } = await supabase
+        .from('api_keys')
+        .insert({ user_id: user.id, key_hash, label: `Key ${apiKeys.length + 1}` })
+        .select('id, label, created_at, last_used_at, request_count')
+        .single();
+      if (error || !data) {
+        setKeyError(error?.message ?? 'Could not generate key.');
+      } else {
+        setApiKeys((prev) => [data as ApiKey, ...prev]);
+        setNewKeyPlaintext(plaintext);
+        setCopiedKey(false);
+      }
+    } catch (e) {
+      setKeyError(e instanceof Error ? e.message : 'Could not generate key.');
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (id: string) => {
+    const { error } = await supabase.from('api_keys').delete().eq('id', id);
+    if (!error) setApiKeys((prev) => prev.filter((k) => k.id !== id));
+  };
 
   const handleCreateCompany = async () => {
     if (!user) return;
@@ -732,6 +802,122 @@ function SettingsPage() {
       </section>
 
       <BottomNav />
+      {user && isPro && (
+        <section style={styles.section}>
+          <p style={styles.sectionLabel}>API Access</p>
+          <div style={styles.card}>
+            <div style={{ ...styles.emailText, marginBottom: 14, fontStyle: 'italic', color: MUTED }}>
+              Generate a personal API key to access your data programmatically.
+            </div>
+            {apiKeys.length > 0 && (
+              <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {apiKeys.map((k) => (
+                  <div
+                    key={k.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 12, padding: '10px 12px', border: `1px solid ${BORDER}`, borderRadius: 8,
+                      background: SURFACE,
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontFamily: MONO, fontSize: '0.7rem', color: INK }}>
+                        {k.label ?? 'Key'}
+                      </div>
+                      <div style={{ fontFamily: MONO, fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: MUTED, marginTop: 2 }}>
+                        {new Date(k.created_at).toLocaleDateString()} · {k.request_count} req
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeApiKey(k.id)}
+                      style={{
+                        background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6,
+                        padding: '6px 10px', fontFamily: MONO, fontSize: '0.55rem',
+                        letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, cursor: 'pointer',
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {keyError && (
+              <div style={{ color: '#b91c1c', fontSize: '0.8rem', marginBottom: 10 }}>{keyError}</div>
+            )}
+            <button
+              type="button"
+              onClick={handleGenerateApiKey}
+              disabled={generatingKey}
+              style={{ ...styles.signInBtn, background: ACCENT, opacity: generatingKey ? 0.6 : 1 }}
+            >
+              {generatingKey ? 'Generating…' : 'Generate API key'}
+            </button>
+          </div>
+        </section>
+      )}
+      {newKeyPlaintext && (
+        <div
+          onClick={() => setNewKeyPlaintext(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(11,16,24,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100, padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: PAPER, borderRadius: 16, padding: 24, maxWidth: 440, width: '100%',
+              border: `1px solid ${BORDER}`,
+            }}
+          >
+            <p style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, margin: '0 0 8px' }}>
+              Your new API key
+            </p>
+            <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: '1rem', color: INK, margin: '0 0 16px' }}>
+              Copy this now — we won't show it again.
+            </p>
+            <div
+              style={{
+                fontFamily: MONO, fontSize: '0.8rem', color: INK,
+                background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8,
+                padding: '12px 14px', wordBreak: 'break-all', marginBottom: 16,
+              }}
+            >
+              {newKeyPlaintext}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(newKeyPlaintext);
+                    setCopiedKey(true);
+                  } catch {
+                    setCopiedKey(false);
+                  }
+                }}
+                style={{ ...styles.signInBtn, background: INK, flex: 1 }}
+              >
+                {copiedKey ? 'Copied ✓' : 'Copy key'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewKeyPlaintext(null)}
+                style={{
+                  background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 999,
+                  padding: '12px 20px', fontFamily: MONO, fontSize: '0.65rem',
+                  letterSpacing: '0.12em', textTransform: 'uppercase', color: INK, cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAuth && (
         <AuthModal onSuccess={() => setShowAuth(false)} onClose={() => setShowAuth(false)} />
       )}
