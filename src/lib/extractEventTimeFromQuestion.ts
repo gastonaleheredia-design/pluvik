@@ -112,19 +112,21 @@ function parseTimeRange(q: string): { start: { hour: number; minute: number }; e
   return null;
 }
 
-function fuzzyWindow(label: string): { start: number; end: number } | null {
-  if (/morning/.test(label)) return { start: 8, end: 10 };
-  if (/(midday|noon|midday\/noon)/.test(label)) return { start: 12, end: 13 };
-  if (/afternoon/.test(label)) return { start: 14, end: 16 };
-  if (/evening/.test(label)) return { start: 18, end: 20 };
-  if (/night/.test(label)) return { start: 20, end: 22 };
+/** Map a time-of-day word to a single representative hour (0–23). */
+function partOfDayHour(label: string): number | null {
+  const s = label.toLowerCase();
+  if (/late\s+night/.test(s)) return 23;
+  if (/night/.test(s)) return 21;
+  if (/evening/.test(s)) return 18;
+  if (/afternoon/.test(s)) return 15;
+  if (/(midday|noon)/.test(s)) return 12;
+  if (/morning/.test(s)) return 9;
   return null;
 }
 
-function buildFuzzy(date: Date, fz: { start: number; end: number }, now: Date, sourcePhrase: string): ExtractedEventTime {
-  const start = new Date(date); start.setHours(fz.start, 0, 0, 0);
-  const end = new Date(date); end.setHours(fz.end, 0, 0, 0);
-  return { eventAt: start, endAt: end, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
+function buildFuzzy(date: Date, hour: number, now: Date, sourcePhrase: string): ExtractedEventTime {
+  const start = new Date(date); start.setHours(hour, 0, 0, 0);
+  return { eventAt: start, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
 }
 
 function applyRangeToDate(
@@ -166,27 +168,27 @@ export function extractEventTimeFromQuestion(
   if (/\btonight\b|\bthis evening\b/.test(q)) {
     const d = new Date(now);
     if (range) return applyRangeToDate(d, range, now, 'tonight');
-    if (!time) return buildFuzzy(d, { start: 20, end: 22 }, now, 'tonight');
-    return build(d, time, 20, now, 'tonight');
+    if (!time) return buildFuzzy(d, 21, now, 'tonight');
+    return build(d, time, 21, now, 'tonight');
   }
   if (/\btomorrow\b/.test(q)) {
     const d = new Date(now);
     d.setDate(d.getDate() + 1);
     if (range) return applyRangeToDate(d, range, now, 'tomorrow');
-    const fzMatch = q.match(/tomorrow\s+(morning|afternoon|evening|night)/);
+    const fzMatch = q.match(/tomorrow\s+(late\s+night|morning|midday|noon|afternoon|evening|night)/);
     if (fzMatch) {
-      const fz = fuzzyWindow(fzMatch[1])!;
-      return buildFuzzy(d, fz, now, `tomorrow ${fzMatch[1]}`);
+      const h = partOfDayHour(fzMatch[1])!;
+      return buildFuzzy(d, h, now, `tomorrow ${fzMatch[1]}`);
     }
     return build(d, time, 9, now, 'tomorrow');
   }
   if (/\btoday\b/.test(q)) {
     const d = new Date(now);
     if (range) return applyRangeToDate(d, range, now, 'today');
-    const fzMatch = q.match(/this\s+(morning|afternoon|evening|night)/);
+    const fzMatch = q.match(/this\s+(late\s+night|morning|midday|noon|afternoon|evening|night)/);
     if (fzMatch) {
-      const fz = fuzzyWindow(fzMatch[1])!;
-      return buildFuzzy(d, fz, now, `today ${fzMatch[1]}`);
+      const h = partOfDayHour(fzMatch[1])!;
+      return buildFuzzy(d, h, now, `today ${fzMatch[1]}`);
     }
     return build(d, time, Math.max(now.getHours() + 1, 12), now, 'today');
   }
@@ -272,10 +274,10 @@ export function extractEventTimeFromQuestion(
     const d = new Date(now);
     d.setDate(d.getDate() + delta);
     // "Tuesday night", "Friday morning", etc.
-    const wkFz = q.match(/\b(?:sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\s+(morning|midday|noon|afternoon|evening|night)\b/);
+    const wkFz = q.match(/\b(?:sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\s+(late\s+night|morning|midday|noon|afternoon|evening|night)\b/);
     if (wkFz) {
-      const fz = fuzzyWindow(wkFz[1])!;
-      return buildFuzzy(d, fz, now, `${wk[0]} ${wkFz[1]}`);
+      const h = partOfDayHour(wkFz[1])!;
+      return buildFuzzy(d, h, now, `${wk[0]} ${wkFz[1]}`);
     }
     return build(d, time, 12, now, wk[0]);
   }
