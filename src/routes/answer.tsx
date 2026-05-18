@@ -2222,6 +2222,8 @@ function AnswerPage() {
           currentState={(answer as { current_state?: string | null }).current_state ?? undefined}
           summaryText={answer.summary}
           confidenceReason={(answer as { confidence_reason?: string | null }).confidence_reason ?? undefined}
+          atmoLayers={(answer as { atmo_layers?: Array<{ level: 'UPPER' | 'MID' | 'SURFACE'; desc: string }> | null }).atmo_layers ?? undefined}
+          mechanism={(answer as { mechanism?: string | null }).mechanism ?? undefined}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
           saving={saving}
