@@ -920,7 +920,7 @@ function AnswerPage() {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading]);
 
   // Auto-refresh severe context every 60s while a warning is active.
   // Detects expiry/cancellation and (if opted-in) fires a "cleared" push.
