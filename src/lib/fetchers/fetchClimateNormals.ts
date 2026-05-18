@@ -49,6 +49,18 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // normals don't change daily; one day
 const SEARCH_RADIUS_DEG = 0.6; // ~40 miles bbox
 const SEARCH_RADIUS_DEG_FALLBACK = 1.5; // ~100 miles bbox if first pass empty
 const NULL_CACHE_TTL_MS = 5 * 60 * 1000; // don't blank out climatology for a day on a transient 5xx
+const CACHE_MAX = 400;
+
+// Bound module-level Maps in long-lived Worker isolates: when a cache exceeds
+// CACHE_MAX entries, drop the 100 oldest by insertion order.
+function evictCacheIfNeeded(cache: Map<string, unknown>): void {
+  if (cache.size < CACHE_MAX) return;
+  let deleted = 0;
+  for (const key of cache.keys()) {
+    cache.delete(key);
+    if (++deleted >= 100) break;
+  }
+}
 
 const NCEI_UA = 'Pluvik Weather App (support@pluvik.app)';
 
@@ -189,6 +201,7 @@ export async function fetchClimateNormals(
     'normals-monthly-1991-2020', lat, lon, '2010-01-01', '2010-12-31',
   );
   if (stationCands.length === 0) {
+    evictCacheIfNeeded(CACHE);
     CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
@@ -223,17 +236,20 @@ export async function fetchClimateNormals(
     }).finally(() => clearTimeout(t));
     if (!res.ok) {
       console.warn('[climateNormals] NCEI returned', res.status);
+      evictCacheIfNeeded(CACHE);
       CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
       return null;
     }
     rows = (await res.json()) as NceiDataRow[];
   } catch (err) {
     console.warn('[climateNormals] fetch failed:', (err as Error).message);
+    evictCacheIfNeeded(CACHE);
     CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
   if (!Array.isArray(rows) || rows.length === 0) {
+    evictCacheIfNeeded(CACHE);
     CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
@@ -275,6 +291,7 @@ export async function fetchClimateNormals(
     .sort((a, b) => a.dist - b.dist);
 
   if (candidates.length === 0) {
+    evictCacheIfNeeded(CACHE);
     CACHE.set(key, { value: null, expires: Date.now() + CACHE_TTL_MS });
     return null;
   }
@@ -310,6 +327,7 @@ export async function fetchClimateNormals(
     fetchedAt: new Date().toISOString(),
   };
 
+  evictCacheIfNeeded(CACHE);
   CACHE.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
   return value;
 }
@@ -387,6 +405,7 @@ export async function fetchDailyClimateNormal(
     'normals-daily-1991-2020', lat, lon, dateStr, dateStr,
   );
   if (stationCands.length === 0) {
+    evictCacheIfNeeded(DAILY_CACHE);
     DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
@@ -418,17 +437,20 @@ export async function fetchDailyClimateNormal(
     }).finally(() => clearTimeout(t));
     if (!res.ok) {
       console.warn('[dailyClimateNormal] NCEI returned', res.status);
+      evictCacheIfNeeded(DAILY_CACHE);
       DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
       return null;
     }
     rows = (await res.json()) as Record<string, string>[];
   } catch (err) {
     console.warn('[dailyClimateNormal] fetch failed:', (err as Error).message);
+    evictCacheIfNeeded(DAILY_CACHE);
     DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
 
   if (!Array.isArray(rows) || rows.length === 0) {
+    evictCacheIfNeeded(DAILY_CACHE);
     DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
@@ -458,6 +480,7 @@ export async function fetchDailyClimateNormal(
   pool.sort((a, b) => a.dist - b.dist);
   const best = pool[0];
   if (!best) {
+    evictCacheIfNeeded(DAILY_CACHE);
     DAILY_CACHE.set(key, { value: null, expires: Date.now() + NULL_CACHE_TTL_MS });
     return null;
   }
@@ -480,6 +503,7 @@ export async function fetchDailyClimateNormal(
     },
     fetchedAt: new Date().toISOString(),
   };
+  evictCacheIfNeeded(DAILY_CACHE);
   DAILY_CACHE.set(key, { value, expires: Date.now() + DAILY_CACHE_TTL_MS });
   return value;
 }
