@@ -1038,7 +1038,7 @@ async function fetchRadarCells(lat: number, lon: number): Promise<string> {
           const dy = (c.cLat - lat) * 69;
           const dx = (c.cLon - lon) * 69 * cosLat;
           const distMi = Math.round(Math.sqrt(dx * dx + dy * dy));
-          const bearingDeg = (Math.atan2(c.cLon - lon, c.cLat - lat) * 180 / Math.PI + 360) % 360;
+          const bearingDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
           const compassDir = compass(bearingDeg);
           const motionLabel = c.dirDeg != null ? compass(c.dirDeg) : '?';
           let interceptLine = '';
@@ -1208,10 +1208,10 @@ async function fetchRadarCellsFromGrid(lat: number, lon: number): Promise<string
 
     const structured: StormInterceptResult[] = [];
     const lines = kept.map(c => {
-      const dLat = c.lat - lat;
-      const dLon = c.lon - lon;
-      const distMiles = Math.round(Math.sqrt(dLat * dLat * 69 * 69 + dLon * dLon * 69 * 69 * cosLat * cosLat));
-      const bearingDeg = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+      const dy = (c.lat - lat) * 69;
+      const dx = (c.lon - lon) * 69 * cosLat;
+      const distMiles = Math.round(Math.sqrt(dx * dx + dy * dy));
+      const bearingDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
       const compassDir = compass(bearingDeg);
       const cellMotionDir = c.motionDirDeg;
       const cellMotionSpd = c.motionSpeedMph;
@@ -2774,7 +2774,7 @@ async function fetchGLMLightning(lat: number, lon: number): Promise<string> {
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d < minDist) {
           minDist = d;
-          const bDeg = (Math.atan2(ev.lon - lon, ev.lat - lat) * 180 / Math.PI + 360) % 360;
+          const bDeg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
           minBearing = compass(bDeg);
         }
       }
