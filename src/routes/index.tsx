@@ -1579,6 +1579,73 @@ function HomePage() {
       )}
 
       {/* Thin question input pinned near bottom */}
+      {stormCardEligible && !stormCardDismissed && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            background: '#fff7ed',
+            border: '1px solid #ea580c',
+            borderRadius: '12px',
+            padding: '14px',
+            position: 'relative',
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => {
+              setStormCardDismissed(true);
+              try { sessionStorage.setItem('stormCardDismissed', '1'); } catch {}
+            }}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 8,
+              background: 'transparent',
+              border: 'none',
+              fontSize: '18px',
+              lineHeight: 1,
+              color: '#9a3412',
+              cursor: 'pointer',
+              padding: 4,
+            }}
+          >
+            ×
+          </button>
+          <p
+            style={{
+              fontFamily: '"Fraunces", serif',
+              fontStyle: 'italic',
+              fontSize: '0.95rem',
+              color: '#7c2d12',
+              margin: 0,
+              paddingRight: 18,
+            }}
+          >
+            A storm pattern is developing in your area in the next 48 hours. Anything planned?
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              requestAnimationFrame(() => questionInputRef.current?.focus());
+            }}
+            style={{
+              marginTop: 10,
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: '0.78rem',
+              letterSpacing: '0.04em',
+              background: '#ea580c',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 12px',
+              cursor: 'pointer',
+            }}
+          >
+            Ask about it →
+          </button>
+        </div>
+      )}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
         style={{
