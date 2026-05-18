@@ -1,0 +1,1 @@
+ALTER TABLE public.tracked_events ADD COLUMN IF NOT EXISTS event_title text;
