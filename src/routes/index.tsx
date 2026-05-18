@@ -1184,20 +1184,20 @@ function HomePage() {
                 maxWidth: '100%',
               }}
             >
-              <div
+              <AutoFitText
+                maxFontPx={112}
+                minFontPx={32}
+                reservePx={typeof briefing.temp_f === 'number' ? 80 : 0}
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
-                  fontSize: `clamp(2.5rem, ${Math.min(18, 150 / Math.max((briefing.word ?? '').length, 1)).toFixed(2)}vw, 7rem)`,
                   lineHeight: 0.95,
                   letterSpacing: '-0.02em',
-                  whiteSpace: 'nowrap',
-                  maxWidth: '100%',
-                  overflow: 'hidden',
+                  textAlign: 'center',
                 }}
               >
                 {briefing.word}
-              </div>
+              </AutoFitText>
               {typeof briefing.temp_f === 'number' && (
                 <div
                   aria-label={`${briefing.temp_f} degrees Fahrenheit`}
