@@ -417,13 +417,14 @@ function InviteSheet(props: {
 const INDUSTRY_OPTIONS = [
   'Construction',
   'Car Wash',
-  'Events & Concerts',
-  'Landscaping',
   'Roofing',
+  'Landscaping',
+  'Events & Concerts',
+  'Transportation',
   'Other',
 ] as const;
 
-function BusinessSetup({ userId }: { userId: string }) {
+function BusinessSetup({ userId, onCreated }: { userId: string; onCreated: () => Promise<void> | void }) {
   const [name, setName] = useState('');
   const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
   const [submitting, setSubmitting] = useState(false);
@@ -449,7 +450,7 @@ function BusinessSetup({ userId }: { userId: string }) {
       setError(insertErr.message);
       return;
     }
-    if (typeof window !== 'undefined') window.location.reload();
+    await onCreated();
   };
 
   const inputStyle: CSSProperties = {
@@ -476,7 +477,7 @@ function BusinessSetup({ userId }: { userId: string }) {
   return (
     <div style={styles.page}>
       <p style={styles.screenLabel}>TEAM</p>
-      <h1 style={styles.title}>Set up your business</h1>
+      <h1 style={styles.title}>Set up your team account.</h1>
       <p style={{ ...styles.subText, marginBottom: 24 }}>
         Create a business account to share tracked forecasts with your team.
       </p>
@@ -515,7 +516,7 @@ function BusinessSetup({ userId }: { userId: string }) {
           disabled={submitting}
           style={{ ...styles.primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }}
         >
-          {submitting ? 'Creating…' : 'Create business'}
+          {submitting ? 'Creating…' : 'Create team account'}
         </button>
       </form>
       <BottomNav />
