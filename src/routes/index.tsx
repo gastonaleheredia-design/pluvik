@@ -179,7 +179,7 @@ function HomePage() {
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const silenceRafRef = useRef<number | null>(null);
+  const silenceRafRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartRef = useRef<number>(0);
   const heardSpeechRef = useRef<boolean>(false);
   const lastVoiceAtRef = useRef<number>(0);
@@ -382,7 +382,10 @@ function HomePage() {
   const cleanupRecording = () => {
     if (maxRecordTimerRef.current) { clearTimeout(maxRecordTimerRef.current); maxRecordTimerRef.current = null; }
     if (tickTimerRef.current) { clearInterval(tickTimerRef.current); tickTimerRef.current = null; }
-    if (silenceRafRef.current != null) { cancelAnimationFrame(silenceRafRef.current); silenceRafRef.current = null; }
+    if (silenceRafRef.current != null) {
+      clearInterval(silenceRafRef.current as unknown as ReturnType<typeof setInterval>);
+      silenceRafRef.current = null;
+    }
     if (audioCtxRef.current) {
       try { audioCtxRef.current.close(); } catch { /* ignore */ }
       audioCtxRef.current = null;
@@ -486,6 +489,8 @@ function HomePage() {
     }, 250);
 
     // Silence detection: stop after ~1.8s of silence once we've heard speech.
+    // Use setInterval instead of requestAnimationFrame so detection continues
+    // when the tab is backgrounded (common on mobile).
     try {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (Ctx) {
@@ -500,9 +505,9 @@ function HomePage() {
         const VOICE_THRESHOLD = 0.025; // 0..1 RMS-ish
         const SILENCE_MS = 1800;
         const MIN_RECORD_MS = 1500;
-        const tick = () => {
+        const intervalId = setInterval(() => {
           const a = analyserRef.current;
-          if (!a) return;
+          if (!a) { clearInterval(intervalId); return; }
           a.getByteTimeDomainData(buf);
           let sum = 0;
           for (let i = 0; i < buf.length; i++) {
@@ -518,12 +523,12 @@ function HomePage() {
           const elapsed = now - recordStartRef.current;
           const silenceFor = now - lastVoiceAtRef.current;
           if (heardSpeechRef.current && elapsed > MIN_RECORD_MS && silenceFor > SILENCE_MS) {
+            clearInterval(intervalId);
+            silenceRafRef.current = null;
             stopRecording();
-            return;
           }
-          silenceRafRef.current = requestAnimationFrame(tick);
-        };
-        silenceRafRef.current = requestAnimationFrame(tick);
+        }, 100); // 100ms ≈ 10fps — fine for voice energy detection
+        silenceRafRef.current = intervalId;
       }
     } catch { /* silence detection is optional */ }
 
