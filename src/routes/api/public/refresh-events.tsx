@@ -38,13 +38,26 @@ interface EventRow {
   current_mode: string | null;
 }
 
-function verifyApiKey(request: Request): boolean {
-  const expected =
-    process.env.SUPABASE_PUBLISHABLE_KEY ??
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
-    '';
-  const got = request.headers.get('apikey') ?? '';
-  return expected.length > 0 && got === expected;
+async function verifyApiKey(request: Request): Promise<boolean> {
+  // Path 1: cron secret (server-to-server, used by pg_cron)
+  const cronSecret = process.env.CRON_SECRET ?? '';
+  if (cronSecret && request.headers.get('x-cron-secret') === cronSecret) {
+    return true;
+  }
+
+  // Path 2: signed-in user JWT (manual in-app refresh button)
+  const auth = request.headers.get('authorization') ?? '';
+  if (auth.startsWith('Bearer ')) {
+    const token = auth.slice(7);
+    try {
+      const { data, error } = await supabaseAdmin.auth.getUser(token);
+      return !error && !!data.user;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 async function refreshOne(
@@ -403,7 +416,7 @@ export const Route = createFileRoute('/api/public/refresh-events')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!verifyApiKey(request)) {
+        if (!(await verifyApiKey(request))) {
           return new Response('Unauthorized', { status: 401 });
         }
         try {
@@ -424,7 +437,7 @@ export const Route = createFileRoute('/api/public/refresh-events')({
         }
       },
       GET: async ({ request }) => {
-        if (!verifyApiKey(request)) {
+        if (!(await verifyApiKey(request))) {
           return new Response('Unauthorized', { status: 401 });
         }
         const url = new URL(request.url);

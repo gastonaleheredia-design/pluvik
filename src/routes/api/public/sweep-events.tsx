@@ -113,11 +113,8 @@ async function runSweep() {
 }
 
 function verifyApiKey(request: Request): boolean {
-  const expected =
-    process.env.SUPABASE_PUBLISHABLE_KEY ??
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
-    '';
-  const got = request.headers.get('apikey') ?? '';
+  const expected = process.env.CRON_SECRET ?? '';
+  const got = request.headers.get('x-cron-secret') ?? '';
   return expected.length > 0 && got === expected;
 }
 
