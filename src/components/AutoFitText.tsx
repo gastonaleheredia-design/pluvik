@@ -29,11 +29,13 @@ export function AutoFitText({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLSpanElement | null>(null);
   const [fontPx, setFontPx] = useState(maxFontPx);
+  const fontPxRef = useRef(maxFontPx);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     const text = textRef.current;
     if (!container || !text) return;
+    let raf = 0;
 
     const fit = () => {
       const available = container.clientWidth - reservePx;
@@ -41,18 +43,25 @@ export function AutoFitText({
       // Start at max, scale down based on measured width.
       text.style.fontSize = `${maxFontPx}px`;
       const measured = text.scrollWidth;
-      if (measured <= available) {
-        setFontPx(maxFontPx);
-        return;
+      const next = measured <= available
+        ? maxFontPx
+        : Math.max(minFontPx, Math.floor((maxFontPx * available) / measured));
+      if (fontPxRef.current !== next) {
+        fontPxRef.current = next;
+        setFontPx(next);
       }
-      const scaled = Math.max(minFontPx, Math.floor((maxFontPx * available) / measured));
-      setFontPx(scaled);
     };
 
     fit();
-    const ro = new ResizeObserver(fit);
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fit);
+    });
     ro.observe(container);
-    return () => ro.disconnect();
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [children, maxFontPx, minFontPx, reservePx]);
 
   const Tag = as as 'div';
