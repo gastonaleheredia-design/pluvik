@@ -124,6 +124,8 @@ function HomePage() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
   const [questionText, setQuestionText] = useState('');
+  const [dotMessage, setDotMessage] = useState<string | null>(null);
+  const dotMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load the signed-in user's avatar + display name for the top-right circle.
   useEffect(() => {
@@ -1070,39 +1072,77 @@ function HomePage() {
             marginBottom: '36px',
           }}
         >
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            aria-label={t('home.address_change', { defaultValue: 'Change address' })}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 8,
-              minWidth: 0, flex: '1 1 auto',
-            }}
-          >
-            <span
-              aria-hidden
-              title={freshness === 'live' ? 'Live GPS' : freshness === 'stale' ? 'Last known location' : 'Pinned address'}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
+            <button
+              type="button"
+              aria-label="Location status"
+              onClick={(e) => {
+                e.stopPropagation();
+                const isPinned = freshness === 'manual' || selectedAddress.meta === 'DEFAULT';
+                const msg =
+                  freshness === 'live' ? 'Live GPS · your exact location'
+                  : freshness === 'stale' ? 'Last known location · tap to refresh'
+                  : isPinned ? 'Using pinned location · not GPS'
+                  : 'Using pinned location · not GPS';
+                setDotMessage(msg);
+                if (dotMsgTimerRef.current) clearTimeout(dotMsgTimerRef.current);
+                dotMsgTimerRef.current = setTimeout(() => setDotMessage(null), 2000);
+              }}
               style={{
-                width: 7, height: 7, borderRadius: '50%',
-                backgroundColor:
-                  freshness === 'live' ? '#16a34a' :
-                  freshness === 'stale' ? '#f59e0b' :
-                  '#9ca3af',
-                animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 4, margin: -4, display: 'inline-flex', alignItems: 'center',
                 flexShrink: 0,
               }}
-            />
-            <span
-              suppressHydrationWarning
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  backgroundColor:
+                    freshness === 'live' ? '#16a34a' :
+                    freshness === 'stale' ? '#f59e0b' :
+                    '#9ca3af',
+                  animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                  display: 'block',
+                }}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              aria-label={t('home.address_change', { defaultValue: 'Change address' })}
               style={{
-                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '4px 0', minWidth: 0, flex: '1 1 auto', textAlign: 'left',
               }}
             >
-              {selectedAddress.label || '＋ Add address'}
-            </span>
-          </button>
+              <span
+                suppressHydrationWarning
+                style={{
+                  display: 'block',
+                  fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+              >
+                {selectedAddress.label || '＋ Add address'}
+              </span>
+            </button>
+            {dotMessage && (
+              <div
+                role="status"
+                style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.58rem', letterSpacing: '0.12em',
+                  color: MUTED, textTransform: 'uppercase',
+                  animation: 'dotMsgFade 2s ease forwards',
+                  pointerEvents: 'none', whiteSpace: 'nowrap',
+                }}
+              >
+                {dotMessage}
+              </div>
+            )}
+          </div>
 
           {briefing?.updated_at_local && (
             <button
@@ -1403,7 +1443,7 @@ function HomePage() {
             {t('home.set_address_prompt', { defaultValue: 'Set an address to see today.' })}
           </div>
         )}
-        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}@keyframes waveBar {0%,100%{transform:scaleY(0.3)}50%{transform:scaleY(1)}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
+        <style>{`@keyframes homePulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}@keyframes micSpin {to{transform:rotate(360deg)}}@keyframes waveBar {0%,100%{transform:scaleY(0.3)}50%{transform:scaleY(1)}}@keyframes dotMsgFade {0%{opacity:0;transform:translateY(-2px)}15%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0}}.severe-input::placeholder{color:rgba(255,255,255,0.4) !important;}`}</style>
       </div>
 
       {/* Starter question chips — shown only for the first few sessions. */}
