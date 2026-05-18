@@ -1045,7 +1045,7 @@ function AnswerPage() {
         const guestEvents: unknown[] = JSON.parse(raw);
         guestEvents.push({
           id: crypto.randomUUID(),
-          question,
+          question: displayQuestion,
           address: resolvedAddress,
           lat: coords?.lat,
           lon: coords?.lon,
