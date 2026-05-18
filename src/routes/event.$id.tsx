@@ -526,20 +526,29 @@ function EventPage() {
           <div
             style={{
               fontFamily: 'Fraunces, serif',
-              fontSize: '1.6rem',
+              fontSize: '1.3rem',
               fontWeight: 500,
-              lineHeight: 1.2,
+              lineHeight: 1.25,
+              color: INK,
               marginBottom: '6px',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
           >
-            {event.question}
+            {(event as { event_title?: string | null }).event_title ?? event.question}
           </div>
         )}
         <div
           style={{
-            fontSize: '0.82rem',
-            color: MUTED,
-            marginBottom: '24px',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.6rem',
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: '#6b6357',
+            marginBottom: '20px',
           }}
         >
           {event.address}
@@ -590,72 +599,86 @@ function EventPage() {
           return null;
         })()}
 
-        {/* Current forecast card */}
-        <div
-          style={{
-            backgroundColor: '#0b1018',
-            borderRadius: '16px',
-            padding: '20px',
-            marginBottom: '32px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '0.7rem',
-              letterSpacing: '0.12em',
-              color: '#f59e0b',
-              marginBottom: '12px',
-            }}
-          >
-            {t('event.current_label')}
-          </div>
-
-          {/* Verdict tag */}
-          <div style={{ marginBottom: '14px' }}>
+        {/* Current forecast — flat block */}
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
             <span
               style={{
                 display: 'inline-block',
                 backgroundColor: colors.bg,
                 color: colors.text,
-                padding: '6px 14px',
+                padding: '4px 12px',
                 borderRadius: '100px',
-                fontSize: '0.78rem',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.65rem',
+                letterSpacing: '0.14em',
                 fontWeight: 700,
-                letterSpacing: '0.05em',
               }}
             >
               {displayVerdict === 'MAYBE' ? 'CAUTION' : displayVerdict}
             </span>
+            {showPercentage && (
+              <span
+                style={{
+                  fontFamily: 'Fraunces, serif',
+                  fontSize: '1.05rem',
+                  color: INK,
+                }}
+              >
+                {event.current_percentage}%
+              </span>
+            )}
           </div>
-
-          {/* Percentage — hidden when 0 / null (e.g. watch-only verdicts) */}
-          {showPercentage && (
-            <div
-              style={{
-                fontFamily: 'Fraunces, serif',
-                fontSize: '3.5rem',
-                fontWeight: 400,
-                lineHeight: 1,
-                marginBottom: '10px',
-                color: '#faf7f0',
-              }}
-            >
-              {event.current_percentage}%
-            </div>
-          )}
-
-          {/* Summary */}
           <div
             style={{
-              fontSize: '1rem',
+              fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
-              color: 'rgba(250,247,240,0.88)',
-              lineHeight: 1.45,
+              fontSize: '0.95rem',
+              color: INK,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '100%',
             }}
           >
-            &ldquo;{displaySentence}&rdquo;
+            {displaySentence}
           </div>
         </div>
+
+        {/* Forecast change timeline — compact, only when >1 snapshot */}
+        {snapshots.length > 1 && (
+          <div style={{ marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {snapshots.slice(0, 4).map((s) => {
+              const d = new Date(s.created_at).toLocaleDateString(undefined, {
+                month: 'short', day: 'numeric',
+              }).toUpperCase();
+              const word = (s.decision_label ?? '—').toUpperCase();
+              const pct = typeof s.chance_of_impact === 'number' ? `${s.chance_of_impact}%` : '—';
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 1fr 60px',
+                    gap: '12px',
+                    alignItems: 'baseline',
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.58rem',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: MUTED,
+                    paddingBottom: '6px',
+                    borderBottom: `1px solid ${INK}10`,
+                  }}
+                >
+                  <span>{d}</span>
+                  <span style={{ color: INK }}>{word}</span>
+                  <span style={{ color: ACCENT, textAlign: 'right' as const }}>{pct}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Why MAYBE — three-part rationale shown only on uncertain answers */}
         {displayVerdict === 'MAYBE' && event.current_maybe_explanation && (
@@ -696,79 +719,6 @@ function EventPage() {
             </div>
           </div>
         )}
-
-        {/* ALSO WORTH KNOWING — secondary factors from the latest answer */}
-        {(() => {
-          const factorSource = [
-            event.current_summary ?? '',
-            snapshots[0]?.summary ?? '',
-            snapshots[0]?.main_threat ?? '',
-            event.question ?? '',
-          ].join(' ');
-          const factors = deriveSecondaryFactors(factorSource);
-          if (factors.length === 0) return null;
-          return (
-            <div style={{ marginTop: '20px', marginBottom: '24px' }}>
-              <div
-                style={{
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.62rem',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: MUTED,
-                  marginBottom: '10px',
-                }}
-              >
-                Also worth knowing
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {factors.map((f) => (
-                  <div
-                    key={f.factor}
-                    style={{
-                      backgroundColor: '#f5f0e8',
-                      border: `1px solid ${INK}14`,
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      display: 'flex',
-                      gap: '12px',
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <span style={{ fontSize: '1.2rem', lineHeight: 1.1, flexShrink: 0 }}>
-                      {pickFactorIcon(f.factor)}
-                    </span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                          fontSize: '0.6rem',
-                          letterSpacing: '0.14em',
-                          textTransform: 'uppercase',
-                          fontWeight: 700,
-                          color: INK,
-                        }}
-                      >
-                        {f.factor}
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: 'Fraunces, serif',
-                          fontStyle: 'italic',
-                          fontSize: '0.95rem',
-                          lineHeight: 1.4,
-                          color: INK,
-                        }}
-                      >
-                        {f.note}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Climate facts (climate / outlook stage only) */}
         {Array.isArray(event.current_climate_facts) &&
