@@ -10,7 +10,7 @@
  * parsers.
  */
 
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
+const CACHE_TTL_MS = 60 * 60 * 1000; // 60 min — matches Tomorrow.io free-tier refresh cadence
 const DAILY_BUDGET = 450; // leave ~50 calls headroom under 500/day
 
 type CacheEntry = { at: number; text: string };
@@ -32,7 +32,7 @@ function bumpAndCheckBudget(): boolean {
 }
 
 function cacheKey(lat: number, lon: number): string {
-  const hourBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+  const hourBucket = Math.floor(Date.now() / (60 * 60 * 1000));
   return `${lat.toFixed(2)},${lon.toFixed(2)}@${hourBucket}`;
 }
 
