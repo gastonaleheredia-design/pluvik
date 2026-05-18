@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
+import { AutoFitText } from '../components/AutoFitText';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, getAlertSeverity, type HomeBriefing, type AlertSeverity } from '../lib/homeBriefing.functions';
@@ -1183,20 +1184,20 @@ function HomePage() {
                 maxWidth: '100%',
               }}
             >
-              <div
+              <AutoFitText
+                maxFontPx={112}
+                minFontPx={32}
+                reservePx={typeof briefing.temp_f === 'number' ? 80 : 0}
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
-                  fontSize: `clamp(2.5rem, ${Math.min(18, 150 / Math.max((briefing.word ?? '').length, 1)).toFixed(2)}vw, 7rem)`,
                   lineHeight: 0.95,
                   letterSpacing: '-0.02em',
-                  whiteSpace: 'nowrap',
-                  maxWidth: '100%',
-                  overflow: 'hidden',
+                  textAlign: 'center',
                 }}
               >
                 {briefing.word}
-              </div>
+              </AutoFitText>
               {typeof briefing.temp_f === 'number' && (
                 <div
                   aria-label={`${briefing.temp_f} degrees Fahrenheit`}
@@ -1582,14 +1583,49 @@ function HomePage() {
       {stormCardEligible && !stormCardDismissed && (
         <div
           style={{
-            margin: '0 20px 12px',
-            background: '#fff7ed',
-            border: '1px solid #ea580c',
-            borderRadius: '12px',
-            padding: '14px',
-            position: 'relative',
+            margin: '0 20px 14px',
+            padding: '6px 0 6px 12px',
+            borderLeft: '2px solid #c2410c',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 12,
           }}
         >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p
+              style={{
+                fontFamily: '"Fraunces", serif',
+                fontStyle: 'italic',
+                fontSize: '0.9rem',
+                color: '#0b1018',
+                margin: 0,
+                lineHeight: 1.35,
+              }}
+            >
+              Storm pattern developing in your area — anything planned?
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                requestAnimationFrame(() => questionInputRef.current?.focus());
+              }}
+              style={{
+                marginTop: 6,
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '0.6rem',
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                background: 'transparent',
+                color: '#c2410c',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              Ask about it →
+            </button>
+          </div>
           <button
             type="button"
             aria-label="Dismiss"
@@ -1598,51 +1634,17 @@ function HomePage() {
               try { sessionStorage.setItem('stormCardDismissed', '1'); } catch {}
             }}
             style={{
-              position: 'absolute',
-              top: 6,
-              right: 8,
               background: 'transparent',
               border: 'none',
-              fontSize: '18px',
+              fontSize: '14px',
               lineHeight: 1,
-              color: '#9a3412',
+              color: '#6b6b6b',
               cursor: 'pointer',
-              padding: 4,
+              padding: 2,
+              flexShrink: 0,
             }}
           >
             ×
-          </button>
-          <p
-            style={{
-              fontFamily: '"Fraunces", serif',
-              fontStyle: 'italic',
-              fontSize: '0.95rem',
-              color: '#7c2d12',
-              margin: 0,
-              paddingRight: 18,
-            }}
-          >
-            A storm pattern is developing in your area in the next 48 hours. Anything planned?
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              requestAnimationFrame(() => questionInputRef.current?.focus());
-            }}
-            style={{
-              marginTop: 10,
-              fontFamily: '"JetBrains Mono", monospace',
-              fontSize: '0.78rem',
-              letterSpacing: '0.04em',
-              background: '#ea580c',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '8px 12px',
-              cursor: 'pointer',
-            }}
-          >
-            Ask about it →
           </button>
         </div>
       )}
