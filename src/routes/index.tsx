@@ -33,7 +33,6 @@ const HOME_SESSIONS_CHIP_LIMIT = 5;
 // Free tier DAILY question limit. After the 1st question they get the full
 // answer; questions 2 and 3 get the limited answer; the 4th is blocked
 // until next local midnight.
-const FREE_DAILY_LIMIT = 3;
 
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
