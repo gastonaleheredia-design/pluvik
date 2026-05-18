@@ -149,6 +149,7 @@ function HomePage() {
   }, [user]);
   const [briefing, setBriefing] = useState<HomeBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [briefingFetchedAt, setBriefingFetchedAt] = useState<number | null>(null);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
   const [updatedEvents, setUpdatedEvents] = useState<Array<{
     id: string;
@@ -588,6 +589,7 @@ function HomePage() {
           if (cancelled) return;
           if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
           setBriefing(sanitizeBriefing(b));
+          setBriefingFetchedAt(Date.now());
           setBriefingLoading(false);
         })
         .catch(() => {
@@ -629,6 +631,7 @@ function HomePage() {
         .then((b) => {
           if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
           setBriefing(sanitizeBriefing(b));
+          setBriefingFetchedAt(Date.now());
         })
         .catch(() => {});
     }, 5000);
@@ -654,6 +657,7 @@ function HomePage() {
           .then((b) => {
             if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
             setBriefing(sanitizeBriefing(b));
+            setBriefingFetchedAt(Date.now());
           })
           .catch(() => {});
       }
@@ -1161,6 +1165,7 @@ function HomePage() {
                   .then((b) => {
                     if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
                     setBriefing(sanitizeBriefing(b));
+                    setBriefingFetchedAt(Date.now());
                     setBriefingLoading(false);
                   })
                   .catch(() => setBriefingLoading(false));
@@ -1233,7 +1238,7 @@ function HomePage() {
                   getHomeBriefing({
                     data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language },
                   })
-                    .then((b) => { setBriefing(sanitizeBriefing(b)); setBriefingLoading(false); })
+                    .then((b) => { setBriefing(sanitizeBriefing(b)); setBriefingFetchedAt(Date.now()); setBriefingLoading(false); })
                     .catch(() => setBriefingLoading(false));
                 }}
                 style={{
