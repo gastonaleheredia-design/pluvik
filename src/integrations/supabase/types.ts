@@ -53,6 +53,36 @@ export type Database = {
         }
         Relationships: []
       }
+      api_keys: {
+        Row: {
+          created_at: string
+          id: string
+          key_hash: string
+          label: string | null
+          last_used_at: string | null
+          request_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key_hash: string
+          label?: string | null
+          last_used_at?: string | null
+          request_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key_hash?: string
+          label?: string | null
+          last_used_at?: string | null
+          request_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       business_profiles: {
         Row: {
           business_name: string
