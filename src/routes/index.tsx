@@ -876,6 +876,9 @@ function HomePage() {
   const isDarkMode = !!warning;
   const txtPrimary = isDarkMode ? severeWhite : INK;
   const txtMuted = isDarkMode ? severeWhite : MUTED;
+  const stormCardText = isDarkMode ? 'rgba(255,255,255,0.88)' : INK;
+  const stormCardAction = isDarkMode ? '#ff8a65' : ACCENT;
+  const stormCardBorder = isDarkMode ? '#ff8a65' : ACCENT;
   const chipBorder = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
 
   return (
