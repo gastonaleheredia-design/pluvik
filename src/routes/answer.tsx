@@ -621,6 +621,7 @@ export const Route = createFileRoute('/answer')({
       : (typeof search.lon === 'string' && search.lon ? Number(search.lon) : undefined),
     eventAtIso: typeof search.eventAtIso === 'string' && search.eventAtIso ? search.eventAtIso : undefined,
     eventEndIso: typeof search.eventEndIso === 'string' && search.eventEndIso ? search.eventEndIso : undefined,
+    displayQ: typeof search.displayQ === 'string' && search.displayQ ? search.displayQ : undefined,
     intent: typeof search.intent === 'string' ? (search.intent as ForecastIntent) : undefined,
     placeSource: typeof search.placeSource === 'string'
       ? (search.placeSource as 'question' | 'active_address' | 'gps')
@@ -685,7 +686,10 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource } = Route.useSearch();
+  const { q: question, displayQ, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource } = Route.useSearch();
+  // User-facing label for the question (clean rewrite when available).
+  // The raw `question` is still used everywhere the weather pipeline needs it.
+  const displayQuestion = displayQ ?? question;
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -960,7 +964,7 @@ function AnswerPage() {
         .from('tracked_events')
         .insert({
           user_id: user!.id,
-          question,
+          question: displayQuestion,
           address,
           lat: coords?.lat ?? null,
           lon: coords?.lon ?? null,
@@ -1041,7 +1045,7 @@ function AnswerPage() {
         const guestEvents: unknown[] = JSON.parse(raw);
         guestEvents.push({
           id: crypto.randomUUID(),
-          question,
+          question: displayQuestion,
           address: resolvedAddress,
           lat: coords?.lat,
           lon: coords?.lon,
@@ -1064,7 +1068,7 @@ function AnswerPage() {
     setFeedbackSent(true);
     try {
       await supabase.from('answer_feedback').insert({
-        event_question: question ?? null,
+        event_question: displayQuestion ?? null,
         address: resolvedAddress ?? null,
         verdict: (answer.verdict as string) ?? null,
         percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
@@ -1136,7 +1140,7 @@ function AnswerPage() {
         loading={severeLoading && !severeAnswer}
         answer={severeAnswer}
         activeAlert={activeAlert}
-        question={question}
+        question={displayQuestion}
         placeLabel={resolvedAddress || address}
         lastUpdatedAt={severeLastUpdated}
         notifyEnabled={notifyOnClear}
@@ -1264,7 +1268,7 @@ function AnswerPage() {
             maxWidth: '36ch',
           }}
         >
-          &ldquo;{question}&rdquo;
+          &ldquo;{displayQuestion}&rdquo;
         </p>
 
         <div
@@ -2190,7 +2194,7 @@ function AnswerPage() {
           <CreateGroupEventSheet
             open={showCreateGroup}
             onClose={() => setShowCreateGroup(false)}
-            question={question}
+            question={displayQuestion}
             address={resolvedAddress}
             lat={coords?.lat ?? null}
             lon={coords?.lon ?? null}
@@ -2213,7 +2217,7 @@ function AnswerPage() {
       {answer.mode === 'severe' ? (
         <SevereAnswerScreen
           answer={answer}
-          question={question}
+          question={displayQuestion}
           address={address}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
@@ -2224,7 +2228,7 @@ function AnswerPage() {
       ) : answer.mode === 'hurricane' ? (
         <HurricaneAnswerScreen
           answer={answer}
-          question={question}
+          question={displayQuestion}
           address={address}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
