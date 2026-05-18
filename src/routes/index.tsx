@@ -1072,39 +1072,77 @@ function HomePage() {
             marginBottom: '36px',
           }}
         >
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            aria-label={t('home.address_change', { defaultValue: 'Change address' })}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 8,
-              minWidth: 0, flex: '1 1 auto',
-            }}
-          >
-            <span
-              aria-hidden
-              title={freshness === 'live' ? 'Live GPS' : freshness === 'stale' ? 'Last known location' : 'Pinned address'}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
+            <button
+              type="button"
+              aria-label="Location status"
+              onClick={(e) => {
+                e.stopPropagation();
+                const isPinned = freshness === 'manual' || selectedAddress.meta === 'DEFAULT';
+                const msg =
+                  freshness === 'live' ? 'Live GPS · your exact location'
+                  : freshness === 'stale' ? 'Last known location · tap to refresh'
+                  : isPinned ? 'Using pinned location · not GPS'
+                  : 'Using pinned location · not GPS';
+                setDotMessage(msg);
+                if (dotMsgTimerRef.current) clearTimeout(dotMsgTimerRef.current);
+                dotMsgTimerRef.current = setTimeout(() => setDotMessage(null), 2000);
+              }}
               style={{
-                width: 7, height: 7, borderRadius: '50%',
-                backgroundColor:
-                  freshness === 'live' ? '#16a34a' :
-                  freshness === 'stale' ? '#f59e0b' :
-                  '#9ca3af',
-                animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 4, margin: -4, display: 'inline-flex', alignItems: 'center',
                 flexShrink: 0,
               }}
-            />
-            <span
-              suppressHydrationWarning
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  backgroundColor:
+                    freshness === 'live' ? '#16a34a' :
+                    freshness === 'stale' ? '#f59e0b' :
+                    '#9ca3af',
+                  animation: freshness === 'live' ? 'homePulse 1.4s ease-in-out infinite' : 'none',
+                  display: 'block',
+                }}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              aria-label={t('home.address_change', { defaultValue: 'Change address' })}
               style={{
-                fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '4px 0', minWidth: 0, flex: '1 1 auto', textAlign: 'left',
               }}
             >
-              {selectedAddress.label || '＋ Add address'}
-            </span>
-          </button>
+              <span
+                suppressHydrationWarning
+                style={{
+                  display: 'block',
+                  fontFamily: 'Fraunces, serif', fontSize: '0.95rem', color: txtPrimary,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+              >
+                {selectedAddress.label || '＋ Add address'}
+              </span>
+            </button>
+            {dotMessage && (
+              <div
+                role="status"
+                style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.58rem', letterSpacing: '0.12em',
+                  color: MUTED, textTransform: 'uppercase',
+                  animation: 'dotMsgFade 2s ease forwards',
+                  pointerEvents: 'none', whiteSpace: 'nowrap',
+                }}
+              >
+                {dotMessage}
+              </div>
+            )}
+          </div>
 
           {briefing?.updated_at_local && (
             <button
