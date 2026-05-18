@@ -394,6 +394,7 @@ export type Database = {
           monthly_question_count: number
           notification_sensitivity: string | null
           onboarding_completed_at: string | null
+          onesignal_player_id: string | null
           question_count_reset_at: string
           quiet_hours_end: number | null
           quiet_hours_start: number | null
@@ -406,6 +407,7 @@ export type Database = {
           monthly_question_count?: number
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
+          onesignal_player_id?: string | null
           question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
@@ -418,6 +420,7 @@ export type Database = {
           monthly_question_count?: number
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
+          onesignal_player_id?: string | null
           question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
@@ -580,6 +583,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_checked_at: string | null
+          last_notified_at: string | null
           last_refresh_attempt_at: string | null
           last_significant_change_at: string | null
           lat: number | null
@@ -617,6 +621,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_notified_at?: string | null
           last_refresh_attempt_at?: string | null
           last_significant_change_at?: string | null
           lat?: number | null
@@ -654,6 +659,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_checked_at?: string | null
+          last_notified_at?: string | null
           last_refresh_attempt_at?: string | null
           last_significant_change_at?: string | null
           lat?: number | null
