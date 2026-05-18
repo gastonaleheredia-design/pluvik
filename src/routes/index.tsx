@@ -680,7 +680,6 @@ function HomePage() {
     }
     // Increment is now performed in /answer once the answer succeeds.
     // Locally bump for immediate UI/gate consistency.
-    const limitedAnswer = isFree && dailyCount >= 1;
     if (isFree) setDailyCount((c) => c + 1);
     navigate({
       to: '/answer',
@@ -693,7 +692,6 @@ function HomePage() {
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
         intent,
         placeSource: finalPlace ? 'question' : 'active_address',
-        limitedAnswer,
         severe: interceptSevere ? 1 : undefined,
       },
     });
@@ -1726,12 +1724,6 @@ function HomePage() {
         <AuthModal
           onSuccess={() => setShowAuthModal(false)}
           onClose={() => setShowAuthModal(false)}
-        />
-      )}
-      {showCountdown && (
-        <DailyLimitCountdown
-          onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
-          onClose={() => setShowCountdown(false)}
         />
       )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
