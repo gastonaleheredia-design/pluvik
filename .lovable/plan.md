@@ -1,163 +1,62 @@
-## Tracked event screen redesign — `src/routes/event.$id.tsx`
+## What's happening in the screenshot
 
-Rebuild the top of the event detail page (title → location → verdict+pct → sentence → optional change timeline) and remove the ALSO WORTH KNOWING block. Keep all logic, modals, snapshots timeline at the bottom, and action buttons untouched.
+Headline says **HAZY 84°** but the italic sentence says **"Rain right above you — cell 3 mi S."** and the chip says **NEXT RAIN · TUE 5 PM**. The radar in your other app is clear. There are two bugs causing this — one is purely cosmetic (the sentence is stale), the other is a real data-quality issue (a ghost cell got conjured from a forecast model, not real radar).
 
-### Field mapping
-- Title source: `(event as { event_title?: string | null }).event_title ?? event.question`. (`displayQ` lives in the answer route and isn't passed here — `event_title` is the synthesized title on the row; fall back to raw question only when missing.)
-- Location: `event.address`.
-- Verdict word: existing `displayVerdict` (already computed). Display `CAUTION` when value is `MAYBE`, otherwise the value itself.
-- Verdict color/badge bg: existing `colors.bg` / `colors.text`.
-- Percentage: `event.current_percentage`, only when `showPercentage` is true.
-- Verdict sentence: existing `displaySentence`.
-- "Forecast change timeline" source: the `snapshots` state array (this codebase's equivalent of the user-mentioned `journal_entries`). Only render when `snapshots.length > 1`. Take the first 4 in current order.
+## Bug 1 — Sentence builder uses a stale verdict ("legacyWord")
 
-### Edits in `src/routes/event.$id.tsx`
+File: `src/lib/homeBriefing.functions.ts`
 
-**1. Replace the title + address block (lines ~525–546, the non-editing branch)**
+Flow that produced the screenshot:
 
-Keep the `editing ? (...) : (...)` ternary. Inside the non-editing branch, replace the current `<div>{event.question}</div>` with:
+1. ~Line 1011: `probeNearbyCell(lat, lon)` returns a "3 mi S, ≥30 dBZ" candidate.
+2. Lines 1072–1077: that candidate promotes `word = 'RAINING'` because `dbz ≥ 35 && distance ≤ 10`.
+3. Line 1232: `const legacyWord = word;` snapshots `'RAINING'`.
+4. Line 1233: `word = comprehensive;` and then the METAR/HRRR hierarchy (1242–1305) correctly overrides `word` to **`'HAZY'`** because the airport METAR reports `HZ` (haze) and there is no overhead radar return.
+5. Sentence builder at lines 1346–1368 keys off **`legacyWord`** (still `'RAINING'`), so it emits `Rain right above you — cell 3 mi S.` even though the final, displayed verdict is `HAZY`.
 
-```tsx
-<div
-  style={{
-    fontFamily: 'Fraunces, serif',
-    fontSize: '1.3rem',
-    fontWeight: 500,
-    lineHeight: 1.25,
-    color: INK,
-    marginBottom: '6px',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  }}
->
-  {(event as { event_title?: string | null }).event_title ?? event.question}
-</div>
+The headline word is now decoupled from the sentence. Anytime `probeNearbyCell` promotes RAINING/STORMS and then METAR/hierarchy downgrades to HAZY/DENSE FOG/CLOUDY/DRY/CLEAR, the sentence keeps screaming about rain that the displayed verdict has just denied.
+
+**Fix:** in the sentence builder, when `legacyWord` disagrees with the final `word` AND the final `word` is one of the visibility/sky words (`HAZY`, `DENSE FOG`, `CLOUDY`, `DRY`, `CLEAR`, `HOT`, `COLD`, `WINDY`), prefer a sentence built from the final `word` instead. Practically:
+
+- If `word !== legacyWord` and `word` is not in `{STORMS, RAINING, RAIN SOON, SNOW}`, build the sentence from `word` (existing CLOUDY/CLEAR branches already cover most of these — add HAZY → "Hazy air, no rain on radar.", DENSE FOG → "Dense fog — visibility low.").
+- Also: only emit the "Rain right above you — cell X mi Y" branch when the final `word` is `RAINING` (not just `legacyWord === 'RAINING'`). Same for the STORMS "closing in" line — gate on final `word`.
+
+This is the minimum to make the headline and the sentence stop contradicting each other.
+
+## Bug 2 — `probeNearbyCell` is forecast-derived, not radar-derived
+
+File: `src/lib/metDataFetcher.ts` (lines 1417–1498)
+
+Despite its name and the `dbz` field, `probeNearbyCell` does **not** read NEXRAD. It samples Open-Meteo HRRR **forecast** `minutely_15.precipitation` on a 2.5 mi grid and converts mm/hr → synthetic dBZ via Marshall-Palmer:
+
+```
+mmPerHr = max15 * 4 * 25.4
+dbz     = max(15, round(10 * log10(200 * mmPerHr^1.6)))
 ```
 
-Replace the address `<div>` below it with:
+Threshold: any 15-min bucket ≥ 0.02" within 15 mi clears the `dbz ≥ 30` floor, which is exactly enough to trigger the `RAINING` promotion at homeBriefing line 1072. HRRR over the Houston Gulf coast routinely spits out 0.02–0.05" puffs in haze/shallow-moisture regimes that never produce a real radar echo. That's the "3 mi S" cell on your screen — it's a model forecast, not an observation.
 
-```tsx
-<div
-  style={{
-    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-    fontSize: '0.6rem',
-    letterSpacing: '0.14em',
-    textTransform: 'uppercase',
-    color: '#6b6357',
-    marginBottom: '20px',
-  }}
->
-  {event.address}
-</div>
-```
+**Fix (two layers, both small):**
 
-**2. Replace the dark "Current forecast card" (lines ~593–658)**
+1. **Cross-check against the radar/METAR signals we already have.** In `homeBriefing.functions.ts`, the existing hierarchy fetches `fetchOverheadDbz(lat, lon)` and `metarObsEarly`. Move (or duplicate) that overhead/METAR fetch slightly earlier, and before line 1072's `RAINING` promotion, require corroboration:
+   - Promote to `RAINING`/`STORMS` only if **either** `overheadRadar.dbz ≥ 25` **or** the METAR present-weather indicates precip (`RA`, `SHRA`, `TS`, `DZ`, `SN`).
+   - If METAR says `HZ`/`FU`/`BR`/`CLR` and overhead radar is <20 dBZ, drop the promotion and leave `nearbyProbe` available only for the `nearby_cell` payload (lines 1062–1068), not for verdict change.
 
-Drop the dark background card, the amber "current" label, and the giant 3.5rem percentage. Render in its place a flat block:
+2. **Rename/clarify the field.** `dbz` on `NearbyCellProbe` is misleading — it's a synthetic value from a forecast model. Add a `source: 'hrrr_forecast' | 'nexrad'` discriminator (or rename to `syntheticDbz`) so future callers don't repeat the mistake. Optional but worth doing while we're here.
 
-```tsx
-<div style={{ marginBottom: '24px' }}>
-  {/* Verdict badge + percentage on one line */}
-  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-    <span
-      style={{
-        display: 'inline-block',
-        backgroundColor: colors.bg,
-        color: colors.text,
-        padding: '4px 12px',
-        borderRadius: '100px',
-        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-        fontSize: '0.65rem',
-        letterSpacing: '0.14em',
-        fontWeight: 700,
-      }}
-    >
-      {displayVerdict === 'MAYBE' ? 'CAUTION' : displayVerdict}
-    </span>
-    {showPercentage && (
-      <span
-        style={{
-          fontFamily: 'Fraunces, serif',
-          fontSize: '1.05rem',
-          color: INK,
-        }}
-      >
-        {event.current_percentage}%
-      </span>
-    )}
-  </div>
+## Why the chip still says "NEXT RAIN · TUE 5 PM"
 
-  {/* One-line italic verdict sentence with ellipsis */}
-  <div
-    style={{
-      fontFamily: 'Fraunces, serif',
-      fontStyle: 'italic',
-      fontSize: '0.95rem',
-      color: INK,
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      maxWidth: '100%',
-    }}
-  >
-    {displaySentence}
-  </div>
-</div>
-```
+That's a separate code path (`nextRainIdx` in the daily forecast) and is unrelated. It's fine — the daily POP for Tue evening can legitimately be the next rain window even when right now is haze. Not part of this fix.
 
-**3. Insert a compact forecast-change timeline directly below**
+## Files to change
 
-Only when `snapshots.length > 1`:
+- `src/lib/homeBriefing.functions.ts` — sentence builder (lines ~1346–1380); add HAZY/DENSE FOG sentence branches; gate the "Rain right above you" and "closing in" branches on the **final** `word`; gate the `RAINING`/`STORMS` promotion at lines 1072–1090 on METAR/overhead-radar corroboration.
+- `src/lib/metDataFetcher.ts` — optionally add a `source` field to `NearbyCellProbe` and tighten the precip floor (e.g. 0.04" / 15-min, ≈1.5 dBZ higher) to reduce ghost-cell rate.
 
-```tsx
-{snapshots.length > 1 && (
-  <div style={{ marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-    {snapshots.slice(0, 4).map((s) => {
-      const d = new Date(s.created_at).toLocaleDateString(undefined, {
-        month: 'short', day: 'numeric',
-      }).toUpperCase();
-      const word = (s.decision_label ?? '—').toUpperCase();
-      const pct = typeof s.chance_of_impact === 'number' ? `${s.chance_of_impact}%` : '—';
-      return (
-        <div
-          key={s.id}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '90px 1fr 60px',
-            gap: '12px',
-            alignItems: 'baseline',
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.58rem',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            color: MUTED,
-            paddingBottom: '6px',
-            borderBottom: `1px solid ${INK}10`,
-          }}
-        >
-          <span>{d}</span>
-          <span style={{ color: INK }}>{word}</span>
-          <span style={{ color: ACCENT, textAlign: 'right' as const }}>{pct}</span>
-        </div>
-      );
-    })}
-  </div>
-)}
-```
+No DB, no schema, no UI changes. Purely server-function logic.
 
-**4. Delete the ALSO WORTH KNOWING block (lines ~700–771)**
+## Validation plan
 
-Remove the whole IIFE `{(() => { const factorSource = ... })()}` that calls `deriveSecondaryFactors` and renders the factor cards. Leave imports of `deriveSecondaryFactors` / `pickFactorIcon` in place if also used elsewhere; only remove if unused after this change (verify with rg and clean up to avoid TS unused warnings).
-
-### Kept
-- Editing mode (textarea + save/cancel) for the title.
-- Archived banner, radar map, MAYBE explanation card, climate facts, EventTimeline at the bottom, all modals.
-- Action buttons block (REFRESH FORECAST, EDIT QUESTION, MARK COMPLETE, DELETE) — untouched.
-
-### Verification
-- Re-read the edited region to confirm JSX balance.
-- `rg "deriveSecondaryFactors|pickFactorIcon" src/routes/event.\$id.tsx` after edit; if zero remaining usages, remove the imports.
-
+1. Reproduce by calling `getHomeBriefing` against the current Greater Uptown coords and inspecting the returned `verdict_word`, `verdict_sentence`, and `nearby_cell` payload — confirm `word === 'HAZY'` and sentence no longer mentions rain.
+2. Use `stack_modern--server-function-logs` to confirm the new "promotion suppressed by METAR/overhead-radar" debug line fires when haze + ghost forecast cell coincide.
+3. Spot-check a known-rainy location (somewhere with an active NWS rain advisory) to make sure we did not regress the legitimate `RAINING` path.
