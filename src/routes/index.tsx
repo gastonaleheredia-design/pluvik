@@ -1633,12 +1633,6 @@ function HomePage() {
           <button
             type="button"
             aria-label="Dismiss"
-            onClick={() => {
-            }}
-          />
-          <button
-            type="button"
-            aria-label="Dismiss"
             onClick={(e) => {
               e.stopPropagation();
               setStormCardDismissed(true);
