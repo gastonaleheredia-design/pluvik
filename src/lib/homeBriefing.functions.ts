@@ -1354,6 +1354,61 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     // One-line italic summary.
     let sentence: string;
+    // Coherence guard: if the METAR/hierarchy step downgraded the precip
+    // verdict to a visibility/sky word (HAZY, DENSE FOG, FOGGY, CLOUDY,
+    // OVERCAST, CLEAR, SUNNY, etc.), the sentence MUST follow — otherwise
+    // we render "HAZY" with an italic "Rain right above you" beneath it.
+    // We compare the final `word` to `legacyWord` and only let the
+    // precip-flavored legacy branches fire when the final word is also a
+    // precip word.
+    const finalIsPrecip =
+      word === 'RAINING' || word === 'STORMS' || word === 'SNOW' ||
+      word === 'THUNDERSTORMS' || word === 'HEAVY RAIN' || word === 'RAIN' ||
+      word === 'SHOWERS' || word === 'DRIZZLE' || word === 'LIGHT RAIN' ||
+      word === 'FREEZING RAIN' || word === 'HEAVY SNOW' || word === 'SLEET' ||
+      word === 'HAIL' || word === 'FLASH FLOOD' || word === 'BLIZZARD' ||
+      word === 'ICE STORM';
+    const finalIsRainSoon =
+      word === 'RAIN SOON' || word === 'RAIN COMING' || word === 'RAIN POSSIBLE' ||
+      word === 'RAIN LIKELY' || word === 'SHOWERS LIKELY' ||
+      word === 'CHANCE OF RAIN' || word === 'SHOWERS NEARBY';
+    // If the final word disagrees with the legacy word, force the sentence
+    // builder onto a safe legacy branch that matches reality.
+    let effectiveLegacy = legacyWord;
+    if (word === 'HAZY' || word === 'DENSE FOG' || word === 'FOGGY') {
+      // Handled by an explicit branch below — but normalize to CLOUDY so
+      // the fallback path produces a sensible non-precip sentence.
+      effectiveLegacy = 'CLOUDY';
+    } else if (
+      (legacyWord === 'RAINING' || legacyWord === 'STORMS') &&
+      !finalIsPrecip
+    ) {
+      effectiveLegacy = finalIsRainSoon ? 'RAIN SOON'
+        : (word === 'CLOUDY' || word === 'OVERCAST' || word === 'MOSTLY CLOUDY') ? 'CLOUDY'
+        : 'DRY';
+    } else if (legacyWord === 'RAIN SOON' && !finalIsPrecip && !finalIsRainSoon) {
+      effectiveLegacy = (word === 'CLOUDY' || word === 'OVERCAST' || word === 'MOSTLY CLOUDY') ? 'CLOUDY' : 'DRY';
+    }
+    // The "Rain right above you" and "closing in" branches reference
+    // `nearbyProbe` directly — gate them on the final word being a real
+    // precip verdict so a downgraded HAZY/CLOUDY can't render them.
+    const probeForSentence = finalIsPrecip ? nearbyProbe : null;
+
+    // Explicit branch for METAR-driven visibility verdicts so they never
+    // fall through to a stale precip sentence.
+    if (word === 'HAZY') {
+      sentence = language.startsWith('es')
+        ? 'Aire con calima — sin lluvia en el radar.'
+        : 'Hazy air — no rain on radar.';
+    } else if (word === 'DENSE FOG') {
+      sentence = language.startsWith('es')
+        ? 'Niebla densa — visibilidad reducida.'
+        : 'Dense fog — visibility low.';
+    } else if (word === 'FOGGY') {
+      sentence = language.startsWith('es')
+        ? 'Niebla — conduce con precaución.'
+        : 'Foggy — drive with care.';
+    } else
     if (activeAlert) {
       // Short, scannable impact line built from NWS parameters when present.
       const bits: string[] = [];
@@ -1376,49 +1431,49 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
           : 'Storm moving in — tap the alert for details.';
       }
     } else if (language.startsWith('es')) {
-      if (legacyWord === 'STORMS' && stormOverride)
+      if (effectiveLegacy === 'STORMS' && stormOverride)
         sentence = `Tormenta acercándose desde el ${stormOverride.bearing ?? 'oeste'} — ~${stormOverride.eta} min al impacto.`;
-      else if (legacyWord === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
-      else if (legacyWord === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
-      else if (legacyWord === 'SNOW') sentence = 'Está nevando.';
-      else if (legacyWord === 'RAIN SOON') sentence = nextHourProb >= 60
+      else if (effectiveLegacy === 'STORMS') sentence = 'Tormentas eléctricas en el área.';
+      else if (effectiveLegacy === 'RAINING') sentence = 'Está lloviendo ahora mismo.';
+      else if (effectiveLegacy === 'SNOW') sentence = 'Está nevando.';
+      else if (effectiveLegacy === 'RAIN SOON') sentence = nextHourProb >= 60
         ? `Lluvia esperada en aprox. ${hoursUntilRain} h.`
         : `Lluvia posible en aprox. ${hoursUntilRain} h (${nextHourProb}% prob).`;
-      else if (legacyWord === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
-      else if (legacyWord === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
+      else if (effectiveLegacy === 'CLOUDY' && nextRainIdx < 0) sentence = 'Cielo nublado, sin lluvia los próximos 7 días.';
+      else if (effectiveLegacy === 'CLOUDY') sentence = 'Cielo nublado, seco por ahora.';
       else if (nextRainIdx < 0) sentence = 'Despejado por los próximos 7 días.';
       else sentence = 'Despejado por ahora.';
     } else {
-      if (legacyWord === 'STORMS' && stormOverride)
+      if (effectiveLegacy === 'STORMS' && stormOverride)
         sentence = `Storms approaching from the ${stormOverride.bearing ?? 'west'} — ~${stormOverride.eta} min to impact.`;
-      else if (legacyWord === 'STORMS' && nearbyProbe)
-        sentence = `Storm cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser} — closing in.`;
-      else if (legacyWord === 'STORMS') sentence = 'Thunderstorms in the area.';
-      else if (legacyWord === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
-        sentence = `Rain right above you — cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}.`;
-      else if (legacyWord === 'RAINING') sentence = 'Rain falling right now.';
-      else if (legacyWord === 'SNOW') sentence = 'Snow falling.';
-      else if (legacyWord === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+      else if (effectiveLegacy === 'STORMS' && probeForSentence)
+        sentence = `Storm cell ${probeForSentence.distanceMiles} mi ${probeForSentence.bearingFromUser} — closing in.`;
+      else if (effectiveLegacy === 'STORMS') sentence = 'Thunderstorms in the area.';
+      else if (effectiveLegacy === 'RAINING' && probeForSentence && probeForSentence.distanceMiles <= 5)
+        sentence = `Rain right above you — cell ${probeForSentence.distanceMiles} mi ${probeForSentence.bearingFromUser}.`;
+      else if (effectiveLegacy === 'RAINING') sentence = 'Rain falling right now.';
+      else if (effectiveLegacy === 'SNOW') sentence = 'Snow falling.';
+      else if (effectiveLegacy === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
         sentence = nextHourProb >= 60
           ? 'Rain starting within the hour.'
           : `Rain possible within the hour (${nextHourProb}% chance).`;
-      else if (legacyWord === 'RAIN SOON')
+      else if (effectiveLegacy === 'RAIN SOON')
         sentence = nextHourProb >= 60
           ? `Rain expected in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'}.`
           : `Rain possible in about ${hoursUntilRain} hour${hoursUntilRain === 1 ? '' : 's'} (${nextHourProb}% chance).`;
-      else if (legacyWord === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
-      else if (legacyWord === 'CLOUDY') sentence = 'Overcast, dry for now.';
+      else if (effectiveLegacy === 'CLOUDY' && nextRainIdx < 0) sentence = 'Overcast, but dry through the week.';
+      else if (effectiveLegacy === 'CLOUDY') sentence = 'Overcast, dry for now.';
       else if (nextRainIdx < 0) sentence = 'Clear through the next 7 days.';
       else sentence = 'Clear right now.';
     }
 
     // Spanish equivalents for the new branches.
     if (language.startsWith('es') && !activeAlert) {
-      if (legacyWord === 'STORMS' && nearbyProbe && !stormOverride)
-        sentence = `Celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser} — acercándose.`;
-      else if (legacyWord === 'RAINING' && nearbyProbe && nearbyProbe.distanceMiles <= 5)
-        sentence = `Lluvia justo encima — celda ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}.`;
-      else if (legacyWord === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
+      if (effectiveLegacy === 'STORMS' && probeForSentence && !stormOverride)
+        sentence = `Celda ${probeForSentence.distanceMiles} mi al ${probeForSentence.bearingFromUser} — acercándose.`;
+      else if (effectiveLegacy === 'RAINING' && probeForSentence && probeForSentence.distanceMiles <= 5)
+        sentence = `Lluvia justo encima — celda ${probeForSentence.distanceMiles} mi al ${probeForSentence.bearingFromUser}.`;
+      else if (effectiveLegacy === 'RAIN SOON' && (hoursUntilRain ?? 99) <= 0)
         sentence = nextHourProb >= 60
           ? 'Lluvia comenzando en la próxima hora.'
           : `Lluvia posible en la próxima hora (${nextHourProb}% prob).`;
