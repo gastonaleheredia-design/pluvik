@@ -900,21 +900,12 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     let nextRainIdx = -1;
     for (let i = Math.max(nowIdx, 0); i < times.length; i++) {
       const prob = Number.isFinite(probs[i]) ? probs[i] : 0;
-      const mm   = Number.isFinite(precs[i]) ? precs[i] : 0;
-      const code = Number.isFinite(codes[i]) ? codes[i] : 0;
-
-      // Primary: matches the visible hourly grid threshold (>40%) so the
-      // chip and the bars can't disagree.
-      const probSignal = prob > 40;
-
-      // Corroboration: a precip-amount or WMO weather-code signal only
-      // counts as "next rain" when POP is at least borderline (>=30%).
-      // This kills Open-Meteo drizzle codes / 0.1mm puffs at sub-30% POP
-      // that previously drove false-positive chip times.
-      const supportedAmount = mm   >= 0.2 && prob >= 30;
-      const supportedCode   = code >= 51 && code <= 99 && prob >= 30;
-
-      if (probSignal || supportedAmount || supportedCode) { nextRainIdx = i; break; }
+      // Strict match against the visible hourly grid: chip fires on the
+      // first hour whose probability bar would render red (>40%). Any
+      // looser rule (precipitation mm, WMO weather codes) lets Open-Meteo
+      // drizzle/puff signals advertise a rain time the user can't see in
+      // the grid below the chip.
+      if (prob > 40) { nextRainIdx = i; break; }
     }
 
     // Probability of rain in the next ~1 hour at the user's point. Used to
