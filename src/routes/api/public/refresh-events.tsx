@@ -21,6 +21,7 @@ import {
 import type { ForecastStage, WeatherMode } from '@/lib/forecastStage';
 import { getRefreshCadence } from '@/lib/forecastStage';
 import { sendEventNotification } from '@/lib/pushNotifications';
+import { sendSevereWeatherPush } from '@/lib/sendSevereWeatherPush.functions';
 
 // Cap per run to keep the worker responsive.
 const MAX_EVENTS_PER_RUN = 50;
@@ -91,6 +92,7 @@ async function refreshOne(
     confidence?: string;
     verdict_word?: string;
     verdict_sentence?: string;
+    event_title?: string;
     forecast_stage?: ForecastStage;
     mode?: WeatherMode;
     main_threat?: string;
@@ -254,6 +256,79 @@ async function refreshOne(
         eventQuestion: evtRow.question,
         eventAddress: evtRow.address,
       });
+    }
+  }
+
+  // Forecast-change push: compare the just-written verdict/percentage to the
+  // most recent journal entry for this event. Fire a OneSignal push when the
+  // verdict flipped OR the percentage moved by more than 15 points, gated by
+  // a 6-hour cooldown and the user having a OneSignal player ID stored.
+  if (isUsable) {
+    try {
+      const { data: lastJournal } = await supabaseAdmin
+        .from('journal_entries')
+        .select('verdict, percentage')
+        .eq('event_id', event.id)
+        .order('checked_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const prevVerdict = lastJournal?.verdict ?? null;
+      const prevPct = typeof lastJournal?.percentage === 'number' ? lastJournal.percentage : null;
+      const newVerdict = a.verdict ?? null;
+      const newPct = typeof a.percentage === 'number' ? a.percentage : null;
+
+      const verdictChanged =
+        prevVerdict != null && newVerdict != null && prevVerdict !== newVerdict;
+      const pctMoved =
+        prevPct != null && newPct != null && Math.abs(newPct - prevPct) > 15;
+
+      if (verdictChanged || pctMoved) {
+        const { data: ownerRow } = await supabaseAdmin
+          .from('tracked_events')
+          .select('user_id, last_notified_at')
+          .eq('id', event.id)
+          .maybeSingle();
+
+        const cooldownOk =
+          !ownerRow?.last_notified_at ||
+          Date.now() - new Date(ownerRow.last_notified_at).getTime() >= 6 * 3_600_000;
+
+        if (ownerRow?.user_id && cooldownOk) {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('onesignal_player_id')
+            .eq('id', ownerRow.user_id)
+            .maybeSingle();
+
+          const playerId = (profile as { onesignal_player_id?: string | null } | null)
+            ?.onesignal_player_id ?? null;
+
+          if (playerId) {
+            const title = (a.event_title ?? '').trim() || event.question;
+            const body = `Forecast updated — now ${a.verdict_word ?? newVerdict ?? '—'}. ${a.verdict_sentence ?? ''}`.trim();
+            try {
+              await sendSevereWeatherPush({
+                data: {
+                  title: title.slice(0, 255),
+                  body: body.slice(0, 2000),
+                  userId: ownerRow.user_id,
+                  url: `/event/${event.id}`,
+                  data: { eventId: event.id, kind: 'forecast_change' },
+                },
+              });
+              await supabaseAdmin
+                .from('tracked_events')
+                .update({ last_notified_at: nowIso })
+                .eq('id', event.id);
+            } catch (err) {
+              console.warn('[refresh-events] forecast-change push failed', (err as Error).message);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[refresh-events] forecast-change comparison failed', (err as Error).message);
     }
   }
 
