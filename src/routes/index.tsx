@@ -599,13 +599,9 @@ function HomePage() {
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
-    // Free-tier daily gate. Pro users (and admin emails, mapped to
-    // tier='pro' in auth) bypass entirely.
+    // Daily limit removed — all users get unlimited questions.
+    // The Pro gate now lives in handleSaveTrack on the answer screen.
     const isFree = user && tier !== 'pro';
-    if (isFree && dailyCount >= FREE_DAILY_LIMIT) {
-      setShowCountdown(true);
-      return;
-    }
     // Severe-weather intercept: if a Warning is active at the user's
     // location AND the question is one of the well-known emergency
     // queries, skip the standard pipeline entirely and route the answer
