@@ -1057,6 +1057,42 @@ export const askWeather = createServerFn({ method: 'POST' })
       }
     }
 
+    // ── NWS rain probability verification ────────────────────────────────
+    // Sanity-check the LLM's impact_percent against the raw NWS PoP for the
+    // forecast hour closest to the event. If they disagree by more than 20
+    // points, trust the deterministic NWS number and note the adjustment.
+    try {
+      const popLines = (briefing.hourlyForecast ?? '')
+        .split('\n')
+        .filter((l) => /POP:\d/.test(l));
+      if (popLines.length > 0 && typeof hoursAhead === 'number') {
+        const idx = Math.max(0, Math.min(popLines.length - 1, Math.round(hoursAhead)));
+        const popMatch = popLines[idx].match(/POP:(\d+)%/);
+        const nwsPop = popMatch ? parseInt(popMatch[1], 10) : null;
+        const llmPct = (validated.data as any).impact_percent;
+        if (
+          nwsPop != null &&
+          typeof llmPct === 'number' &&
+          Number.isFinite(llmPct) &&
+          Math.abs(llmPct - nwsPop) > 20
+        ) {
+          (validated.data as any).impact_percent = nwsPop;
+          const prevReason = String((validated.data as any).confidence_reason ?? '').trim();
+          const note = 'Rain probability adjusted to match forecast data.';
+          (validated.data as any).confidence_reason = prevReason
+            ? `${prevReason} ${note}`
+            : note;
+          console.log('[askWeather:diag] PoP verification adjusted', {
+            llmPct,
+            nwsPop,
+            hoursAhead,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[askWeather] PoP verification failed:', (err as Error)?.message);
+    }
+
     return {
       ...validated.data,
       mode,
