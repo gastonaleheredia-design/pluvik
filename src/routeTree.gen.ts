@@ -28,6 +28,7 @@ import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as AlertIdRouteImport } from './routes/alert.$id'
 import { Route as ApiPublicSweepEventsRouteImport } from './routes/api/public/sweep-events'
 import { Route as ApiPublicRefreshEventsRouteImport } from './routes/api/public/refresh-events'
+import { Route as ApiPublicMorningBriefingRouteImport } from './routes/api/public/morning-briefing'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 
 const TermsRoute = TermsRouteImport.update({
@@ -125,6 +126,12 @@ const ApiPublicRefreshEventsRoute = ApiPublicRefreshEventsRouteImport.update({
   path: '/api/public/refresh-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicMorningBriefingRoute =
+  ApiPublicMorningBriefingRouteImport.update({
+    id: '/api/public/morning-briefing',
+    path: '/api/public/morning-briefing',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -150,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/profile/$username': typeof ProfileUsernameRoute
+  '/api/public/morning-briefing': typeof ApiPublicMorningBriefingRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -172,6 +180,7 @@ export interface FileRoutesByTo {
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/profile/$username': typeof ProfileUsernameRoute
+  '/api/public/morning-briefing': typeof ApiPublicMorningBriefingRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -195,6 +204,7 @@ export interface FileRoutesById {
   '/checkout/return': typeof CheckoutReturnRoute
   '/event/$id': typeof EventIdRoute
   '/profile/$username': typeof ProfileUsernameRoute
+  '/api/public/morning-briefing': typeof ApiPublicMorningBriefingRoute
   '/api/public/refresh-events': typeof ApiPublicRefreshEventsRoute
   '/api/public/sweep-events': typeof ApiPublicSweepEventsRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/checkout/return'
     | '/event/$id'
     | '/profile/$username'
+    | '/api/public/morning-briefing'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -241,6 +252,7 @@ export interface FileRouteTypes {
     | '/checkout/return'
     | '/event/$id'
     | '/profile/$username'
+    | '/api/public/morning-briefing'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -263,6 +275,7 @@ export interface FileRouteTypes {
     | '/checkout/return'
     | '/event/$id'
     | '/profile/$username'
+    | '/api/public/morning-briefing'
     | '/api/public/refresh-events'
     | '/api/public/sweep-events'
     | '/api/public/payments/webhook'
@@ -284,6 +297,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   AlertIdRoute: typeof AlertIdRoute
   EventIdRoute: typeof EventIdRoute
+  ApiPublicMorningBriefingRoute: typeof ApiPublicMorningBriefingRoute
   ApiPublicRefreshEventsRoute: typeof ApiPublicRefreshEventsRoute
   ApiPublicSweepEventsRoute: typeof ApiPublicSweepEventsRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
@@ -424,6 +438,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicRefreshEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/morning-briefing': {
+      id: '/api/public/morning-briefing'
+      path: '/api/public/morning-briefing'
+      fullPath: '/api/public/morning-briefing'
+      preLoaderRoute: typeof ApiPublicMorningBriefingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -473,6 +494,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   AlertIdRoute: AlertIdRoute,
   EventIdRoute: EventIdRoute,
+  ApiPublicMorningBriefingRoute: ApiPublicMorningBriefingRoute,
   ApiPublicRefreshEventsRoute: ApiPublicRefreshEventsRoute,
   ApiPublicSweepEventsRoute: ApiPublicSweepEventsRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
@@ -480,3 +502,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
