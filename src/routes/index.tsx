@@ -1193,6 +1193,44 @@ function HomePage() {
         )}
 
         {/* ─── ZONE B ─ Hero (word + temperature + sentence) ───────── */}
+        {briefingFetchedAt !== null && Date.now() - briefingFetchedAt > 30 * 60 * 1000 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedAddress.lat == null || selectedAddress.lon == null) return;
+              const reqLat = selectedAddress.lat;
+              const reqLon = selectedAddress.lon;
+              setBriefingLoading(true);
+              getHomeBriefing({ data: { lat: reqLat, lon: reqLon, language: i18n.language } })
+                .then((b) => {
+                  if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
+                  setBriefing(sanitizeBriefing(b));
+                  setBriefingFetchedAt(Date.now());
+                  setBriefingLoading(false);
+                })
+                .catch(() => setBriefingLoading(false));
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              marginBottom: 8,
+              borderRadius: 8,
+              background: 'rgba(186,117,23,0.10)',
+              border: '0.5px solid rgba(186,117,23,0.25)',
+              fontSize: 12,
+              color: '#854F0B',
+              cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            }}
+          >
+            <span>⚠</span>
+            <span>
+              Weather last updated at {briefing?.updated_at_local ?? '—'} — tap to refresh
+            </span>
+          </button>
+        )}
         {briefingLoading ? (
           <div
             style={{
