@@ -751,7 +751,7 @@ function AnswerPage() {
   // answer. Resets the counter when last_question_date is not today.
   useEffect(() => {
     if (status !== 'success') return;
-    if (!user) return;
+    if (!user || authLoading) return;
     let cancelled = false;
     (async () => {
       const today = new Date().toISOString().slice(0, 10);
