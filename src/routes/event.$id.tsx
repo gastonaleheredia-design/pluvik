@@ -185,12 +185,32 @@ function EventPage() {
     try {
       // Recompute hoursAhead from event_at so the stage classifier picks
       // the right maturity (e.g. an outlook may have matured into a forecast).
-      const hoursAhead = event.event_at
-        ? Math.max(
-            0,
-            (new Date(event.event_at).getTime() - Date.now()) / 3_600_000,
-          )
-        : undefined;
+      // getTime() returns UTC milliseconds since epoch, so this comparison
+      // is timezone-safe regardless of the user's local TZ.
+      let hoursAhead: number | undefined;
+      if (event.event_at) {
+        const eventMs = new Date(event.event_at).getTime();
+        const nowMs = Date.now();
+        let diffHours = (eventMs - nowMs) / 3_600_000;
+        if (diffHours < 1) {
+          console.warn(
+            `[refresh] WARNING: hoursAhead is ${diffHours} — event may be in the past or timezone is wrong`,
+          );
+          // Roll forward by whole days to the next occurrence of the stored
+          // event time so the stage classifier still gets a forward-looking
+          // horizon instead of clamping to 0.
+          let rolled = eventMs;
+          while ((rolled - nowMs) / 3_600_000 < 1) {
+            rolled += 24 * 3_600_000;
+          }
+          diffHours = (rolled - nowMs) / 3_600_000;
+        }
+        hoursAhead = Math.max(0, diffHours);
+      }
+
+      console.log(
+        `[refresh] question=${event.question}, lat=${event.lat}, lon=${event.lon}, event_at=${event.event_at}, hoursAhead=${hoursAhead}, now=${new Date().toISOString()}`,
+      );
 
       const result = await askWeather({
         data: {
