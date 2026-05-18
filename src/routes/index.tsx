@@ -876,6 +876,9 @@ function HomePage() {
   const isDarkMode = !!warning;
   const txtPrimary = isDarkMode ? severeWhite : INK;
   const txtMuted = isDarkMode ? severeWhite : MUTED;
+  const stormCardText = isDarkMode ? 'rgba(255,255,255,0.88)' : INK;
+  const stormCardAction = isDarkMode ? '#ff8a65' : ACCENT;
+  const stormCardBorder = isDarkMode ? '#ff8a65' : ACCENT;
   const chipBorder = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
 
   return (
@@ -1178,12 +1181,13 @@ function HomePage() {
                 position: 'relative',
                 width: '100%',
                 maxWidth: '100%',
+                paddingRight: typeof briefing.temp_f === 'number' ? '70px' : 0,
+                boxSizing: 'border-box',
               }}
             >
               <AutoFitText
                 maxFontPx={112}
                 minFontPx={32}
-                reservePx={typeof briefing.temp_f === 'number' ? 88 : 0}
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
@@ -1203,11 +1207,14 @@ function HomePage() {
                     right: 0,
                     fontFamily: 'Fraunces, serif',
                     fontWeight: 400,
-                    fontSize: 'clamp(1.2rem, 5vw, 2rem)',
+                    fontSize: 'clamp(1.05rem, 4.5vw, 1.65rem)',
                     lineHeight: 1,
                     color: txtMuted,
-                    marginTop: '0.4em',
+                    marginTop: '0.2em',
                     letterSpacing: '-0.01em',
+                    width: '62px',
+                    textAlign: 'right',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {briefing.temp_f}°
@@ -1584,7 +1591,7 @@ function HomePage() {
           style={{
             margin: '0 20px 14px',
             padding: '6px 0 6px 12px',
-            borderLeft: '2px solid #c2410c',
+            borderLeft: `2px solid ${stormCardBorder}`,
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
@@ -1597,7 +1604,7 @@ function HomePage() {
                 fontFamily: '"Fraunces", serif',
                 fontStyle: 'italic',
                 fontSize: '0.9rem',
-                color: txtPrimary,
+                color: stormCardText,
                 margin: 0,
                 lineHeight: 1.35,
               }}
@@ -1616,7 +1623,7 @@ function HomePage() {
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
                 background: 'transparent',
-                color: '#c2410c',
+                color: stormCardAction,
                 border: 'none',
                 padding: 0,
                 cursor: 'pointer',
@@ -1637,7 +1644,7 @@ function HomePage() {
               border: 'none',
               fontSize: '14px',
               lineHeight: 1,
-              color: txtMuted,
+              color: isDarkMode ? 'rgba(255,255,255,0.7)' : txtMuted,
               cursor: 'pointer',
               padding: 2,
               flexShrink: 0,
