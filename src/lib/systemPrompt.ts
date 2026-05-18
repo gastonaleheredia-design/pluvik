@@ -90,6 +90,8 @@ Return ONLY valid JSON matching this schema:
   "verdict": "GO" | "CAUTION" | "NO-GO",
   "verdict_word": "YES" | "NO" | "MAYBE",
   "verdict_sentence": "ONE short, direct sentence (max 12 words) that answers the user's question.",
+  "question_type": "decision" | "measurement" | "timing" | "severe" — classify the question. Use 'decision' for should-I questions, 'measurement' for how-hot/how-much/how-strong questions, 'timing' for when-will-it questions, 'severe' for safety and emergency questions. Default to 'decision' if unclear.,
+  "atmo_layers": [{ "level": "UPPER" | "MID" | "SURFACE", "desc": "plain English, no jargon, one sentence max" }, ...] — always return exactly 3 layers describing what the atmosphere is doing at each level in plain language the user can understand. No meteorological acronyms.,
   "impact_percent": 0-100,
   "summary": "2–3 sentences. Plain English. Specific to their plan.",
   "event_title": "[Activity] · [Location] · [Date/Time] — max 40 chars",

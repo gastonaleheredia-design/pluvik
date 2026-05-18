@@ -187,6 +187,10 @@ interface WeatherRequest {
 export interface ExtendedWeatherAnswer {
   mode: 'regular' | 'severe' | 'hurricane';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
+  /** Classification of the user's question shape. */
+  question_type?: 'decision' | 'measurement' | 'timing' | 'comparison' | 'severe';
+  /** Plain-English description of what each atmospheric layer is doing. */
+  atmo_layers?: Array<{ level: 'UPPER' | 'MID' | 'SURFACE'; desc: string }>;
   /** Forecast maturity at the time this answer was produced. */
   forecast_stage?: 'climate' | 'outlook' | 'model_trend' | 'short_range' | 'live';
   decision_label?: string;
