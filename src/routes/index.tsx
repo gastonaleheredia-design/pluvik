@@ -1597,7 +1597,7 @@ function HomePage() {
                 fontFamily: '"Fraunces", serif',
                 fontStyle: 'italic',
                 fontSize: '0.9rem',
-                color: '#0b1018',
+                color: txtPrimary,
                 margin: 0,
                 lineHeight: 1.35,
               }}
@@ -1637,7 +1637,7 @@ function HomePage() {
               border: 'none',
               fontSize: '14px',
               lineHeight: 1,
-              color: '#6b6b6b',
+              color: txtMuted,
               cursor: 'pointer',
               padding: 2,
               flexShrink: 0,
