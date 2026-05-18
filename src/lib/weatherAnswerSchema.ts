@@ -245,7 +245,14 @@ function normalizeRawAnswer(raw: unknown): unknown {
     r.maybe_explanation = null;
   } else if (me && typeof me === 'object') {
     const jargon = /\b(CAPE|CIN|LI|TPW|dBZ|hodograph|shear|MUCAPE|MLCAPE|SBCAPE|0[-–]6\s?km|bulk shear)\b/gi;
-    const clean = (v: unknown): string => typeof v === 'string' ? v.replace(jargon, '').replace(/\s+/g, ' ').trim() : '';
+    // A string has meaningful content if it contains at least 2 consecutive
+    // word characters after stripping jargon and collapsing whitespace.
+    const hasContent = (s: string): boolean => /\w{2,}/.test(s);
+    const clean = (v: unknown): string => {
+      if (typeof v !== 'string') return '';
+      const stripped = v.replace(jargon, '').replace(/\s+/g, ' ').trim();
+      return hasContent(stripped) ? stripped : '';
+    };
     const a = clean(me.afd_quote);
     const b = clean(me.model_reconciliation);
     const c = clean(me.why_uncertain);
