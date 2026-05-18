@@ -292,6 +292,13 @@ function SettingsPage() {
   const [coCreating, setCoCreating] = useState(false);
   const [coError, setCoError] = useState<string | null>(null);
 
+  // API keys state (Pro only)
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
   const isPro = tier === 'pro';
   const isBusiness = tier === 'business';
 
