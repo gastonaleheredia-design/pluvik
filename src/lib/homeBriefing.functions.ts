@@ -1069,12 +1069,57 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
 
     // A close, intense cell IS the story — promote the verdict regardless of
     // what the smoothed hourly point forecast says.
-    if (nearbyProbe && (nearbyProbe.dbz ?? 0) >= 35 && nearbyProbe.distanceMiles <= 10) {
+    //
+    // GHOST-CELL GUARD: `probeNearbyCell` derives `dbz` from HRRR *forecast*
+    // 15-min precip, not real NEXRAD. In haze/shallow-moisture regimes the
+    // model routinely conjures 0.02-0.05" puffs that never show on radar.
+    // Before promoting to RAINING/STORMS, require corroboration from a
+    // real observation: a fresh METAR with precip present-weather, OR an
+    // active NWS alert (already handled above via stormOverride/activeAlert).
+    // METAR clear/haze/fog/mist (CLR-equivalent, HZ, FU, BR, FG) blocks the
+    // promotion entirely so the displayed verdict stays consistent with the
+    // METAR/hierarchy step that runs later.
+    const metarHasPrecip = !!metarFresh && metarFresh.presentWeather.some((c) =>
+      ['RA', 'DZ', 'TS', 'SN', 'SG', 'PL', 'GR', 'GS',
+       'FZDZ', 'FZRA', 'TSRA', 'SHRA'].includes(c),
+    );
+    const metarBlocksPrecip = !!metarFresh
+      && metarFresh.presentWeather.length > 0
+      && !metarHasPrecip
+      && metarFresh.presentWeather.every((c) => ['HZ', 'FU', 'BR', 'FG', 'DU', 'SA'].includes(c));
+    // A METAR with NO present-weather group also implies no precip at the
+    // station — treat as a soft block when the station is close (<25 mi).
+    const metarImpliesDry = !!metarFresh
+      && metarFresh.presentWeather.length === 0
+      && metarFresh.distanceMi <= 25;
+
+    if (
+      nearbyProbe &&
+      (nearbyProbe.dbz ?? 0) >= 35 &&
+      nearbyProbe.distanceMiles <= 10 &&
+      !metarBlocksPrecip &&
+      // For close-overhead cells (≤5 mi) the METAR must actively confirm
+      // precip, otherwise it's almost certainly a model ghost cell.
+      (metarHasPrecip || (!metarImpliesDry && nearbyProbe.distanceMiles > 5))
+    ) {
       word = (nearbyProbe.dbz ?? 0) >= 50 ? 'STORMS' : 'RAINING';
       reasonCode = 'nearby_strong_cell';
       reasonDetail = isEs
         ? `Celda de ${nearbyProbe.dbz} dBZ a ${nearbyProbe.distanceMiles} mi al ${nearbyProbe.bearingFromUser}`
         : `${nearbyProbe.dbz} dBZ cell ${nearbyProbe.distanceMiles} mi ${nearbyProbe.bearingFromUser}`;
+    } else if (
+      nearbyProbe &&
+      (nearbyProbe.dbz ?? 0) >= 35 &&
+      nearbyProbe.distanceMiles <= 10 &&
+      (metarBlocksPrecip || (metarImpliesDry && nearbyProbe.distanceMiles <= 5))
+    ) {
+      // Suppressed — log so we can audit the guard in production.
+      console.info('[homeBriefing] nearbyProbe promotion suppressed by METAR', {
+        probeDbz: nearbyProbe.dbz,
+        probeDistMi: nearbyProbe.distanceMiles,
+        metarWx: metarFresh?.presentWeather,
+        metarDistMi: metarFresh?.distanceMi,
+      });
     } else if (
       nearbyProbe &&
       nearbyProbe.distanceMiles <= 25 &&
