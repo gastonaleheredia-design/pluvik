@@ -707,7 +707,7 @@ function AnswerPage() {
   // 'writing'   — composing the final answer
   type LoadingStep = 'warnings' | 'radar' | 'writing';
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('warnings');
-  const { user, tier } = useAuth();
+  const { user, tier, loading: authLoading } = useAuth();
   const { address: selectedAddress } = useAddress();
   const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -751,7 +751,7 @@ function AnswerPage() {
   // answer. Resets the counter when last_question_date is not today.
   useEffect(() => {
     if (status !== 'success') return;
-    if (!user) return;
+    if (!user || authLoading) return;
     let cancelled = false;
     (async () => {
       const today = new Date().toISOString().slice(0, 10);
@@ -777,13 +777,17 @@ function AnswerPage() {
         .eq('id', user.id);
     })();
     return () => { cancelled = true; };
-  }, [status, user]);
+  }, [status, user, authLoading]);
 
   useEffect(() => {
     if (!question || !address) {
       navigate({ to: '/' });
       return;
     }
+    // Wait for Supabase session to hydrate before calling auth-protected
+    // server functions — otherwise the bearer token is missing and the
+    // middleware rejects the request with 401 on cold loads.
+    if (authLoading) return;
 
     let cancelled = false;
 
@@ -916,7 +920,7 @@ function AnswerPage() {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading]);
 
   // Auto-refresh severe context every 60s while a warning is active.
   // Detects expiry/cancellation and (if opted-in) fires a "cleared" push.
