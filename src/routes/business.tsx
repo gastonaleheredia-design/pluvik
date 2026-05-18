@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { BottomNav } from '../components/BottomNav';
@@ -168,19 +168,7 @@ function BusinessPage() {
   }
 
   if (!business) {
-    return (
-      <div style={styles.page}>
-        <p style={styles.screenLabel}>TEAM</p>
-        <h1 style={styles.title}>No business account</h1>
-        <p style={styles.subText}>
-          Create a business account from Settings to share tracked forecasts with your team.
-        </p>
-        <Link to="/settings" style={{ ...styles.primaryBtn, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
-          Open Settings
-        </Link>
-        <BottomNav />
-      </div>
-    );
+    return <BusinessSetup userId={user.id} />;
   }
 
   const now = Date.now();
@@ -420,6 +408,115 @@ function InviteSheet(props: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const INDUSTRY_OPTIONS = [
+  'Construction',
+  'Car Wash',
+  'Events & Concerts',
+  'Landscaping',
+  'Roofing',
+  'Other',
+] as const;
+
+function BusinessSetup({ userId }: { userId: string }) {
+  const [name, setName] = useState('');
+  const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) { setError('Business name is required.'); return; }
+    if (trimmed.length > 120) { setError('Business name is too long.'); return; }
+    if (!INDUSTRY_OPTIONS.includes(industry as typeof INDUSTRY_OPTIONS[number])) {
+      setError('Pick a valid industry.'); return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const { error: insertErr } = await supabase.from('business_profiles').insert({
+      owner_user_id: userId,
+      business_name: trimmed,
+      industry,
+    });
+    if (insertErr) {
+      setSubmitting(false);
+      setError(insertErr.message);
+      return;
+    }
+    if (typeof window !== 'undefined') window.location.reload();
+  };
+
+  const inputStyle: CSSProperties = {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: 12,
+    border: `1px solid ${BORDER}`,
+    background: PAPER,
+    color: INK,
+    fontFamily: 'inherit',
+    fontSize: '0.95rem',
+    outline: 'none',
+  };
+  const labelStyle: CSSProperties = {
+    fontFamily: MONO,
+    fontSize: '0.6rem',
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase',
+    color: MUTED,
+    margin: '0 0 6px',
+    display: 'block',
+  };
+
+  return (
+    <div style={styles.page}>
+      <p style={styles.screenLabel}>TEAM</p>
+      <h1 style={styles.title}>Set up your business</h1>
+      <p style={{ ...styles.subText, marginBottom: 24 }}>
+        Create a business account to share tracked forecasts with your team.
+      </p>
+      <form onSubmit={onSubmit} style={{ ...styles.card, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label htmlFor="biz-name" style={labelStyle}>Business name</label>
+          <input
+            id="biz-name"
+            type="text"
+            value={name}
+            maxLength={120}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme Roofing"
+            style={inputStyle}
+            autoFocus
+          />
+        </div>
+        <div>
+          <label htmlFor="biz-industry" style={labelStyle}>Industry</label>
+          <select
+            id="biz-industry"
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            style={inputStyle}
+          >
+            {INDUSTRY_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+        {error && (
+          <p style={{ ...styles.metaLine, color: BAD, marginTop: 0 }}>{error}</p>
+        )}
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{ ...styles.primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }}
+        >
+          {submitting ? 'Creating…' : 'Create business'}
+        </button>
+      </form>
+      <BottomNav />
     </div>
   );
 }
