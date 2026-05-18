@@ -17,15 +17,26 @@ function ResetPasswordPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    // Supabase parses the recovery hash and emits a PASSWORD_RECOVERY event.
+    // ONLY enable the form when Supabase emits PASSWORD_RECOVERY after
+    // parsing a valid recovery hash. A plain SIGNED_IN event or an
+    // existing session is NOT sufficient — that would let any logged-in
+    // user change their password without a reset token.
+    const timeout = setTimeout(() => {
+      setError(
+        'This password reset link is invalid or has already been used. Please request a new one.'
+      );
+    }, 5000);
     const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
+      if (event === 'PASSWORD_RECOVERY') {
+        clearTimeout(timeout);
+        setError('');
+        setReady(true);
+      }
     });
-    // Also try existing session in case hash already consumed.
-    supabase.auth.getSession().then(({ data: s }) => {
-      if (s.session) setReady(true);
-    });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      data.subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const handleUpdate = async () => {
