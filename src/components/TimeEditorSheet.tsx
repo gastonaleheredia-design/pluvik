@@ -140,9 +140,10 @@ export function TimeEditorSheet({ initial, onClose, onSave }: Props) {
             let e: Date | undefined;
             if (hasEnd) {
               const ed = new Date(endVal);
-              if (!Number.isNaN(ed.getTime())) e = ed;
+              if (!Number.isNaN(ed.getTime()) && ed.getTime() > s.getTime()) e = ed;
             }
-            onSave({ start: s, end: e });
+            const range: TimeRange = e ? { start: s, end: e } : { start: s };
+            onSave(range);
             onClose();
           }} style={{
             flex: 1, padding: '12px 14px', borderRadius: 100,
