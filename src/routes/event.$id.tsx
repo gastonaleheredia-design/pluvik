@@ -11,7 +11,7 @@ import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { isRainYesNoQuestion, pickHeadlineWord } from '../lib/headlineAnswer';
 import { getRefreshCadence, type WeatherMode } from '../lib/forecastStage';
 import { synthesizeEventTitle } from '../lib/synthesizeEventTitle';
-import { Users, Share2, Check } from 'lucide-react';
+import { Share2, Check, MoreVertical, Pencil, Trash2, RotateCw, CheckCircle2 } from 'lucide-react';
 
 interface TrackedEvent {
   id: string;
