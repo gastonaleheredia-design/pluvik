@@ -1176,10 +1176,6 @@ function HomePage() {
             <div
               style={{
                 position: 'relative',
-                display: 'inline-flex',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-                gap: 14,
                 width: '100%',
                 maxWidth: '100%',
               }}
@@ -1187,7 +1183,7 @@ function HomePage() {
               <AutoFitText
                 maxFontPx={112}
                 minFontPx={32}
-                reservePx={typeof briefing.temp_f === 'number' ? 80 : 0}
+                reservePx={typeof briefing.temp_f === 'number' ? 88 : 0}
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
@@ -1202,6 +1198,9 @@ function HomePage() {
                 <div
                   aria-label={`${briefing.temp_f} degrees Fahrenheit`}
                   style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
                     fontFamily: 'Fraunces, serif',
                     fontWeight: 400,
                     fontSize: 'clamp(1.2rem, 5vw, 2rem)',
@@ -1598,7 +1597,7 @@ function HomePage() {
                 fontFamily: '"Fraunces", serif',
                 fontStyle: 'italic',
                 fontSize: '0.9rem',
-                color: '#0b1018',
+                color: txtPrimary,
                 margin: 0,
                 lineHeight: 1.35,
               }}
@@ -1638,7 +1637,7 @@ function HomePage() {
               border: 'none',
               fontSize: '14px',
               lineHeight: 1,
-              color: '#6b6b6b',
+              color: txtMuted,
               cursor: 'pointer',
               padding: 2,
               flexShrink: 0,
