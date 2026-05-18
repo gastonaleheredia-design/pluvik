@@ -1140,7 +1140,7 @@ function AnswerPage() {
         loading={severeLoading && !severeAnswer}
         answer={severeAnswer}
         activeAlert={activeAlert}
-        question={question}
+        question={displayQuestion}
         placeLabel={resolvedAddress || address}
         lastUpdatedAt={severeLastUpdated}
         notifyEnabled={notifyOnClear}
@@ -2194,7 +2194,7 @@ function AnswerPage() {
           <CreateGroupEventSheet
             open={showCreateGroup}
             onClose={() => setShowCreateGroup(false)}
-            question={question}
+            question={displayQuestion}
             address={resolvedAddress}
             lat={coords?.lat ?? null}
             lon={coords?.lon ?? null}
@@ -2217,7 +2217,7 @@ function AnswerPage() {
       {answer.mode === 'severe' ? (
         <SevereAnswerScreen
           answer={answer}
-          question={question}
+          question={displayQuestion}
           address={address}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
@@ -2228,7 +2228,7 @@ function AnswerPage() {
       ) : answer.mode === 'hurricane' ? (
         <HurricaneAnswerScreen
           answer={answer}
-          question={question}
+          question={displayQuestion}
           address={address}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
