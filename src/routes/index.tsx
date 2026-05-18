@@ -293,6 +293,49 @@ function HomePage() {
     }
   }, []);
 
+  // Proactive storm-pattern card: when the briefing shows a developing
+  // storm pattern AND the user has no tracked events in the next 48h.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (sessionStorage.getItem('stormCardDismissed') === '1') {
+        setStormCardDismissed(true);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!briefing) { setStormCardEligible(false); return; }
+    const cell = briefing.nearby_cell;
+    const cellMatch = !!cell
+      && typeof cell.distance_mi === 'number'
+      && cell.distance_mi < 50
+      && (cell.motion === 'approaching' || cell.motion === 'drifting_toward');
+    const wordMatch = briefing.word === 'STORMS'
+      || briefing.word === 'RAIN LIKELY'
+      || briefing.word === 'CHANCE OF RAIN'
+      || briefing.word === 'THUNDERSTORMS';
+    if (!cellMatch && !wordMatch) { setStormCardEligible(false); return; }
+
+    if (!user) { setStormCardEligible(true); return; }
+    let cancelled = false;
+    (async () => {
+      const now = new Date().toISOString();
+      const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('tracked_events')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .gte('event_at', now)
+        .lte('event_at', in48h)
+        .limit(1);
+      if (cancelled) return;
+      setStormCardEligible(!data || data.length === 0);
+    })();
+    return () => { cancelled = true; };
+  }, [briefing, user]);
+
   // Auto-focus the question input when arriving with ?focus=1
   // (e.g. from the "Plan a group event" prompt on the Profile screen).
   useEffect(() => {
