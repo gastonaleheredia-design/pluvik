@@ -113,10 +113,11 @@ function parseTimeRange(q: string): { start: { hour: number; minute: number }; e
 }
 
 function fuzzyWindow(label: string): { start: number; end: number } | null {
-  if (/morning/.test(label)) return { start: 8, end: 11 };
-  if (/afternoon/.test(label)) return { start: 12, end: 17 };
-  if (/evening/.test(label)) return { start: 17, end: 21 };
-  if (/night/.test(label)) return { start: 20, end: 23 };
+  if (/morning/.test(label)) return { start: 8, end: 10 };
+  if (/(midday|noon|midday\/noon)/.test(label)) return { start: 12, end: 13 };
+  if (/afternoon/.test(label)) return { start: 14, end: 16 };
+  if (/evening/.test(label)) return { start: 18, end: 20 };
+  if (/night/.test(label)) return { start: 20, end: 22 };
   return null;
 }
 
@@ -165,7 +166,7 @@ export function extractEventTimeFromQuestion(
   if (/\btonight\b|\bthis evening\b/.test(q)) {
     const d = new Date(now);
     if (range) return applyRangeToDate(d, range, now, 'tonight');
-    if (!time) return buildFuzzy(d, { start: 19, end: 22 }, now, 'tonight');
+    if (!time) return buildFuzzy(d, { start: 20, end: 22 }, now, 'tonight');
     return build(d, time, 20, now, 'tonight');
   }
   if (/\btomorrow\b/.test(q)) {
@@ -270,6 +271,12 @@ export function extractEventTimeFromQuestion(
     if (wk[1]?.toLowerCase() === 'next' && delta < 7) delta += 7;
     const d = new Date(now);
     d.setDate(d.getDate() + delta);
+    // "Tuesday night", "Friday morning", etc.
+    const wkFz = q.match(/\b(?:sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\s+(morning|midday|noon|afternoon|evening|night)\b/);
+    if (wkFz) {
+      const fz = fuzzyWindow(wkFz[1])!;
+      return buildFuzzy(d, fz, now, `${wk[0]} ${wkFz[1]}`);
+    }
     return build(d, time, 12, now, wk[0]);
   }
 
