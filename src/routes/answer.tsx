@@ -1831,56 +1831,16 @@ function AnswerPage() {
             fontFamily: 'Inter, sans-serif',
           }}
         >
-          {/* top row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-            <button
-              onClick={() => navigate({ to: '/' })}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED,
-              }}
-            >
-              ← {t('answer.back', { defaultValue: 'BACK' })}
-            </button>
-            <span
-              style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
-              }}
-            >
-              {topicTag}
-            </span>
-          </div>
-
-          {/* context line */}
-          <div
-            style={{
-              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED, marginBottom: '24px',
-            }}
-          >
-            {contextLine}
-            <span style={{ marginLeft: 10, color: ACCENT }}>
-              · {windowDisplayLabel}
-            </span>
-          </div>
-
-          {/* big verdict word — sized by stage */}
+          {/* Zone 1 — verdict word */}
           {displayVerdictWord && (
             <div
               style={{
                 fontFamily: 'Fraunces, serif',
                 fontWeight: 400,
-                fontSize: isClimate
-                  ? 'clamp(2.2rem, 9vw, 3.4rem)'
-                  : isModelTrend
-                  ? 'clamp(3rem, 14vw, 5rem)'
-                  : 'clamp(3rem, 18vw, 8rem)',
+                fontSize: 'clamp(3rem, 14vw, 6rem)',
                 lineHeight: 0.95,
                 letterSpacing: '-0.03em',
-                marginBottom: '20px',
-                color: isClimate ? MUTED : INK,
+                color: '#0b1018',
                 maxWidth: '100%',
                 overflowWrap: 'break-word',
                 wordBreak: 'break-word',
@@ -1890,7 +1850,22 @@ function AnswerPage() {
             </div>
           )}
 
-          {/* timing-state indicator: ACTIVE pulses amber, PASSED is gray, UPCOMING shows nothing */}
+          {/* Zone 1 — sentence (4px gap) */}
+          <div
+            style={{
+              marginTop: 4,
+              fontFamily: 'Fraunces, serif',
+              fontStyle: 'italic',
+              fontSize: '1.05rem',
+              lineHeight: 1.4,
+              color: '#0b1018',
+              maxWidth: 340,
+            }}
+          >
+            {isClimate ? climateBody : verdictSentence}
+          </div>
+
+          {/* timing-state indicator: ACTIVE pulses amber, PASSED is gray */}
           {timingState === 'ACTIVE' && (
             <div
               style={{
@@ -1898,8 +1873,7 @@ function AnswerPage() {
                 fontSize: '0.7rem',
                 letterSpacing: '0.14em',
                 color: '#f59e0b',
-                marginTop: '-8px',
-                marginBottom: '20px',
+                marginTop: 16,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -1926,201 +1900,90 @@ function AnswerPage() {
                 fontSize: '0.7rem',
                 letterSpacing: '0.14em',
                 color: MUTED,
-                marginTop: '-8px',
-                marginBottom: '20px',
+                marginTop: 16,
               }}
             >
               ✓ STORM HAS PASSED · CONDITIONS CLEARING
             </div>
           )}
 
-          {/* sentence */}
-          <div style={verdictSentenceStyle}>
-            {isClimate ? climateBody : verdictSentence}
-          </div>
-
-          {/* ── Per-day breakdown for multi-day events ─────────────────── */}
-          {(() => {
-            const start = (() => {
-              if (eventAtIso) { const t = new Date(eventAtIso); if (Number.isFinite(t.getTime())) return t; }
-              const ev = extractEventTimeFromQuestion(question);
-              return ev?.eventAt ?? null;
-            })();
-            const end = (() => {
-              if (eventEndIso) { const t = new Date(eventEndIso); if (Number.isFinite(t.getTime())) return t; }
-              const ev = extractEventTimeFromQuestion(question);
-              return ev?.endAt ?? null;
-            })();
-            if (!start || !end) return null;
-            const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-            const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-            const dayMs = 24 * 3600 * 1000;
-            const nDays = Math.round((endDay.getTime() - startDay.getTime()) / dayMs) + 1;
-            if (nDays < 2 || nDays > 7) return null;
-            const pct = typeof answer.percentage === 'number' ? answer.percentage : null;
-            const verdictLabel = (displayVerdictWord ?? verdictWord ?? '').toString().toUpperCase();
-            return (
-              <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '420px' }}>
-                {Array.from({ length: nDays }, (_, i) => {
-                  const d = new Date(startDay.getTime() + i * dayMs);
-                  const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '10px 0', borderBottom: `1px solid rgba(11,16,24,0.06)`,
-                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.7rem', letterSpacing: '0.12em', color: INK,
-                    }}>
-                      <span style={{ color: MUTED }}>{label}</span>
-                      <span>{verdictLabel}</span>
-                      <span style={{ color: ACCENT }}>{pct != null ? `${pct}%` : '—'}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* ── ALSO WORTH KNOWING — secondary risk factors ─────────── */}
+          {/* Zone 2 — single supporting line */}
           {(() => {
             const factors = (answer as { secondary_factors?: Array<{ factor: string; note: string }> }).secondary_factors;
-            if (!Array.isArray(factors) || factors.length === 0) return null;
-            const pickIcon = (f: string): string => {
-              const s = f.toLowerCase();
-              if (/lightning|storm|thunder/.test(s)) return '🌩';
-              if (/uv|sun|sunburn/.test(s)) return '☀️';
-              if (/fog|visib/.test(s)) return '🌫';
-              if (/wind|gust/.test(s)) return '🌬';
-              if (/humid|dew|moist/.test(s)) return '💧';
-              if (/heat|temp|cold|chill/.test(s)) return '🌡';
-              return '•';
-            };
+            const first = Array.isArray(factors) && factors.length > 0 ? (factors[0].note || factors[0].factor) : null;
+            const currentState = (answer as { current_state?: string | null }).current_state ?? null;
+            const body = first ?? currentState;
+            if (!body) return null;
             return (
-              <div style={{ marginTop: '32px', marginBottom: '24px', maxWidth: '520px' }}>
-                <div style={{
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
-                  marginBottom: '14px',
-                }}>
-                  ALSO WORTH KNOWING
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {factors.slice(0, 4).map((f, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'flex', alignItems: 'flex-start', gap: '12px',
-                        padding: '12px 14px',
-                        backgroundColor: 'rgba(11,16,24,0.03)',
-                        borderRadius: '8px',
-                      }}
-                    >
-                      <span style={{ fontSize: '1.1rem', lineHeight: 1.2, flexShrink: 0 }}>
-                        {pickIcon(f.factor)}
-                      </span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                        <span style={{
-                          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                          fontSize: '0.6rem', letterSpacing: '0.14em',
-                          color: MUTED, textTransform: 'uppercase',
-                        }}>
-                          {f.factor}
-                        </span>
-                        <span style={{
-                          fontFamily: 'Fraunces, serif',
-                          fontSize: '0.95rem', lineHeight: 1.4, color: INK,
-                        }}>
-                          {f.note}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <p
+                style={{
+                  marginTop: 40,
+                  marginBottom: 0,
+                  fontFamily: 'Fraunces, serif',
+                  fontStyle: 'italic',
+                  fontSize: '0.92rem',
+                  lineHeight: 1.6,
+                  color: '#6b6357',
+                  maxWidth: 340,
+                }}
+              >
+                {body}
+              </p>
             );
           })()}
 
           <div style={{ flex: 1 }} />
 
-          {/* Primary CTA: Track this forecast. Secondary: Why? / + Group Event */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Zone 3 — pinned action row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, paddingTop: 24,
+          }}>
+            {isClimate ? (
+              <span style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+              }}>
+                NO FORECAST YET
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowWhy(true)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontSize: '0.9rem', color: '#c2410c', textDecoration: 'none',
+                }}
+              >
+                Why? →
+              </button>
+            )}
             <button
               onClick={handleSaveTrack}
               disabled={saving}
               style={{
-                background: '#c2410c',
-                color: '#faf7f0',
-                border: 'none',
-                borderRadius: 12,
-                padding: 14,
-                width: '100%',
+                background: 'none', border: 'none', padding: 0,
                 cursor: saving ? 'default' : 'pointer',
-                fontFamily: 'Inter, system-ui, sans-serif',
-                fontWeight: 600,
-                fontSize: '1rem',
-                opacity: saving ? 0.7 : 1,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+                opacity: saving ? 0.6 : 1,
               }}
             >
-              {saving ? '…' : (saveCtaLabel || 'Track this forecast')}
+              {saving ? '…' : 'SAVE & TRACK'}
             </button>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              gap: 12, flexWrap: 'wrap' as const,
-            }}>
-              {isClimate ? (
-                <span style={{ fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
-                  NO FORECAST YET
-                </span>
-              ) : (
-                <button
-                  onClick={() => setShowWhy(true)}
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '0.85rem', color: ACCENT, textDecoration: 'underline',
-                  }}
-                >
-                  {t('answer.why', { defaultValue: 'Why?' })}
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (user) setShowCreateGroup(true);
-                  else setShowAuthModal(true);
-                }}
-                style={{
-                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontFamily: 'Inter, system-ui, sans-serif',
-                  fontSize: '0.85rem', color: MUTED, textDecoration: 'underline',
-                }}
-              >
-                + Group Event
-              </button>
-              {feedbackSent ? (
-                <span
-                  style={{
-                    fontFamily: 'Fraunces, Georgia, serif',
-                    fontStyle: 'italic',
-                    fontSize: '0.85rem',
-                    color: MUTED,
-                  }}
-                >
-                  Thanks — we'll use this to improve.
-                </span>
-              ) : (
-                <button
-                  onClick={handleThumbsDown}
-                  aria-label="Mark this answer as wrong"
-                  title="This forecast seems wrong"
-                  style={{
-                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: '0.95rem', color: MUTED, lineHeight: 1,
-                  }}
-                >
-                  👎
-                </button>
-              )}
-            </div>
+            <button
+              onClick={() => {
+                if (user) setShowCreateGroup(true);
+                else setShowAuthModal(true);
+              }}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+              }}
+            >
+              + GROUP
+            </button>
           </div>
         </div>
         {showAuthModal && (
