@@ -159,6 +159,27 @@ export function CreateGroupEventSheet({
     setSaving(true);
     setError(null);
     try {
+      // Confirm the Supabase JS client has a live session right now —
+      // useAuth() can briefly hand us a user object before the bearer
+      // token is hydrated, which makes the insert hit RLS as `anon` and
+      // fail with "new row violates row-level security policy".
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUserId = sessionData.session?.user?.id ?? null;
+      if (!sessionUserId) {
+        console.warn('[group-event] no live supabase session at insert time', {
+          contextUserId: user.id,
+        });
+        setError('Your session expired — please sign in again to create this event.');
+        return;
+      }
+      if (sessionUserId !== user.id) {
+        console.warn('[group-event] session/user mismatch', {
+          contextUserId: user.id,
+          sessionUserId,
+        });
+      }
+      const creatorId = sessionUserId;
+
       // Resolve any free-typed comma-separated tokens to user_profiles
       // (anything not already in selectedInvitees). Emails can't be resolved
       // client-side without admin access, so they are silently skipped.
@@ -174,7 +195,7 @@ export function CreateGroupEventSheet({
       }
       const allInviteesMap = new Map<string, Suggestion>();
       [...selectedInvitees, ...resolved].forEach((s) => {
-        if (s.id !== user.id) allInviteesMap.set(s.id, s);
+        if (s.id !== creatorId) allInviteesMap.set(s.id, s);
       });
       const invitees = Array.from(allInviteesMap.values());
 
@@ -187,7 +208,7 @@ export function CreateGroupEventSheet({
       const { data: ev, error: evErr } = await supabase
         .from('weather_events')
         .insert({
-          creator_id: user.id,
+          creator_id: creatorId,
           title: title.trim(),
           question,
           location_label: address,
@@ -206,11 +227,18 @@ export function CreateGroupEventSheet({
         .select('id')
         .single();
 
-      if (evErr || !ev) throw evErr || new Error('Could not create event');
+      if (evErr || !ev) {
+        console.error('[group-event] insert failed', {
+          evErr,
+          creatorId,
+          hasSession: !!sessionUserId,
+        });
+        throw evErr || new Error('Could not create event');
+      }
 
       // creator as host
       await supabase.from('event_participants').insert({
-        event_id: ev.id, user_id: user.id, role: 'host',
+        event_id: ev.id, user_id: creatorId, role: 'host',
       });
 
       if (invitees.length) {

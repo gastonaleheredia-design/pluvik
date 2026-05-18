@@ -1160,6 +1160,37 @@ function AnswerPage() {
   }
 
   if (status === 'loading') {
+    // Mirror the eventual answer layout so the page does not jump when the
+    // verdict resolves: same header, same context strip, same vertical
+    // anchors. The verdict slot is a soft shimmer; the question + steps
+    // sit where the verdict sentence + explanation will render.
+    const loadingPlace = detectedPlace ?? resolvedAddress ?? address;
+    const loadingContextLine = (() => {
+      const parts = (loadingPlace || '').split(',').map((p) => p.trim()).filter(Boolean);
+      const deduped = parts.filter((p, i) =>
+        i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase(),
+      );
+      return deduped.slice(0, 2).join(', ').toUpperCase();
+    })();
+    const loadingHoursAhead: number | null = (() => {
+      let startMs: number | null = null;
+      if (eventAtIso) {
+        const t = new Date(eventAtIso).getTime();
+        if (Number.isFinite(t)) startMs = t;
+      }
+      if (startMs == null) {
+        const ev = extractEventTimeFromQuestion(question);
+        if (ev) startMs = ev.eventAt.getTime();
+      }
+      if (startMs == null) return null;
+      return Math.max(0, (startMs - Date.now()) / 3_600_000);
+    })();
+    const loadingWindowLabel =
+      loadingHoursAhead == null ? 'CHECKING' :
+      loadingHoursAhead <= 1 ? 'RIGHT NOW' :
+      loadingHoursAhead <= 12 ? 'NEXT 12 HOURS' :
+      loadingHoursAhead <= 24 ? 'TOMORROW' : 'UPCOMING';
+
     return (
       <div
         style={{
@@ -1168,77 +1199,114 @@ function AnswerPage() {
           color: INK,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
+          padding: '52px 28px 32px',
           fontFamily: 'Inter, sans-serif',
         }}
       >
-        {/* Echoed question — keeps the user grounded in what they asked */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+          <button
+            onClick={() => navigate({ to: '/' })}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.65rem', letterSpacing: '0.18em', color: MUTED,
+            }}
+          >
+            ← {t('answer.back', { defaultValue: 'BACK' })}
+          </button>
+          <span
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+            }}
+          >
+            …
+          </span>
+        </div>
+
         <div
           style={{
-            fontSize: '1.15rem',
-            fontWeight: 400,
-            fontStyle: 'italic',
-            color: '#9ca3af',
-            textAlign: 'center',
-            maxWidth: '420px',
-            marginBottom: '10px',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED, marginBottom: '24px',
           }}
         >
-          &ldquo;{question}&rdquo;
-        </div>
-        <div style={{ fontSize: '0.8rem', color: MUTED, letterSpacing: '0.04em', marginBottom: 36 }}>
-          {t('answer.for_location')} {detectedPlace ?? resolvedAddress}
-          {(detectedPlace || resolvedAddress !== address) && (
-            <div style={{ marginTop: 6, fontSize: '0.7rem', color: ACCENT, letterSpacing: '0.1em' }}>
+          {loadingContextLine || '…'}
+          <span style={{ marginLeft: 10, color: ACCENT }}>· {loadingWindowLabel}</span>
+          {(detectedPlace || (resolvedAddress && resolvedAddress !== address)) && (
+            <div style={{ marginTop: 6, fontSize: '0.55rem', color: ACCENT, letterSpacing: '0.18em' }}>
               ↳ FROM YOUR QUESTION
             </div>
           )}
         </div>
 
-        {/* Progressive 3-step status. Each completed step gets a check,
-            the active step animates, and pending steps stay muted. */}
+        <div
+          aria-hidden
+          style={{
+            height: 'clamp(3rem, 18vw, 8rem)',
+            width: '62%',
+            maxWidth: 320,
+            marginBottom: '20px',
+            borderRadius: '10px',
+            background: 'linear-gradient(90deg, #efe9da 0%, #f6f1e3 50%, #efe9da 100%)',
+            backgroundSize: '200% 100%',
+            animation: 'verdictShimmer 1.6s ease-in-out infinite',
+          }}
+        />
+
+        <p
+          style={{
+            fontFamily: 'Fraunces, serif',
+            fontStyle: 'italic',
+            fontSize: '1.05rem',
+            lineHeight: 1.4,
+            color: MUTED,
+            margin: '0 0 28px 0',
+            maxWidth: '36ch',
+          }}
+        >
+          &ldquo;{question}&rdquo;
+        </p>
+
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
-            minWidth: 240,
+            gap: 6,
             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.72rem',
-            letterSpacing: '0.08em',
+            fontSize: '0.62rem',
+            letterSpacing: '0.14em',
             textTransform: 'uppercase',
           }}
         >
           {loadingSteps.map((step, idx) => {
-            const activeIdx = loadingSteps.findIndex(s => s.key === loadingStep);
+            const activeIdx = loadingSteps.findIndex((s) => s.key === loadingStep);
             const state: 'done' | 'active' | 'pending' =
               idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : 'pending';
             const color =
-              state === 'done'   ? '#16a34a' :
+              state === 'done'   ? MUTED :
               state === 'active' ? ACCENT : '#cbc3b3';
             return (
-              <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 12, color }}>
-                <div
+              <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 10, color }}>
+                <span
                   style={{
-                    width: 10,
-                    height: 10,
+                    width: 6,
+                    height: 6,
                     borderRadius: '50%',
                     backgroundColor: state === 'pending' ? 'transparent' : color,
-                    border: state === 'pending' ? `1.5px solid ${color}` : 'none',
+                    border: state === 'pending' ? `1px solid ${color}` : 'none',
                     flexShrink: 0,
                     animation: state === 'active' ? 'stepPulse 1.2s ease-in-out infinite' : 'none',
                   }}
                 />
-                <span style={{ opacity: state === 'pending' ? 0.6 : 1 }}>
-                  {state === 'done' ? `✓ ${step.label}` : step.label}
-                  {state === 'active' && '…'}
-                </span>
+                <span style={{ flex: 1 }}>{step.label}{state === 'active' ? '…' : ''}</span>
+                {state === 'done' && <span>✓</span>}
               </div>
             );
           })}
-          <style>{`@keyframes stepPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.25)}}`}</style>
+          <style>{`
+            @keyframes stepPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.25)}}
+            @keyframes verdictShimmer {0%{background-position:200% 0}100%{background-position:-200% 0}}
+          `}</style>
         </div>
       </div>
     );
