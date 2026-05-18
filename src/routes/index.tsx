@@ -1176,51 +1176,62 @@ function HomePage() {
             </>
           ) : (
           <>
-            <div
-              style={{
-                position: 'relative',
-                width: '100%',
-                maxWidth: '100%',
-                paddingRight: typeof briefing.temp_f === 'number' ? '70px' : 0,
-                boxSizing: 'border-box',
-              }}
-            >
-              <AutoFitText
-                maxFontPx={112}
-                minFontPx={32}
-                style={{
-                  fontFamily: 'Fraunces, serif',
-                  fontWeight: 400,
-                  lineHeight: 0.95,
-                  letterSpacing: '-0.02em',
-                  textAlign: 'center',
-                }}
-              >
-                {briefing.word}
-              </AutoFitText>
-              {typeof briefing.temp_f === 'number' && (
+            {(() => {
+              const wordLength = (briefing.word ?? '').length;
+              const wordFontSize =
+                wordLength <= 4 ? 'clamp(3rem, 16vw, 6rem)'
+                : wordLength <= 6 ? 'clamp(2.5rem, 13vw, 5rem)'
+                : wordLength <= 9 ? 'clamp(2rem, 10vw, 4rem)'
+                : wordLength <= 13 ? 'clamp(1.6rem, 8vw, 3.2rem)'
+                : 'clamp(1.3rem, 6vw, 2.6rem)';
+              return (
                 <div
-                  aria-label={`${briefing.temp_f} degrees Fahrenheit`}
                   style={{
-                    position: 'absolute',
-                    top: 0,
-                    right: 0,
-                    fontFamily: 'Fraunces, serif',
-                    fontWeight: 400,
-                    fontSize: 'clamp(1.05rem, 4.5vw, 1.65rem)',
-                    lineHeight: 1,
-                    color: txtMuted,
-                    marginTop: '0.2em',
-                    letterSpacing: '-0.01em',
-                    width: '62px',
-                    textAlign: 'right',
-                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    width: '100%',
+                    maxWidth: '100%',
+                    boxSizing: 'border-box',
                   }}
                 >
-                  {briefing.temp_f}°
+                  <div
+                    style={{
+                      fontFamily: 'Fraunces, serif',
+                      fontWeight: 400,
+                      fontSize: wordFontSize,
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                    }}
+                  >
+                    {briefing.word}
+                  </div>
+                  {typeof briefing.temp_f === 'number' && (
+                    <div
+                      aria-label={`${briefing.temp_f} degrees Fahrenheit`}
+                      style={{
+                        flexShrink: 0,
+                        fontFamily: 'Fraunces, serif',
+                        fontWeight: 400,
+                        fontSize: 'clamp(1.05rem, 4.5vw, 1.65rem)',
+                        lineHeight: 1,
+                        color: txtMuted,
+                        letterSpacing: '-0.01em',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {briefing.temp_f}°
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
             <div
               style={{
                 marginTop: '20px',
