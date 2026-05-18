@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
 import { BottomNav } from '../components/BottomNav';
+import { AutoFitText } from '../components/AutoFitText';
 import { useAddress } from '../lib/addressContext';
 import { AddressPicker } from '../components/AddressPicker';
 import { getHomeBriefing, getAlertSeverity, type HomeBriefing, type AlertSeverity } from '../lib/homeBriefing.functions';
