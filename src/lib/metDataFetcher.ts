@@ -2112,13 +2112,23 @@ async function fetchSPCOutlook(lat?: number, lon?: number): Promise<string> {
 // contains the user's state, so an OK user never sees a Florida MD.
 async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<string> {
   if (!isUSLocation(lat, lon)) return NWS_OUT_OF_COVERAGE_NOTE;
+
+  const cacheKey = `${lat.toFixed(0)},${lon.toFixed(0)}`;
+  const cached = MD_CACHE.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.value;
+
+  const cache = (value: string): string => {
+    MD_CACHE.set(cacheKey, { value, expires: Date.now() + MD_CACHE_TTL_MS });
+    return value;
+  };
+
   try {
     // 1. Resolve the user's state via NWS points (free, fast, cached).
     let userState: string | null = null;
     try {
       const ptRes = await fetch(
         `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-        { headers: NWS }
+        { headers: NWS, signal: AbortSignal.timeout(5000) }
       );
       if (ptRes.ok) {
         const pt = await ptRes.json();
@@ -2127,19 +2137,25 @@ async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<strin
     } catch { /* ignore */ }
 
     // 2. Pull the active MD index.
-    const res = await fetch('https://www.spc.noaa.gov/products/md/', { headers: UA });
-    if (!res.ok) return '';
+    const res = await fetch('https://www.spc.noaa.gov/products/md/', {
+      headers: UA,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return cache('');
     const html = await res.text();
     const mdNums = Array.from(new Set(
       Array.from(html.matchAll(/md(\d{4})\.html/g)).map(m => m[1])
     )).slice(0, 8);
-    if (mdNums.length === 0) return 'SPC MESOSCALE DISCUSSIONS: None active.';
+    if (mdNums.length === 0) return cache('SPC MESOSCALE DISCUSSIONS: None active.');
 
     // 3. Fetch each MD and keep ones that match the user's state.
     const matches: { num: string; text: string }[] = [];
     for (const num of mdNums) {
       try {
-        const r = await fetch(`https://www.spc.noaa.gov/products/md/md${num}.txt`, { headers: UA });
+        const r = await fetch(`https://www.spc.noaa.gov/products/md/md${num}.txt`, {
+          headers: UA,
+          signal: AbortSignal.timeout(5000),
+        });
         if (!r.ok) continue;
         const text = await r.text();
         if (!userState) {
@@ -2159,11 +2175,11 @@ async function fetchMesoscaleDiscussion(lat: number, lon: number): Promise<strin
     }
 
     if (matches.length === 0) {
-      return `SPC MESOSCALE DISCUSSIONS: ${mdNums.length} active nationwide, none currently affect ${userState ?? 'this area'}.`;
+      return cache(`SPC MESOSCALE DISCUSSIONS: ${mdNums.length} active nationwide, none currently affect ${userState ?? 'this area'}.`);
     }
-    return matches.map(m =>
+    return cache(matches.map(m =>
       `SPC MESOSCALE DISCUSSION #${m.num} (matches ${userState}):\n${m.text.slice(0, 1500)}`
-    ).join('\n\n');
+    ).join('\n\n'));
   } catch {
     return '';
   }
