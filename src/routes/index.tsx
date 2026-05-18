@@ -1181,12 +1181,13 @@ function HomePage() {
                 position: 'relative',
                 width: '100%',
                 maxWidth: '100%',
+                paddingRight: typeof briefing.temp_f === 'number' ? '70px' : 0,
+                boxSizing: 'border-box',
               }}
             >
               <AutoFitText
                 maxFontPx={112}
                 minFontPx={32}
-                reservePx={typeof briefing.temp_f === 'number' ? 88 : 0}
                 style={{
                   fontFamily: 'Fraunces, serif',
                   fontWeight: 400,
@@ -1206,11 +1207,14 @@ function HomePage() {
                     right: 0,
                     fontFamily: 'Fraunces, serif',
                     fontWeight: 400,
-                    fontSize: 'clamp(1.2rem, 5vw, 2rem)',
+                    fontSize: 'clamp(1.05rem, 4.5vw, 1.65rem)',
                     lineHeight: 1,
                     color: txtMuted,
-                    marginTop: '0.4em',
+                    marginTop: '0.2em',
                     letterSpacing: '-0.01em',
+                    width: '62px',
+                    textAlign: 'right',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {briefing.temp_f}°
