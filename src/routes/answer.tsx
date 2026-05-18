@@ -1059,6 +1059,24 @@ function AnswerPage() {
     }
   };
 
+  const handleThumbsDown = async () => {
+    if (feedbackSent || !answer) return;
+    setFeedbackSent(true);
+    try {
+      await supabase.from('answer_feedback').insert({
+        event_question: question ?? null,
+        address: resolvedAddress ?? null,
+        verdict: (answer.verdict as string) ?? null,
+        percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
+        lat: coords?.lat ?? null,
+        lon: coords?.lon ?? null,
+        feedback: 'wrong',
+      });
+    } catch (err) {
+      console.warn('[answer] feedback insert failed', err);
+    }
+  };
+
   // ── SEVERE INTERCEPT ──────────────────────────
   // Emergency-mode red screen with live countdown, auto-refresh, and an
   // opt-in "notify when it clears" toggle. Renders whenever the warning
