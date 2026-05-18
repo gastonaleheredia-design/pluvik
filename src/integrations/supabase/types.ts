@@ -872,6 +872,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_reset_final_snapshot: {
+        Args: { p_event_id: string }
+        Returns: undefined
+      }
       get_team_tracked_events: {
         Args: never
         Returns: {
