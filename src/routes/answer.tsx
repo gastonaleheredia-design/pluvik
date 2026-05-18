@@ -1836,11 +1836,15 @@ function AnswerPage() {
             <div
               style={{
                 fontFamily: 'Fraunces, serif',
-                fontWeight: 400,
-                fontSize: 'clamp(3rem, 14vw, 6rem)',
+                fontWeight: 700,
+                fontSize: 'clamp(2.8rem, 14vw, 5rem)',
                 lineHeight: 0.95,
                 letterSpacing: '-0.03em',
-                color: '#0b1018',
+                color:
+                  answer.verdict === 'GO' ? '#15803d'
+                  : answer.verdict === 'CAUTION' ? '#b45309'
+                  : answer.verdict === 'NO-GO' ? '#dc2626'
+                  : '#6b6357',
                 maxWidth: '100%',
                 overflowWrap: 'break-word',
                 wordBreak: 'break-word',
@@ -1856,10 +1860,10 @@ function AnswerPage() {
               marginTop: 4,
               fontFamily: 'Fraunces, serif',
               fontStyle: 'italic',
-              fontSize: '1.05rem',
+              fontSize: '1rem',
               lineHeight: 1.4,
               color: '#0b1018',
-              maxWidth: 340,
+              maxWidth: 320,
             }}
           >
             {isClimate ? climateBody : verdictSentence}
@@ -1907,22 +1911,170 @@ function AnswerPage() {
             </div>
           )}
 
-          {/* Zone 2 — single supporting line */}
+          {/* Zone 2 — key data card */}
+          {(() => {
+            const a = answer as {
+              question_type?: 'decision' | 'measurement' | 'timing' | 'comparison' | 'severe';
+              timeline?: Array<{ hour_label: string; headline: string; severity?: 'ok' | 'watch' | 'bad' }> | null;
+              event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
+              current_state?: string | null;
+            };
+            const qType = a.question_type;
+            const timeline = Array.isArray(a.timeline) ? a.timeline.slice(0, 5) : [];
+            const ew = a.event_window;
+            const hn = headlineForStage ?? (
+              typeof answer.percentage === 'number'
+                ? { value: `${answer.percentage}%`, label: (answer.main_concern ?? 'IMPACT').toUpperCase() }
+                : null
+            );
+            const useTimeline = (qType === 'timing' || timeline.length > 0) && timeline.length > 0;
+            const useWindow = !useTimeline && ew && (ew.before || ew.during || ew.after);
+            const dotColor = (s?: 'ok' | 'watch' | 'bad') =>
+              s === 'bad' ? '#dc2626' : s === 'watch' ? '#f59e0b' : '#22c55e';
+
+            return (
+              <div
+                style={{
+                  marginTop: 32,
+                  backgroundColor: '#0b1018',
+                  borderRadius: 18,
+                  padding: 18,
+                  color: '#ffffff',
+                }}
+              >
+                {hn && (
+                  <>
+                    <div
+                      style={{
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.48rem',
+                        letterSpacing: '0.2em',
+                        color: 'rgba(255,255,255,0.55)',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {hn.label}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontWeight: 700,
+                        fontSize: '2.8rem',
+                        lineHeight: 1.05,
+                        color: '#ffffff',
+                        marginTop: 2,
+                      }}
+                    >
+                      {hn.value}
+                    </div>
+                  </>
+                )}
+
+                {useTimeline && (
+                  <div style={{ marginTop: hn ? 18 : 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {timeline.map((row, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            backgroundColor: dotColor(row.severity),
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                            fontSize: '0.6rem',
+                            letterSpacing: '0.14em',
+                            color: 'rgba(255,255,255,0.65)',
+                            minWidth: 56,
+                          }}
+                        >
+                          {row.hour_label}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: '0.85rem',
+                            color: '#ffffff',
+                          }}
+                        >
+                          {row.headline}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {useWindow && ew && (
+                  <div style={{ marginTop: hn ? 18 : 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {(['before', 'during', 'after'] as const).map((k) => {
+                      const text = ew[k];
+                      if (!text) return null;
+                      return (
+                        <div key={k}>
+                          <div
+                            style={{
+                              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                              fontSize: '0.44rem',
+                              letterSpacing: '0.22em',
+                              color: 'rgba(255,255,255,0.5)',
+                              textTransform: 'uppercase',
+                              marginBottom: 2,
+                            }}
+                          >
+                            {k}
+                          </div>
+                          <div
+                            style={{
+                              fontFamily: 'Fraunces, serif',
+                              fontSize: '0.82rem',
+                              lineHeight: 1.4,
+                              color: '#ffffff',
+                            }}
+                          >
+                            {text}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!useTimeline && !useWindow && a.current_state && (
+                  <div
+                    style={{
+                      marginTop: hn ? 18 : 0,
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: '0.88rem',
+                      lineHeight: 1.5,
+                      color: 'rgba(255,255,255,0.9)',
+                    }}
+                  >
+                    {a.current_state}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Zone 3 — secondary insight */}
           {(() => {
             const factors = (answer as { secondary_factors?: Array<{ factor: string; note: string }> }).secondary_factors;
             const first = Array.isArray(factors) && factors.length > 0 ? (factors[0].note || factors[0].factor) : null;
-            const currentState = (answer as { current_state?: string | null }).current_state ?? null;
-            const body = first ?? currentState;
+            const decisionWin = (answer as { decision_window?: string | null }).decision_window ?? null;
+            const body = first ?? decisionWin;
             if (!body) return null;
             return (
               <p
                 style={{
-                  marginTop: 40,
+                  marginTop: 20,
                   marginBottom: 0,
                   fontFamily: 'Fraunces, serif',
                   fontStyle: 'italic',
-                  fontSize: '0.92rem',
-                  lineHeight: 1.6,
+                  fontSize: '0.88rem',
+                  lineHeight: 1.55,
                   color: '#6b6357',
                   maxWidth: 340,
                 }}
@@ -1932,17 +2084,18 @@ function AnswerPage() {
             );
           })()}
 
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, minHeight: 24 }} />
 
-          {/* Zone 3 — pinned action row */}
+          {/* Zone 4 — pinned action row */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, paddingTop: 24,
+            gap: 16, paddingTop: 18, paddingBottom: 28,
+            borderTop: '1px solid rgba(11,16,24,0.08)',
           }}>
             {isClimate ? (
               <span style={{
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
               }}>
                 NO FORECAST YET
               </span>
@@ -1951,11 +2104,12 @@ function AnswerPage() {
                 onClick={() => setShowWhy(true)}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  fontFamily: 'Inter, system-ui, sans-serif',
-                  fontSize: '0.9rem', color: '#c2410c', textDecoration: 'none',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.6rem', letterSpacing: '0.18em', color: '#c2410c',
+                  textTransform: 'uppercase', fontWeight: 600,
                 }}
               >
-                Why? →
+                WHY? →
               </button>
             )}
             <button
@@ -1965,7 +2119,7 @@ function AnswerPage() {
                 background: 'none', border: 'none', padding: 0,
                 cursor: saving ? 'default' : 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
                 opacity: saving ? 0.6 : 1,
               }}
             >
@@ -1979,7 +2133,7 @@ function AnswerPage() {
               style={{
                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem', letterSpacing: '0.18em', color: MUTED,
+                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
               }}
             >
               + GROUP
