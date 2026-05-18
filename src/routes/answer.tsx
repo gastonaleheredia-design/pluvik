@@ -707,7 +707,7 @@ function AnswerPage() {
   // 'writing'   — composing the final answer
   type LoadingStep = 'warnings' | 'radar' | 'writing';
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('warnings');
-  const { user, tier } = useAuth();
+  const { user, tier, loading: authLoading } = useAuth();
   const { address: selectedAddress } = useAddress();
   const { tempUnit, windUnit, timeFormat } = usePreferences();
   const [showAuthModal, setShowAuthModal] = useState(false);
