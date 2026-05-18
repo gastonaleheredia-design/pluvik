@@ -607,6 +607,7 @@ export type Database = {
           current_verdict_word: string | null
           event_at: string | null
           event_phrase: string | null
+          event_title: string | null
           final_forecast_sentence: string | null
           final_forecast_stage: string | null
           final_forecast_verdict: string | null
@@ -645,6 +646,7 @@ export type Database = {
           current_verdict_word?: string | null
           event_at?: string | null
           event_phrase?: string | null
+          event_title?: string | null
           final_forecast_sentence?: string | null
           final_forecast_stage?: string | null
           final_forecast_verdict?: string | null
@@ -683,6 +685,7 @@ export type Database = {
           current_verdict_word?: string | null
           event_at?: string | null
           event_phrase?: string | null
+          event_title?: string | null
           final_forecast_sentence?: string | null
           final_forecast_stage?: string | null
           final_forecast_verdict?: string | null

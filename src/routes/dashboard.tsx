@@ -988,7 +988,7 @@ function DashboardPage() {
                     overflow: 'hidden',
                   }}
                 >
-                  {synthesizeEventTitle(event.question)}
+                  {(event as { event_title?: string | null }).event_title ?? synthesizeEventTitle(event.question)}
                 </div>
 
                 {/* Location · date range */}
