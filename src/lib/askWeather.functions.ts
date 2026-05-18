@@ -756,19 +756,24 @@ export const askWeather = createServerFn({ method: 'POST' })
       } as unknown as ExtendedWeatherAnswer;
     }
 
+    const isClimateOrOutlook =
+      stageInfo.stage === 'climate' || stageInfo.stage === 'outlook';
+
     const systemPrompt =
       mode === 'severe' ? SEVERE_PROMPT + '\n' + stageRules :
       mode === 'hurricane' ? HURRICANE_PROMPT + '\n' + stageRules :
-      buildScenarioSystemPrompt(
-        scenarioProfile.scenario,
-        scenarioProfile.horizon,
-        atmosphericState,
-        stormIntercepts,
-        confidence,
-        parsed.sensitivityProfile,
-        parsed.timeWindow ? `the user's plan around ${parsed.timeWindow}` : `the user's event time`,
-        intent,
-      ) + '\n' + stageRules;
+      isClimateOrOutlook
+        ? stageRules
+        : buildScenarioSystemPrompt(
+            scenarioProfile.scenario,
+            scenarioProfile.horizon,
+            atmosphericState,
+            stormIntercepts,
+            confidence,
+            parsed.sensitivityProfile,
+            parsed.timeWindow ? `the user's plan around ${parsed.timeWindow}` : `the user's event time`,
+            intent,
+          ) + '\n' + stageRules;
 
     const userMessage =
       `Location: ${address} (${lat.toFixed(4)}, ${lon.toFixed(4)})\n` +
