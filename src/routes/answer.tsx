@@ -1068,7 +1068,7 @@ function AnswerPage() {
     setFeedbackSent(true);
     try {
       await supabase.from('answer_feedback').insert({
-        event_question: question ?? null,
+        event_question: displayQuestion ?? null,
         address: resolvedAddress ?? null,
         verdict: (answer.verdict as string) ?? null,
         percentage: typeof answer.percentage === 'number' ? answer.percentage : null,
