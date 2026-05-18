@@ -53,6 +53,24 @@ export type Database = {
         }
         Relationships: []
       }
+      api_call_counters: {
+        Row: {
+          count: number
+          key: string
+          reset_at: string
+        }
+        Insert: {
+          count?: number
+          key: string
+          reset_at?: string
+        }
+        Update: {
+          count?: number
+          key?: string
+          reset_at?: string
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string
@@ -903,6 +921,10 @@ export type Database = {
         }[]
       }
       get_user_tier: { Args: { user_id: string }; Returns: string }
+      increment_api_counter: {
+        Args: { p_budget: number; p_key: string; p_today: string }
+        Returns: undefined
+      }
       is_business_member: {
         Args: { _business_id: string; _user_id: string }
         Returns: boolean

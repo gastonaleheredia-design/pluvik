@@ -10,26 +10,13 @@
  * parsers.
  */
 
+import { supabaseAdmin } from '@/integrations/supabase/client.server';
+
 const CACHE_TTL_MS = 60 * 60 * 1000; // 60 min — matches Tomorrow.io free-tier refresh cadence
 const DAILY_BUDGET = 450; // leave ~50 calls headroom under 500/day
 
 type CacheEntry = { at: number; text: string };
 const cache = new Map<string, CacheEntry>();
-
-let dayKey = '';
-let dayCount = 0;
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function bumpAndCheckBudget(): boolean {
-  const tk = todayKey();
-  if (tk !== dayKey) { dayKey = tk; dayCount = 0; }
-  if (dayCount >= DAILY_BUDGET) return false;
-  dayCount += 1;
-  return true;
-}
 
 function cacheKey(lat: number, lon: number): string {
   const hourBucket = Math.floor(Date.now() / (60 * 60 * 1000));
@@ -59,8 +46,23 @@ export async function fetchTomorrowIoBackup(
   const hit = cache.get(ck);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.text;
 
-  if (!bumpAndCheckBudget()) {
-    return '';
+  // Shared daily-budget check via Supabase, so all Worker isolates contribute
+  // to a single counter instead of each one maintaining its own.
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: counter, error: counterErr } = await supabaseAdmin
+    .from('api_call_counters')
+    .select('count, reset_at')
+    .eq('key', 'tomorrow_io_daily')
+    .single();
+  if (!counterErr && counter) {
+    const effectiveCount = counter.reset_at === today ? counter.count : 0;
+    if (effectiveCount >= DAILY_BUDGET) return '';
+    // Atomic check-and-increment in Postgres
+    await supabaseAdmin.rpc('increment_api_counter', {
+      p_key: 'tomorrow_io_daily',
+      p_today: today,
+      p_budget: DAILY_BUDGET,
+    });
   }
 
   try {
@@ -122,10 +124,4 @@ export async function fetchTomorrowIoBackup(
   } catch {
     return '';
   }
-}
-
-/** Exposed for source-attribution / data_sources tagging. */
-export function tomorrowIoBudgetRemaining(): number {
-  if (todayKey() !== dayKey) return DAILY_BUDGET;
-  return Math.max(0, DAILY_BUDGET - dayCount);
 }
