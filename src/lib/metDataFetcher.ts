@@ -542,6 +542,9 @@ function isUSLocation(lat: number, lon: number): boolean {
 const NWS_OUT_OF_COVERAGE_NOTE =
   'NWS DATA: Location outside NWS coverage — using model data only.';
 
+const MD_CACHE = new Map<string, { value: string; expires: number }>();
+const MD_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min — MDs are updated hourly at most
+
 const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 function compass(deg: number): string {
   return COMPASS_8[Math.round(((deg % 360) + 360) / 45) % 8];
