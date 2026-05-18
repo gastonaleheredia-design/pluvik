@@ -82,6 +82,7 @@ Event reference: ${eventHourLabel}
 - Never say "slight chance" or "isolated" — be specific about timing and probability.
 - Always anchor the answer to the exact location and exact time of the plan.
 - event_title MUST be ≤ 40 characters in the format [Activity] · [Location] · [Date/Time].
+- If the forecast horizon is greater than 120 hours (5 days), you MUST set confidence to LOW regardless of atmospheric conditions. Never return MEDIUM or HIGH confidence beyond 5 days.
 
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this schema:
