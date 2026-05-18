@@ -58,6 +58,27 @@ const MUTED = '#6b6357';
 const WARN = '#b91c1c';
 const WARN_BG = '#fef2f2';
 
+/**
+ * Guard against METAR-sourced visibility words (HAZY/FOGGY/DENSE FOG/SMOKY)
+ * being paired with an AI-generated sentence that says "Clear" or "Sunny".
+ * If the contradiction is detected, replace the sentence with a word-derived
+ * fallback so the headline and detail line agree.
+ */
+function sanitizeBriefing<T extends { word: string | null; sentence: string | null }>(b: T): T {
+  if (!b || !b.word || !b.sentence) return b;
+  const word = b.word.toUpperCase();
+  const visibilityWords = new Set(['HAZY', 'FOGGY', 'DENSE FOG', 'SMOKY']);
+  if (!visibilityWords.has(word)) return b;
+  if (!/\b(clear|sunny)\b/i.test(b.sentence)) return b;
+  const fallback: Record<string, string> = {
+    HAZY: 'Haze reducing visibility — air quality may be affected.',
+    FOGGY: 'Fog in the area — reduced visibility.',
+    'DENSE FOG': 'Dense fog advisory in effect — visibility near zero.',
+    SMOKY: 'Smoke reducing visibility — air quality may be affected.',
+  };
+  return { ...b, sentence: fallback[word] ?? b.sentence };
+}
+
 export const Route = createFileRoute('/')({
   component: HomePage,
   validateSearch: (search: Record<string, unknown>) => ({
