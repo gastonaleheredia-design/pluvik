@@ -837,8 +837,9 @@ function AnswerPage() {
         }
       }
       if (cancelled || !resolvedCoords) return;
+      const safeCoords = resolvedCoords;
       setResolvedAddress(effectiveAddress);
-      setCoords(resolvedCoords);
+      setCoords(safeCoords);
 
       // ── STEP 2: severe-warning intercept at the RESOLVED coords ───
       // This runs for every question, not just when severe=true in the
@@ -846,11 +847,11 @@ function AnswerPage() {
       // checks the user's home address); the authoritative check has
       // to happen at the coords the question is actually about.
       // Skip outside the US — NWS doesn't cover non-US points.
-      if (isUSLocation(resolvedCoords.lat, resolvedCoords.lon)) {
+      if (isUSLocation(safeCoords.lat, safeCoords.lon)) {
         setLoadingStep('warnings');
         try {
           const ctx = await fetchSevereContext({
-            data: { lat: resolvedCoords.lat, lon: resolvedCoords.lon },
+            data: { lat: safeCoords.lat, lon: safeCoords.lon },
           });
           if (cancelled) return;
           if (isSevereWeatherQuestion(question, ctx.activeAlert)) {
@@ -859,8 +860,8 @@ function AnswerPage() {
             setSevereAnswer(
               answerSevereWeatherQuestion(question, {
                 activeAlert: ctx.activeAlert,
-                userLat: resolvedCoords.lat,
-                userLon: resolvedCoords.lon,
+                userLat: safeCoords.lat,
+                userLon: safeCoords.lon,
                 rotationSignatures: ctx.rotationSignatures,
                 radarTrend: ctx.radarTrend,
               }),
@@ -903,8 +904,8 @@ function AnswerPage() {
         const result = await askWeather({
           data: {
             question,
-            lat: resolvedCoords.lat,
-            lon: resolvedCoords.lon,
+            lat: safeCoords.lat,
+            lon: safeCoords.lon,
             language: i18n.language,
             address: effectiveAddress,
             tempUnit,
