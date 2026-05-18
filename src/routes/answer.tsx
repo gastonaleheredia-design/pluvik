@@ -623,6 +623,10 @@ export const Route = createFileRoute('/answer')({
     eventEndIso: typeof search.eventEndIso === 'string' && search.eventEndIso ? search.eventEndIso : undefined,
     displayQ: typeof search.displayQ === 'string' && search.displayQ ? search.displayQ : undefined,
     intent: typeof search.intent === 'string' ? (search.intent as ForecastIntent) : undefined,
+    question_type: typeof search.question_type === 'string' &&
+      ['decision', 'measurement', 'timing', 'comparison', 'severe'].includes(search.question_type)
+        ? (search.question_type as 'decision' | 'measurement' | 'timing' | 'comparison' | 'severe')
+        : undefined,
     placeSource: typeof search.placeSource === 'string'
       ? (search.placeSource as 'question' | 'active_address' | 'gps')
       : undefined,
@@ -686,10 +690,14 @@ const ACCENT = '#c2410c';
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { q: question, displayQ, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource } = Route.useSearch();
+  const { q: question, displayQ, address, lat: searchLat, lon: searchLon, eventAtIso, eventEndIso, intent, placeSource, question_type: searchQuestionType } = Route.useSearch();
   // User-facing label for the question (clean rewrite when available).
   // The raw `question` is still used everywhere the weather pipeline needs it.
-  const displayQuestion = displayQ ?? question;
+  // Fallback: truncate raw question to 60 chars with ellipsis so we never
+  // dump a wall of text into UI surfaces.
+  const displayQuestion = (displayQ && displayQ.trim())
+    ? displayQ
+    : (question.length > 60 ? question.slice(0, 60).trim() + '…' : question);
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'out_of_coverage'>('loading');
   const [answer, setAnswer] = useState<WeatherAnswer | null>(null);
@@ -1919,7 +1927,7 @@ function AnswerPage() {
               event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
               current_state?: string | null;
             };
-            const qType = a.question_type;
+            const qType = searchQuestionType ?? a.question_type;
             const timeline = Array.isArray(a.timeline) ? a.timeline.slice(0, 5) : [];
             const ew = a.event_window;
             const hn = headlineForStage ?? (

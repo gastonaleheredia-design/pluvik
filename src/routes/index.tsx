@@ -742,11 +742,31 @@ function HomePage() {
     } catch {
       /* fall back to original */
     }
+    // Log so we can confirm the rewriter actually produced a clean title.
+    console.log('[home] displayQ resolved:', displayQ, '← raw:', composedQuestion);
+
+    // Lightweight pre-classification of the question so the /answer screen
+    // can render the right Zone 2 template before the model responds.
+    const qLower = composedQuestion.toLowerCase();
+    const hasAny = (words: string[]) => words.some((w) => qLower.includes(w));
+    let questionType: 'decision' | 'measurement' | 'timing' | 'severe' = 'decision';
+    if (hasAny(['tornado', 'hurricane', 'evacuate', 'shelter', 'warning', 'emergency'])) {
+      questionType = 'severe';
+    } else if (hasAny(['when will', 'what time', 'arrive', 'pass through', 'get here'])) {
+      questionType = 'timing';
+    } else if (hasAny([
+      'temperature', 'hot', 'cold', 'degrees', 'wind', 'waves', 'snow',
+      'inches', 'accumulation', 'rainfall', 'how much', 'how strong', 'how high',
+    ])) {
+      questionType = 'measurement';
+    }
+
     navigate({
       to: '/answer',
       search: {
         q: composedQuestion,
         displayQ,
+        question_type: questionType,
         address: finalPlace?.label ?? selectedAddress.label,
         lat: finalPlace?.lat ?? submitLat,
         lon: finalPlace?.lon ?? submitLon,
