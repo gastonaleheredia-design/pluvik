@@ -351,10 +351,11 @@ function DashboardPage() {
     setRefreshing(true);
     setRefreshStatus({ kind: 'idle' });
     try {
-      const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? '';
       const res = await fetch(`/api/public/refresh-events?force=1&user_id=${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { apikey },
+        headers: { Authorization: `Bearer ${token}` },
       });
       let summary: { refreshed?: number; results?: Array<{ ok: boolean }> } | null = null;
       try {
