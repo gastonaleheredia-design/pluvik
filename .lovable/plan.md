@@ -1,38 +1,45 @@
-## Answer screen redesign — `src/routes/answer.tsx` (`!showWhy` block, lines ~1820–2159)
+## Why screen redesign — `src/components/BriefingScreen.tsx`
 
-Rebuild the main answer screen as three zones with generous whitespace. No logic changes — only the JSX inside the `!showWhy` return.
+Replace the tile/card layout with a narrative three-paragraph briefing. Keep the back chrome and a SAVE & TRACK button. Wire the new fields from the answer in `src/routes/answer.tsx`.
 
-### Zone 1 — Top: verdict + sentence
-- Remove the top row (BACK button + topicTag chip) and the context line.
-- Render `displayVerdictWord` as-is (no override of its computation):
-  - `Fraunces, serif`, weight 400, `fontSize: 'clamp(3rem, 14vw, 6rem)'`, `lineHeight: 0.95`, `letterSpacing: '-0.03em'`, color `#0b1018`.
-- Directly below with `marginTop: 4px` only, render `verdictSentence` (or `climateBody` when `isClimate`):
-  - `Fraunces, serif`, italic, `fontSize: 1.05rem`, `lineHeight: 1.4`, color `#0b1018`, `maxWidth: 340px`.
-- Keep the existing `timingState === 'ACTIVE'` HAPPENING NOW pulse and `timingState === 'PASSED'` indicator, rendered just under the sentence. Drop nothing else from timing.
+### `src/components/BriefingScreen.tsx`
+- Extend `BriefingProps` with three new optional fields (keep existing fields so callers compile; we just stop rendering most of them):
+  - `currentState?: string` — paragraph 1
+  - `summaryText?: string` — paragraph 2 (separate from existing `story` so we can drop the italic tile-era styling without changing other call sites)
+  - `confidenceReason?: string` — for the confidence row
+  - `action` already exists — used as paragraph 3
+  - `confidence` already exists — used as the confidence word
+- Remove from the render tree:
+  - top-right `<ScenarioTag />`
+  - `contextLabel` block
+  - the big `directAnswer` h1
+  - the 2-col `facts` grid (Block 2)
+  - the visualization block (`viz`, `rainHours`, `RainRateBar`) — drop the import and the `viz` calculation
+  - the ink-colored verdict pill card (Block 4) — verdict pill, CONF chip, action paragraph inside the dark card, CHECK BACK label
+- Keep:
+  - outer wrapper `min-h-screen bg-paper text-ink pb-12`, container `px-6 pt-14 max-w-2xl mx-auto`
+  - the back button row (left side only, no scenario tag on the right)
+  - SAVE & TRACK button at the bottom, but restyle: full-width, orange `#c2410c` background, paper text, rounded, `mt-8`. Disabled state stays muted.
+- New content area, stacked with `space-y-6 mt-2 mb-10`:
+  - Three `<p>` paragraphs (only rendered when their source is truthy): `currentState`, `summaryText`, `action`.
+    - Each: `font-serif text-[1rem] leading-[1.7] text-[#0b1018] max-w-[520px]`.
+  - Confidence row (rendered when `confidence` is set), `mt-8 max-w-[520px]`:
+    - `font-mono text-[0.6rem] tracking-[0.14em] uppercase`
+    - `<span style={{color:'#c2410c'}}>{confidence}</span>` then ` · ` then `<span style={{color:'#6b6357'}}>{confidenceReason}</span>` (omit the dot + reason if `confidenceReason` missing).
+- Remove now-unused imports (`RainRateBar`, `RainHour`, `useTranslation` if no longer needed — keep `useTranslation` only if SAVE label still uses it; we'll hardcode "SAVE & TRACK" per the user spec, so drop `useTranslation`).
+- Remove now-unused constants: `VERDICT_TONE`, `FACT_TONE`, `ScenarioTag`. Keep the exported types (`BriefingScenario`, `BriefingVerdict`, `BriefingFact`) so existing imports in `answer.tsx` still resolve.
 
-### Zone 2 — Middle: single supporting line
-- Replace the per-day breakdown and the ALSO WORTH KNOWING card block with a single paragraph:
-  - Source: `secondary_factors?.[0]?.note` if present (use `.note`, falling back to `.factor`); otherwise `answer.current_state` (string field on the answer). If neither exists, render nothing.
-  - Style: `Fraunces, serif`, italic, `fontSize: 0.92rem`, `lineHeight: 1.6`, color `#6b6357`, `maxWidth: 340px`, `marginTop: 40px`. No label, no border, no background, no icon.
-- Delete the entire multi-day per-day breakdown IIFE (lines ~1942–1982) and the ALSO WORTH KNOWING IIFE (lines ~1984–2041) from this screen.
-
-### Zone 3 — Bottom action row (pinned)
-- Keep the `flex: 1` spacer so the row pins to the bottom.
-- Replace the current CTA stack (orange Track button + Why?/+ Group Event/👎 row) with a single horizontal row containing exactly three text buttons:
-  - Left: `Why? →` — onClick `setShowWhy(true)`. `Inter, system-ui, sans-serif`, `fontSize: 0.9rem`, color `#c2410c`, no underline, plain button reset.
-  - Center: `SAVE & TRACK` — onClick `handleSaveTrack`, `disabled={saving}`. `JetBrains Mono, ui-monospace, monospace`, `fontSize: 0.7rem`, `letterSpacing: 0.18em`, color `MUTED`.
-  - Right: `+ GROUP` — onClick opens `setShowCreateGroup(true)` if `user` else `setShowAuthModal(true)`. Same Mono/muted style as center.
-- Layout: `display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 24px`.
-- Remove the thumbs-down button and `feedbackSent` thank-you text from this screen (state and `handleThumbsDown` itself stay — they're used elsewhere/harmless).
-- When `isClimate`, the Why? slot renders the existing `NO FORECAST YET` Mono label in place of Why? (keep current climate behavior).
-
-### Explicitly kept
-- All upstream logic: `displayVerdictWord`, `verdictSentence`, `softWord`, `effectiveConfidence`, `saveCtaLabel`, `handleSaveTrack`, `MaturityLadder` definition (unused in this screen, leave it — it's referenced via the why view scope), state hooks, AuthModal, UpgradeSheet, CreateGroupEventSheet modals at the bottom of the return.
-- Page wrapper: `minHeight: 100vh`, `backgroundColor: PAGE_BG`, `padding: '52px 28px 32px'`, flex column.
+### `src/routes/answer.tsx` (single call site, line ~2048)
+- Pass new fields to `<BriefingScreen>`:
+  - `currentState={(answer as { current_state?: string | null }).current_state ?? undefined}`
+  - `summaryText={answer.summary}`
+  - `confidenceReason={(answer as { confidence_reason?: string | null }).confidence_reason ?? undefined}`
+- Existing props that are no longer rendered (`scenario`, `contextLabel`, `directAnswer`, `facts`, `story`, `verdict`) can stay — they're typed optional/permitted and harmless. No other call-site changes.
 
 ### Not touched
-- `showWhy` expanded view, server functions, types, routing, other components.
+- Other routes, types, `RainRateBar` file itself (left for other potential consumers), and the main answer screen built in the previous turn.
 
 ### Verification
-- Read the edited region after applying changes to confirm JSX balance and that the three zones render in order with no leftover fragments from the deleted sections.
+- Re-read `BriefingScreen.tsx` after the edit to confirm JSX balance and that all removed imports/symbols are gone.
+- Confirm `src/routes/answer.tsx` still compiles (no removed prop names referenced).
 
