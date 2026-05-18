@@ -425,6 +425,7 @@ export type Database = {
           notification_sensitivity: string | null
           onboarding_completed_at: string | null
           onesignal_player_id: string | null
+          preferred_briefing_hour: number
           question_count_reset_at: string
           quiet_hours_end: number | null
           quiet_hours_start: number | null
@@ -438,6 +439,7 @@ export type Database = {
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
           onesignal_player_id?: string | null
+          preferred_briefing_hour?: number
           question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
@@ -451,6 +453,7 @@ export type Database = {
           notification_sensitivity?: string | null
           onboarding_completed_at?: string | null
           onesignal_player_id?: string | null
+          preferred_briefing_hour?: number
           question_count_reset_at?: string
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null

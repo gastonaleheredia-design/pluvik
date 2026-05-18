@@ -51,12 +51,28 @@ export const sendMorningBriefing = createServerFn({ method: 'POST' })
     const userIds = Array.from(soonestByUser.keys());
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, onesignal_player_id')
+      .select('id, onesignal_player_id, preferred_briefing_hour')
       .in('id', userIds);
 
+    // Cron fires hourly windows in UTC. Filter to users whose preferred local
+    // briefing hour matches the current local hour (±1h) so we don't blast the
+    // whole base at one UTC time. Until per-user timezone is stored, approximate
+    // using a US-central offset.
+    const utcHour = new Date().getUTCHours();
+    const APPROX_OFFSET_HOURS = -5; // CDT; swap for per-user tz once stored
+    const approxLocalHour = ((utcHour + APPROX_OFFSET_HOURS) % 24 + 24) % 24;
+
     const playerByUser = new Map<string, string>();
-    for (const p of (profiles ?? []) as Array<{ id: string; onesignal_player_id: string | null }>) {
-      if (p.onesignal_player_id) playerByUser.set(p.id, p.onesignal_player_id);
+    for (const p of (profiles ?? []) as Array<{
+      id: string;
+      onesignal_player_id: string | null;
+      preferred_briefing_hour: number | null;
+    }>) {
+      if (!p.onesignal_player_id) continue;
+      const prefHour = p.preferred_briefing_hour ?? 7;
+      if (Math.abs(approxLocalHour - prefHour) <= 1) {
+        playerByUser.set(p.id, p.onesignal_player_id);
+      }
     }
 
     let sent = 0;
