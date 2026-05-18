@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../lib/auth';
@@ -93,31 +93,33 @@ function BusinessPage() {
   const [inviteSuccess, setInviteSuccess] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
 
-  useEffect(() => {
+  const loadBusiness = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
     }
+    setLoading(true);
+    const [{ data: bizRows }, { data: teamRows }] = await Promise.all([
+      supabase
+        .from('business_profiles')
+        .select('id, business_name, industry')
+        .order('created_at', { ascending: true })
+        .limit(1),
+      supabase.rpc('get_team_tracked_events'),
+    ]);
+    setBusiness((bizRows?.[0] as Business) ?? null);
+    setEvents((teamRows as TeamEvent[]) ?? []);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
-      const [{ data: bizRows }, { data: teamRows }] = await Promise.all([
-        supabase
-          .from('business_profiles')
-          .select('id, business_name, industry')
-          .order('created_at', { ascending: true })
-          .limit(1),
-        supabase.rpc('get_team_tracked_events'),
-      ]);
       if (cancelled) return;
-      setBusiness((bizRows?.[0] as Business) ?? null);
-      setEvents((teamRows as TeamEvent[]) ?? []);
-      setLoading(false);
+      await loadBusiness();
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [loadBusiness]);
 
   const handleInvite = async () => {
     if (!business) return;
@@ -168,7 +170,7 @@ function BusinessPage() {
   }
 
   if (!business) {
-    return <BusinessSetup userId={user.id} />;
+    return <BusinessSetup userId={user.id} onCreated={loadBusiness} />;
   }
 
   const now = Date.now();
