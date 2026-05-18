@@ -29,11 +29,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [tier, setTier] = useState<SubscriptionTier>('free');
 
+  async function syncUserProfilesTier(userId: string, resolvedTier: SubscriptionTier): Promise<void> {
+    try {
+      await supabase
+        .from('user_profiles')
+        .update({ tier: resolvedTier })
+        .eq('id', userId);
+    } catch {
+      // silent — user_profiles.tier is a denormalized mirror
+    }
+  }
+
   async function loadTier(userId: string): Promise<void> {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (isAdminEmail(userData?.user?.email)) {
         setTier('pro');
+        void syncUserProfilesTier(userId, 'pro');
         return;
       }
       const { data: sub } = await supabase
@@ -46,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       if (sub?.tier === 'pro') {
         setTier('pro');
+        void syncUserProfilesTier(userId, 'pro');
         return;
       }
       const { data: profile } = await supabase
@@ -62,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('owner_user_id', userId);
         if ((ownedCount ?? 0) > 0) {
           setTier('business');
+          void syncUserProfilesTier(userId, 'business');
           return;
         }
         const { count: memberCount } = await supabase
@@ -71,12 +85,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .not('accepted_at', 'is', null);
         if ((memberCount ?? 0) > 0) {
           setTier('business');
+          void syncUserProfilesTier(userId, 'business');
           return;
         }
       } catch {
         // ignore — fall back to profile tier
       }
       setTier(profTier);
+      void syncUserProfilesTier(userId, profTier);
     } catch {
       setTier('free');
     }
