@@ -541,6 +541,9 @@ function HomePage() {
       // from a prior address can't overwrite a newer one.
       const reqLat = selectedAddress.lat;
       const reqLon = selectedAddress.lon;
+      console.log(
+        `[location] fetching for lat=${reqLat} lon=${reqLon} label=${selectedAddress.label}`,
+      );
       getHomeBriefing({
         data: {
           lat: selectedAddress.lat!,
