@@ -145,6 +145,8 @@ function HomePage() {
   const [placeResolving, setPlaceResolving] = useState(false);
   const [rainSheetOpen, setRainSheetOpen] = useState(false);
   const [showSuggestionChips, setShowSuggestionChips] = useState(false);
+  const [stormCardEligible, setStormCardEligible] = useState(false);
+  const [stormCardDismissed, setStormCardDismissed] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
