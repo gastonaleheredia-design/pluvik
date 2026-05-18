@@ -621,6 +621,7 @@ export const Route = createFileRoute('/answer')({
       : (typeof search.lon === 'string' && search.lon ? Number(search.lon) : undefined),
     eventAtIso: typeof search.eventAtIso === 'string' && search.eventAtIso ? search.eventAtIso : undefined,
     eventEndIso: typeof search.eventEndIso === 'string' && search.eventEndIso ? search.eventEndIso : undefined,
+    displayQ: typeof search.displayQ === 'string' && search.displayQ ? search.displayQ : undefined,
     intent: typeof search.intent === 'string' ? (search.intent as ForecastIntent) : undefined,
     placeSource: typeof search.placeSource === 'string'
       ? (search.placeSource as 'question' | 'active_address' | 'gps')
