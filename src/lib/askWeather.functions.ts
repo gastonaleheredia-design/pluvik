@@ -1093,6 +1093,12 @@ export const askWeather = createServerFn({ method: 'POST' })
       console.warn('[askWeather] PoP verification failed:', (err as Error)?.message);
     }
 
+    // Confidence floor for far-out forecasts: nothing beyond 5 days can be
+    // better than LOW confidence, no matter what the LLM said.
+    if (typeof hoursAhead === 'number' && hoursAhead > 120) {
+      validated.data.confidence = 'LOW';
+    }
+
     return {
       ...validated.data,
       mode,
