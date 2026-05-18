@@ -802,22 +802,27 @@ function AnswerPage() {
       let resolvedCoords: { lat: number; lon: number } | null = null;
       let effectiveAddress = address;
 
-      const placeOverride = extractPlaceFromQuestion(question)?.place ?? null;
-      if (placeOverride) {
-        const geo = await geocodeAddress(placeOverride);
-        if (cancelled) return;
-        if (geo.ok) {
-          resolvedCoords = { lat: geo.lat, lon: geo.lon };
-          effectiveAddress = placeOverride;
-        } else {
-          console.warn('[location] geocode failed for detected place, falling back', { placeOverride, reason: geo.reason });
-        }
-      }
-      if (!resolvedCoords
-          && typeof searchLat === 'number' && typeof searchLon === 'number'
+      // Priority 1: chip-selected coords from URL (most explicit user intent)
+      if (typeof searchLat === 'number' && typeof searchLon === 'number'
           && Number.isFinite(searchLat) && Number.isFinite(searchLon)) {
         resolvedCoords = { lat: searchLat, lon: searchLon };
       }
+
+      // Priority 2: place name extracted from question text (only when no chip)
+      if (!resolvedCoords) {
+        const placeOverride = extractPlaceFromQuestion(question)?.place ?? null;
+        if (placeOverride) {
+          const geo = await geocodeAddress(placeOverride);
+          if (cancelled) return;
+          if (geo.ok) {
+            resolvedCoords = { lat: geo.lat, lon: geo.lon };
+            effectiveAddress = placeOverride;
+          } else {
+            console.warn('[location] geocode failed for detected place, falling back', { placeOverride, reason: geo.reason });
+          }
+        }
+      }
+
       if (!resolvedCoords) {
         if (selectedAddress.lat && selectedAddress.lon) {
           resolvedCoords = { lat: selectedAddress.lat, lon: selectedAddress.lon };
