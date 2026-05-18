@@ -964,7 +964,7 @@ function AnswerPage() {
         .from('tracked_events')
         .insert({
           user_id: user!.id,
-          question,
+          question: displayQuestion,
           address,
           lat: coords?.lat ?? null,
           lon: coords?.lon ?? null,
