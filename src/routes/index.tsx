@@ -1070,31 +1070,6 @@ function HomePage() {
             >
               <span aria-hidden style={{ fontSize: '0.7rem' }}>⟳</span>
               {briefing.updated_at_local}
-              {briefing.verdict_source && (
-                <span
-                  aria-label={`Source: ${briefing.verdict_source.toLowerCase()}`}
-                  title={
-                    briefing.verdict_source === 'OBSERVED'
-                      ? 'Verdict based on ground observation (METAR / active alert)'
-                      : briefing.verdict_source === 'RADAR'
-                      ? 'Verdict based on live radar'
-                      : 'Verdict based on model forecast'
-                  }
-                  style={{
-                    marginLeft: 6,
-                    padding: '1px 5px',
-                    border: `1px solid ${chipBorder}`,
-                    borderRadius: 3,
-                    fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-                    fontSize: '0.5rem',
-                    letterSpacing: '0.18em',
-                    lineHeight: 1.4,
-                    color: txtMuted,
-                  }}
-                >
-                  {briefing.verdict_source}
-                </span>
-              )}
             </button>
           )}
         </div>
@@ -1839,20 +1814,6 @@ function HomePage() {
           onChangeTime={(d) => { setPickedTime(d); setPickedTimeManual(true); }}
           onChangePlace={(p) => { setPickedPlace(p); setPickedPlaceManual(true); }}
         />
-      )}
-
-      {selectedAddress.meta !== 'DEFAULT' && selectedAddress.label && (
-        <div style={{
-          fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-          fontSize: '0.52rem',
-          letterSpacing: '0.12em',
-          color: '#6b6357',
-          textAlign: 'center',
-          padding: '8px 20px 4px',
-          textTransform: 'uppercase',
-        }}>
-          US coverage only · International support coming soon
-        </div>
       )}
 
       <BottomNav />
