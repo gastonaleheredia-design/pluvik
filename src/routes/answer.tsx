@@ -1927,7 +1927,7 @@ function AnswerPage() {
               event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
               current_state?: string | null;
             };
-            const qType = a.question_type;
+            const qType = searchQuestionType ?? a.question_type;
             const timeline = Array.isArray(a.timeline) ? a.timeline.slice(0, 5) : [];
             const ew = a.event_window;
             const hn = headlineForStage ?? (
