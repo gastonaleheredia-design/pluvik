@@ -777,13 +777,17 @@ function AnswerPage() {
         .eq('id', user.id);
     })();
     return () => { cancelled = true; };
-  }, [status, user]);
+  }, [status, user, authLoading]);
 
   useEffect(() => {
     if (!question || !address) {
       navigate({ to: '/' });
       return;
     }
+    // Wait for Supabase session to hydrate before calling auth-protected
+    // server functions — otherwise the bearer token is missing and the
+    // middleware rejects the request with 401 on cold loads.
+    if (authLoading) return;
 
     let cancelled = false;
 
