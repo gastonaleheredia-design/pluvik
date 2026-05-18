@@ -580,7 +580,7 @@ function HomePage() {
         .then((b) => {
           if (cancelled) return;
           if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
-          setBriefing(b);
+          setBriefing(sanitizeBriefing(b));
           setBriefingLoading(false);
         })
         .catch(() => {
@@ -621,7 +621,7 @@ function HomePage() {
       })
         .then((b) => {
           if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
-          setBriefing(b);
+          setBriefing(sanitizeBriefing(b));
         })
         .catch(() => {});
     }, 5000);
@@ -646,7 +646,7 @@ function HomePage() {
         })
           .then((b) => {
             if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
-            setBriefing(b);
+            setBriefing(sanitizeBriefing(b));
           })
           .catch(() => {});
       }
@@ -1115,7 +1115,7 @@ function HomePage() {
                 getHomeBriefing({ data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language } })
                   .then((b) => {
                     if (reqLat !== selectedAddress.lat || reqLon !== selectedAddress.lon) return;
-                    setBriefing(b);
+                    setBriefing(sanitizeBriefing(b));
                     setBriefingLoading(false);
                   })
                   .catch(() => setBriefingLoading(false));
@@ -1188,7 +1188,7 @@ function HomePage() {
                   getHomeBriefing({
                     data: { lat: selectedAddress.lat, lon: selectedAddress.lon, language: i18n.language },
                   })
-                    .then((b) => { setBriefing(b); setBriefingLoading(false); })
+                    .then((b) => { setBriefing(sanitizeBriefing(b)); setBriefingLoading(false); })
                     .catch(() => setBriefingLoading(false));
                 }}
                 style={{
