@@ -37,6 +37,24 @@ type Industry = typeof INDUSTRIES[number]['value'];
 type Business = { id: string; business_name: string; industry: string };
 type TeamMember = { id: string; invited_email: string | null; role: string; accepted_at: string | null };
 type CompanyRow = { id: string; company_name: string; industry: string | null };
+type ApiKey = { id: string; label: string | null; created_at: string; last_used_at: string | null; request_count: number };
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function generateRandomKey(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < 32; i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
 
 const styles = {
   page: {
