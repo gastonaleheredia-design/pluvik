@@ -124,6 +124,8 @@ function HomePage() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
   const [questionText, setQuestionText] = useState('');
+  const [dotMessage, setDotMessage] = useState<string | null>(null);
+  const dotMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load the signed-in user's avatar + display name for the top-right circle.
   useEffect(() => {
