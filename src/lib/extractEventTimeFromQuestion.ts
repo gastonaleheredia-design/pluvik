@@ -65,6 +65,7 @@ function build(
   const t = time ?? { hour: defaultHour, minute: 0 };
   const eventAt = new Date(date);
   eventAt.setHours(t.hour, t.minute, 0, 0);
+  advanceIfPast(eventAt, now);
   const hoursAhead = (eventAt.getTime() - now.getTime()) / 3_600_000;
   return { eventAt, hoursAhead, sourcePhrase };
 }
@@ -126,7 +127,20 @@ function partOfDayHour(label: string): number | null {
 
 function buildFuzzy(date: Date, hour: number, now: Date, sourcePhrase: string): ExtractedEventTime {
   const start = new Date(date); start.setHours(hour, 0, 0, 0);
+  advanceIfPast(start, now);
   return { eventAt: start, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
+}
+
+/**
+ * If `date` is already in the past relative to `now`, advance it by one day.
+ * Used to handle "tonight at 9pm" queried after 9pm, "today afternoon"
+ * queried in the evening, etc.
+ */
+function advanceIfPast(date: Date, now: Date): Date {
+  if (date.getTime() < now.getTime()) {
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
 }
 
 function applyRangeToDate(
@@ -137,7 +151,8 @@ function applyRangeToDate(
 ): ExtractedEventTime {
   const start = new Date(date);
   start.setHours(range.start.hour, range.start.minute, 0, 0);
-  const end = new Date(date);
+  advanceIfPast(start, now);
+  const end = new Date(start);
   end.setHours(range.end.hour, range.end.minute, 0, 0);
   if (end.getTime() <= start.getTime()) end.setDate(end.getDate() + 1);
   return { eventAt: start, endAt: end, hoursAhead: (start.getTime() - now.getTime()) / 3_600_000, sourcePhrase };
