@@ -802,6 +802,122 @@ function SettingsPage() {
       </section>
 
       <BottomNav />
+      {user && isPro && (
+        <section style={styles.section}>
+          <p style={styles.sectionLabel}>API Access</p>
+          <div style={styles.card}>
+            <div style={{ ...styles.emailText, marginBottom: 14, fontStyle: 'italic', color: MUTED }}>
+              Generate a personal API key to access your data programmatically.
+            </div>
+            {apiKeys.length > 0 && (
+              <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {apiKeys.map((k) => (
+                  <div
+                    key={k.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 12, padding: '10px 12px', border: `1px solid ${BORDER}`, borderRadius: 8,
+                      background: SURFACE,
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontFamily: MONO, fontSize: '0.7rem', color: INK }}>
+                        {k.label ?? 'Key'}
+                      </div>
+                      <div style={{ fontFamily: MONO, fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: MUTED, marginTop: 2 }}>
+                        {new Date(k.created_at).toLocaleDateString()} · {k.request_count} req
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeApiKey(k.id)}
+                      style={{
+                        background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6,
+                        padding: '6px 10px', fontFamily: MONO, fontSize: '0.55rem',
+                        letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED, cursor: 'pointer',
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {keyError && (
+              <div style={{ color: '#b91c1c', fontSize: '0.8rem', marginBottom: 10 }}>{keyError}</div>
+            )}
+            <button
+              type="button"
+              onClick={handleGenerateApiKey}
+              disabled={generatingKey}
+              style={{ ...styles.signInBtn, background: ACCENT, opacity: generatingKey ? 0.6 : 1 }}
+            >
+              {generatingKey ? 'Generating…' : 'Generate API key'}
+            </button>
+          </div>
+        </section>
+      )}
+      {newKeyPlaintext && (
+        <div
+          onClick={() => setNewKeyPlaintext(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(11,16,24,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100, padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: PAPER, borderRadius: 16, padding: 24, maxWidth: 440, width: '100%',
+              border: `1px solid ${BORDER}`,
+            }}
+          >
+            <p style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, margin: '0 0 8px' }}>
+              Your new API key
+            </p>
+            <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: '1rem', color: INK, margin: '0 0 16px' }}>
+              Copy this now — we won't show it again.
+            </p>
+            <div
+              style={{
+                fontFamily: MONO, fontSize: '0.8rem', color: INK,
+                background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8,
+                padding: '12px 14px', wordBreak: 'break-all', marginBottom: 16,
+              }}
+            >
+              {newKeyPlaintext}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(newKeyPlaintext);
+                    setCopiedKey(true);
+                  } catch {
+                    setCopiedKey(false);
+                  }
+                }}
+                style={{ ...styles.signInBtn, background: INK, flex: 1 }}
+              >
+                {copiedKey ? 'Copied ✓' : 'Copy key'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewKeyPlaintext(null)}
+                style={{
+                  background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 999,
+                  padding: '12px 20px', fontFamily: MONO, fontSize: '0.65rem',
+                  letterSpacing: '0.12em', textTransform: 'uppercase', color: INK, cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAuth && (
         <AuthModal onSuccess={() => setShowAuth(false)} onClose={() => setShowAuth(false)} />
       )}
