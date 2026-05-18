@@ -25,6 +25,7 @@ import { formatEventDateRange } from '../lib/formatEventDateRange';
 import { UpgradeSheet } from '../components/UpgradeSheet';
 import { AuthModal } from '../components/AuthModal';
 import { isSevereWeatherQuestion } from '../lib/severeWeatherInterpreter';
+import { rewriteQuestionTitle } from '../lib/rewriteQuestion.functions';
 
 const ONBOARDING_KEY = 'pluvik-onboarding-complete';
 const PREFILL_KEY = 'pluvik-prefill-question';
