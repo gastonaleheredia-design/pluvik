@@ -2077,6 +2077,30 @@ function AnswerPage() {
               >
                 + Group Event
               </button>
+              {feedbackSent ? (
+                <span
+                  style={{
+                    fontFamily: 'Fraunces, Georgia, serif',
+                    fontStyle: 'italic',
+                    fontSize: '0.85rem',
+                    color: MUTED,
+                  }}
+                >
+                  Thanks — we'll use this to improve.
+                </span>
+              ) : (
+                <button
+                  onClick={handleThumbsDown}
+                  aria-label="Mark this answer as wrong"
+                  title="This forecast seems wrong"
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: '0.95rem', color: MUTED, lineHeight: 1,
+                  }}
+                >
+                  👎
+                </button>
+              )}
             </div>
           </div>
         </div>
