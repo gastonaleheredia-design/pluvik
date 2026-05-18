@@ -1,62 +1,56 @@
-## What's happening in the screenshot
+## What's wrong
 
-Headline says **HAZY 84°** but the italic sentence says **"Rain right above you — cell 3 mi S."** and the chip says **NEXT RAIN · TUE 5 PM**. The radar in your other app is clear. There are two bugs causing this — one is purely cosmetic (the sentence is stale), the other is a real data-quality issue (a ghost cell got conjured from a forecast model, not real radar).
+The "NEXT RAIN · TUE 12 PM" chip is computed from a different rule than the hourly grid the user sees below it, so the two disagree.
 
-## Bug 1 — Sentence builder uses a stale verdict ("legacyWord")
-
-File: `src/lib/homeBriefing.functions.ts`
-
-Flow that produced the screenshot:
-
-1. ~Line 1011: `probeNearbyCell(lat, lon)` returns a "3 mi S, ≥30 dBZ" candidate.
-2. Lines 1072–1077: that candidate promotes `word = 'RAINING'` because `dbz ≥ 35 && distance ≤ 10`.
-3. Line 1232: `const legacyWord = word;` snapshots `'RAINING'`.
-4. Line 1233: `word = comprehensive;` and then the METAR/HRRR hierarchy (1242–1305) correctly overrides `word` to **`'HAZY'`** because the airport METAR reports `HZ` (haze) and there is no overhead radar return.
-5. Sentence builder at lines 1346–1368 keys off **`legacyWord`** (still `'RAINING'`), so it emits `Rain right above you — cell 3 mi S.` even though the final, displayed verdict is `HAZY`.
-
-The headline word is now decoupled from the sentence. Anytime `probeNearbyCell` promotes RAINING/STORMS and then METAR/hierarchy downgrades to HAZY/DENSE FOG/CLOUDY/DRY/CLEAR, the sentence keeps screaming about rain that the displayed verdict has just denied.
-
-**Fix:** in the sentence builder, when `legacyWord` disagrees with the final `word` AND the final `word` is one of the visibility/sky words (`HAZY`, `DENSE FOG`, `CLOUDY`, `DRY`, `CLEAR`, `HOT`, `COLD`, `WINDY`), prefer a sentence built from the final `word` instead. Practically:
-
-- If `word !== legacyWord` and `word` is not in `{STORMS, RAINING, RAIN SOON, SNOW}`, build the sentence from `word` (existing CLOUDY/CLEAR branches already cover most of these — add HAZY → "Hazy air, no rain on radar.", DENSE FOG → "Dense fog — visibility low.").
-- Also: only emit the "Rain right above you — cell X mi Y" branch when the final `word` is `RAINING` (not just `legacyWord === 'RAINING'`). Same for the STORMS "closing in" line — gate on final `word`.
-
-This is the minimum to make the headline and the sentence stop contradicting each other.
-
-## Bug 2 — `probeNearbyCell` is forecast-derived, not radar-derived
-
-File: `src/lib/metDataFetcher.ts` (lines 1417–1498)
-
-Despite its name and the `dbz` field, `probeNearbyCell` does **not** read NEXRAD. It samples Open-Meteo HRRR **forecast** `minutely_15.precipitation` on a 2.5 mi grid and converts mm/hr → synthetic dBZ via Marshall-Palmer:
-
+**Grid rule** (`src/routes/index.tsx` ~line 2113):
 ```
-mmPerHr = max15 * 4 * 25.4
-dbz     = max(15, round(10 * log10(200 * mmPerHr^1.6)))
+isHigh = h.prob > 40
+```
+Bars only turn red above 40% probability. In the screenshot, the first ≥40% bars are late Monday night (45) and again climbing TUE 10 PM and beyond — exactly what the user reported.
+
+**Chip rule** (`src/lib/homeBriefing.functions.ts` lines 900–904):
+```ts
+const isRain = precs[i] > 0.1 || probs[i] >= 50 || (codes[i] >= 51 && codes[i] <= 99);
+if (isRain) { nextRainIdx = i; break; }
+```
+Three independent OR triggers, any of which can fire:
+1. `precs[i] > 0.1` — Open-Meteo's `precipitation` array is *amount* in mm, not probability. Open-Meteo routinely emits 0.1–0.3 mm at modest POPs (especially in haze/marine-layer regimes around the Gulf coast), so this fires on hours the grid leaves gray.
+2. `probs[i] >= 50` — stricter than the grid's 40% threshold; fine on its own.
+3. `codes[i] >= 51 && codes[i] <= 99` — WMO weather codes 51+ include light drizzle / rain showers / thunderstorm types. Open-Meteo emits these even when the matching hour's POP is well under 40%. This is almost certainly what's firing at TUE 12 PM in your screenshot: a "drizzle" code on a sub-40% hour.
+
+Net effect: chip locks onto the earliest "any signal" hour (TUE noon drizzle code), while the grid only colors hours where the user can actually *see* rain (TUE 10 PM+). The chip lies relative to what's on screen.
+
+## Fix
+
+In `src/lib/homeBriefing.functions.ts` lines 900–904, change the chip detector to match the grid's visible threshold, and require corroboration before trusting an Open-Meteo precip-amount or weather-code signal:
+
+```ts
+let nextRainIdx = -1;
+for (let i = Math.max(nowIdx, 0); i < times.length; i++) {
+  const prob = Number.isFinite(probs[i]) ? probs[i] : 0;
+  const mm   = Number.isFinite(precs[i]) ? precs[i] : 0;
+  const code = Number.isFinite(codes[i]) ? codes[i] : 0;
+
+  // Primary: matches the visible grid threshold (>40%).
+  const probSignal = prob > 40;
+
+  // Corroboration: a precip amount or rain code only counts when POP is
+  // at least borderline (>=30%). Drizzle codes at POP 15% are noise.
+  const supportedAmount = mm  >= 0.2 && prob >= 30;
+  const supportedCode   = code >= 51 && code <= 99 && prob >= 30;
+
+  if (probSignal || supportedAmount || supportedCode) { nextRainIdx = i; break; }
+}
 ```
 
-Threshold: any 15-min bucket ≥ 0.02" within 15 mi clears the `dbz ≥ 30` floor, which is exactly enough to trigger the `RAINING` promotion at homeBriefing line 1072. HRRR over the Houston Gulf coast routinely spits out 0.02–0.05" puffs in haze/shallow-moisture regimes that never produce a real radar echo. That's the "3 mi S" cell on your screen — it's a model forecast, not an observation.
-
-**Fix (two layers, both small):**
-
-1. **Cross-check against the radar/METAR signals we already have.** In `homeBriefing.functions.ts`, the existing hierarchy fetches `fetchOverheadDbz(lat, lon)` and `metarObsEarly`. Move (or duplicate) that overhead/METAR fetch slightly earlier, and before line 1072's `RAINING` promotion, require corroboration:
-   - Promote to `RAINING`/`STORMS` only if **either** `overheadRadar.dbz ≥ 25` **or** the METAR present-weather indicates precip (`RA`, `SHRA`, `TS`, `DZ`, `SN`).
-   - If METAR says `HZ`/`FU`/`BR`/`CLR` and overhead radar is <20 dBZ, drop the promotion and leave `nearbyProbe` available only for the `nearby_cell` payload (lines 1062–1068), not for verdict change.
-
-2. **Rename/clarify the field.** `dbz` on `NearbyCellProbe` is misleading — it's a synthetic value from a forecast model. Add a `source: 'hrrr_forecast' | 'nexrad'` discriminator (or rename to `syntheticDbz`) so future callers don't repeat the mistake. Optional but worth doing while we're here.
-
-## Why the chip still says "NEXT RAIN · TUE 5 PM"
-
-That's a separate code path (`nextRainIdx` in the daily forecast) and is unrelated. It's fine — the daily POP for Tue evening can legitimately be the next rain window even when right now is haze. Not part of this fix.
+This guarantees the chip's first-rain hour is one the user can also see as a red bar (or at least an at-the-edge hour with multiple signals), and kills the "drizzle code at 15% POP" false positive driving the Houston TUE 12 PM chip.
 
 ## Files to change
 
-- `src/lib/homeBriefing.functions.ts` — sentence builder (lines ~1346–1380); add HAZY/DENSE FOG sentence branches; gate the "Rain right above you" and "closing in" branches on the **final** `word`; gate the `RAINING`/`STORMS` promotion at lines 1072–1090 on METAR/overhead-radar corroboration.
-- `src/lib/metDataFetcher.ts` — optionally add a `source` field to `NearbyCellProbe` and tighten the precip floor (e.g. 0.04" / 15-min, ≈1.5 dBZ higher) to reduce ghost-cell rate.
+- `src/lib/homeBriefing.functions.ts` — lines 900–904 only. No DB, no UI, no schema changes. The `nextRainCaption` formatting downstream stays as-is.
 
-No DB, no schema, no UI changes. Purely server-function logic.
+## Validation
 
-## Validation plan
-
-1. Reproduce by calling `getHomeBriefing` against the current Greater Uptown coords and inspecting the returned `verdict_word`, `verdict_sentence`, and `nearby_cell` payload — confirm `word === 'HAZY'` and sentence no longer mentions rain.
-2. Use `stack_modern--server-function-logs` to confirm the new "promotion suppressed by METAR/overhead-radar" debug line fires when haze + ghost forecast cell coincide.
-3. Spot-check a known-rainy location (somewhere with an active NWS rain advisory) to make sure we did not regress the legitimate `RAINING` path.
+1. Re-fetch the briefing for the current Houston coords and confirm `next_rain_caption` resolves to a TUE-evening hour (~10 PM), matching the first red bar in the grid.
+2. Spot-check a known-rainy point (active POP ≥60% in the next 6 h) to confirm the chip still surfaces early rain, not a regression.
+3. Confirm the `legacyWord` / verdict path is untouched — this fix is independent of the previous HAZY/sentence-coherence work.
