@@ -33,7 +33,6 @@ const HOME_SESSIONS_CHIP_LIMIT = 5;
 // Free tier DAILY question limit. After the 1st question they get the full
 // answer; questions 2 and 3 get the limited answer; the 4th is blocked
 // until next local midnight.
-const FREE_DAILY_LIMIT = 3;
 
 /** Convert a Blob to a raw (no data: prefix) base64 string. */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -101,7 +100,6 @@ function HomePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [dailyCount, setDailyCount] = useState(0);
-  const [showCountdown, setShowCountdown] = useState(false);
   const [questionText, setQuestionText] = useState('');
 
   // Load the signed-in user's avatar + display name for the top-right circle.
@@ -601,13 +599,9 @@ function HomePage() {
 
   const handleSubmit = async () => {
     if (!questionText.trim()) return;
-    // Free-tier daily gate. Pro users (and admin emails, mapped to
-    // tier='pro' in auth) bypass entirely.
+    // Daily limit removed — all users get unlimited questions.
+    // The Pro gate now lives in handleSaveTrack on the answer screen.
     const isFree = user && tier !== 'pro';
-    if (isFree && dailyCount >= FREE_DAILY_LIMIT) {
-      setShowCountdown(true);
-      return;
-    }
     // Severe-weather intercept: if a Warning is active at the user's
     // location AND the question is one of the well-known emergency
     // queries, skip the standard pipeline entirely and route the answer
@@ -686,7 +680,6 @@ function HomePage() {
     }
     // Increment is now performed in /answer once the answer succeeds.
     // Locally bump for immediate UI/gate consistency.
-    const limitedAnswer = isFree && dailyCount >= 1;
     if (isFree) setDailyCount((c) => c + 1);
     navigate({
       to: '/answer',
@@ -699,7 +692,6 @@ function HomePage() {
         eventEndIso: finalTime?.end ? finalTime.end.toISOString() : undefined,
         intent,
         placeSource: finalPlace ? 'question' : 'active_address',
-        limitedAnswer,
         severe: interceptSevere ? 1 : undefined,
       },
     });
@@ -1732,12 +1724,6 @@ function HomePage() {
         <AuthModal
           onSuccess={() => setShowAuthModal(false)}
           onClose={() => setShowAuthModal(false)}
-        />
-      )}
-      {showCountdown && (
-        <DailyLimitCountdown
-          onUpgrade={() => { setShowCountdown(false); setShowUpgrade(true); }}
-          onClose={() => setShowCountdown(false)}
         />
       )}
       {sheetMode !== 'closed' && selectedAddress.lat != null && selectedAddress.lon != null && (
