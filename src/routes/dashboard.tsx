@@ -122,6 +122,7 @@ function SwipeableEventCard({
     setOffset(next);
   };
   const onTouchEnd = () => {
+    moved.current = false;
     if (startX.current == null) return;
     startX.current = null;
     if (offset < -revealWidth / 2) {
