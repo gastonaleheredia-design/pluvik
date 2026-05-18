@@ -2065,6 +2065,9 @@ function AnswerPage() {
           verdict={verdict}
           action={answer.action ?? fallbackAction}
           confidence={answer.confidence}
+          currentState={(answer as { current_state?: string | null }).current_state ?? undefined}
+          summaryText={answer.summary}
+          confidenceReason={(answer as { confidence_reason?: string | null }).confidence_reason ?? undefined}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
           saving={saving}
