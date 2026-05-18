@@ -1577,12 +1577,14 @@ function HomePage() {
           role="button"
           tabIndex={0}
           onClick={() => {
-            requestAnimationFrame(() => questionInputRef.current?.focus());
+            const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
+            if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              requestAnimationFrame(() => questionInputRef.current?.focus());
+              const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
+              if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
             }
           }}
           style={{
@@ -1613,7 +1615,8 @@ function HomePage() {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                requestAnimationFrame(() => questionInputRef.current?.focus());
+                const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
+                if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
               }}
               style={{
                 marginTop: 6,
