@@ -349,6 +349,51 @@ function SettingsPage() {
     return () => { cancelled = true; };
   }, [user, tier]);
 
+  useEffect(() => {
+    if (!user || !isPro) { setApiKeys([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('api_keys')
+        .select('id, label, created_at, last_used_at, request_count')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (!cancelled) setApiKeys((data as ApiKey[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [user, isPro]);
+
+  const handleGenerateApiKey = async () => {
+    if (!user) return;
+    setGeneratingKey(true);
+    setKeyError(null);
+    try {
+      const plaintext = generateRandomKey();
+      const key_hash = await sha256Hex(plaintext);
+      const { data, error } = await supabase
+        .from('api_keys')
+        .insert({ user_id: user.id, key_hash, label: `Key ${apiKeys.length + 1}` })
+        .select('id, label, created_at, last_used_at, request_count')
+        .single();
+      if (error || !data) {
+        setKeyError(error?.message ?? 'Could not generate key.');
+      } else {
+        setApiKeys((prev) => [data as ApiKey, ...prev]);
+        setNewKeyPlaintext(plaintext);
+        setCopiedKey(false);
+      }
+    } catch (e) {
+      setKeyError(e instanceof Error ? e.message : 'Could not generate key.');
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (id: string) => {
+    const { error } = await supabase.from('api_keys').delete().eq('id', id);
+    if (!error) setApiKeys((prev) => prev.filter((k) => k.id !== id));
+  };
+
   const handleCreateCompany = async () => {
     if (!user) return;
     const name = coName.trim();
