@@ -380,6 +380,86 @@ function EventPage() {
     typeof event.current_percentage === 'number' &&
     event.current_percentage > 0;
 
+  const PAPER = '#faf7f0';
+  const DARK = '#0b1018';
+
+  const updatedAgo = (() => {
+    if (!event.last_checked_at) return null;
+    const ms = Date.now() - new Date(event.last_checked_at).getTime();
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  })();
+  const nextCheck = (() => {
+    const next = (event as { next_refresh_at?: string | null }).next_refresh_at;
+    if (!next) return null;
+    const ms = new Date(next).getTime() - Date.now();
+    if (ms <= 0) return 'due now';
+    const m = Math.floor(ms / 60000);
+    if (m < 60) return `in ${m}m`;
+    const h = Math.floor(m / 60);
+    return `in ${h}h`;
+  })();
+  const eventTimeLabel = event.event_at
+    ? new Date(event.event_at).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      })
+    : null;
+  const eventTitle =
+    (event as { event_title?: string | null }).event_title ??
+    synthesizeEventTitle(event.question);
+  const refreshDisabled =
+    refreshing ||
+    busy ||
+    !!event.archived_at ||
+    !!(event.event_at && new Date(event.event_at).getTime() < Date.now());
+
+  const eventUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/event/${event.id}`
+      : `/event/${event.id}`;
+  const shareTitle = synthesizeEventTitle(event.question);
+  const onShare = async () => {
+    try {
+      await navigator.clipboard?.writeText(eventUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1800);
+    } catch { /* ignore */ }
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await (navigator as Navigator & { share: (d: ShareData) => Promise<void> }).share({
+          title: shareTitle,
+          text: `${shareTitle} — tracking the weather together on Pluvik`,
+          url: eventUrl,
+        });
+      } catch { /* ignore */ }
+    }
+  };
+
+  // Build forecast history rows from snapshots (newest first), max 4.
+  const historyRows = (() => {
+    if (snapshots.length === 0) {
+      return [{
+        id: 'start',
+        when: new Date(event.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase(),
+        word: 'TRACKING STARTED',
+        pct: '',
+        isLatest: true,
+      }];
+    }
+    return snapshots.slice(0, 4).map((s, i) => ({
+      id: s.id,
+      when: new Date(s.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase(),
+      word: (s.decision_label ?? '—').toUpperCase(),
+      pct: typeof s.chance_of_impact === 'number' ? `${s.chance_of_impact}%` : '',
+      isLatest: i === 0,
+    }));
+  })();
+
   return (
     <div
       style={{
@@ -387,37 +467,45 @@ function EventPage() {
         backgroundColor: PAGE_BG,
         color: INK,
         fontFamily: 'Inter, sans-serif',
-        padding: '24px',
-        paddingBottom: '60px',
+        padding: '40px 22px 32px',
       }}
     >
       <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-        {/* Back button */}
-        <button
-          onClick={() => navigate({ to: '/dashboard' })}
+        {/* Header */}
+        <div
           style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            marginBottom: '20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 22,
           }}
         >
-          <span
+          <button
+            onClick={() => navigate({ to: '/dashboard' })}
             style={{
-              fontSize: '0.78rem',
-              letterSpacing: '0.1em',
-              color: MUTED,
-              fontFamily: 'Inter, sans-serif',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.5rem', letterSpacing: '0.2em',
+              color: MUTED, textTransform: 'uppercase',
             }}
           >
-            {t('event.back')}
-          </span>
-        </button>
+            ← TRACKING
+          </button>
+          <button
+            type="button"
+            aria-label="More"
+            onClick={() => setConfirmingDelete((v) => !v)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+              color: MUTED, lineHeight: 0,
+            }}
+          >
+            <MoreVertical size={16} />
+          </button>
+        </div>
 
-        {/* Event question */}
+        {/* Event title block */}
         {editing ? (
-          <div style={{ marginBottom: '14px' }}>
+          <div style={{ marginBottom: 18 }}>
             <textarea
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
@@ -426,7 +514,7 @@ function EventPage() {
               style={{
                 width: '100%',
                 fontFamily: 'Fraunces, serif',
-                fontSize: '1.2rem',
+                fontSize: '1.15rem',
                 lineHeight: 1.3,
                 padding: '12px',
                 border: `1px solid ${INK}33`,
@@ -437,21 +525,16 @@ function EventPage() {
                 outline: 'none',
               }}
             />
-            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button
                 onClick={handleSaveEdit}
                 disabled={busy}
                 style={{
-                  flex: 1,
-                  padding: '10px',
-                  background: INK,
-                  color: PAGE_BG,
-                  border: 'none',
-                  borderRadius: '100px',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
+                  flex: 1, padding: '10px', background: INK, color: PAPER,
+                  border: 'none', borderRadius: 10, fontWeight: 600,
+                  fontSize: '0.78rem', cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  letterSpacing: '0.16em', textTransform: 'uppercase',
                 }}
               >
                 {t('event.edit_modal_save')}
@@ -459,15 +542,11 @@ function EventPage() {
               <button
                 onClick={() => setEditing(false)}
                 style={{
-                  flex: 1,
-                  padding: '10px',
-                  background: 'transparent',
-                  color: MUTED,
-                  border: `1px solid ${INK}1a`,
-                  borderRadius: '100px',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
+                  flex: 1, padding: '10px', background: 'transparent', color: MUTED,
+                  border: `1px solid ${INK}1a`, borderRadius: 10,
+                  fontSize: '0.78rem', cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  letterSpacing: '0.16em', textTransform: 'uppercase',
                 }}
               >
                 {t('event.edit_modal_cancel')}
@@ -475,47 +554,59 @@ function EventPage() {
             </div>
           </div>
         ) : (
-          <div
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: '1.3rem',
-              fontWeight: 500,
-              lineHeight: 1.25,
-              color: INK,
-              marginBottom: '6px',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {(event as { event_title?: string | null }).event_title ?? event.question}
+          <div style={{ marginBottom: 18 }}>
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '1.25rem',
+                fontWeight: 700,
+                lineHeight: 1.25,
+                color: INK,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                marginBottom: 8,
+              }}
+            >
+              {eventTitle}
+            </div>
+            <div
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.5rem', letterSpacing: '0.18em',
+                color: MUTED, textTransform: 'uppercase',
+              }}
+            >
+              {[event.address, eventTimeLabel].filter(Boolean).join(' · ')}
+            </div>
+            {(updatedAgo || nextCheck) && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.48rem', letterSpacing: '0.18em',
+                  color: MUTED, textTransform: 'uppercase',
+                }}
+              >
+                {updatedAgo ? `UPDATED ${updatedAgo}` : ''}
+                {updatedAgo && nextCheck ? ' · ' : ''}
+                {nextCheck ? `NEXT CHECK ${nextCheck}` : ''}
+              </div>
+            )}
           </div>
         )}
-        <div
-          style={{
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-            fontSize: '0.6rem',
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: '#6b6357',
-            marginBottom: '20px',
-          }}
-        >
-          {event.address}
-        </div>
 
-        {/* Lifecycle banner — shown when the event has been archived/concluded */}
         {event.archived_at && (
           <div
             style={{
               backgroundColor: '#15803d14',
               border: `1px solid #15803d33`,
-              borderRadius: '12px',
-              padding: '12px 14px',
-              marginBottom: '20px',
-              fontSize: '0.85rem',
+              borderRadius: 12,
+              padding: '10px 12px',
+              marginBottom: 18,
+              fontSize: '0.78rem',
               color: '#15803d',
               lineHeight: 1.4,
             }}
@@ -528,666 +619,307 @@ function EventPage() {
           </div>
         )}
 
-        {/* Live MRMS radar — only for severe/hurricane modes, or when the
-            event is within 2 hours AND we're already in the live nowcast
-            stage (which implies active precipitation nearby). Standard
-            "will it rain tomorrow?" events skip the radar entirely. */}
-        {(() => {
-          const isSevere =
-            event.current_mode === 'severe' || event.current_mode === 'hurricane';
-          const hoursToEvent = event.event_at
-            ? (new Date(event.event_at).getTime() - Date.now()) / 3_600_000
-            : Infinity;
-          const livePrecipNearby =
-            snapshots[0]?.stage === 'live' && hoursToEvent <= 2 && hoursToEvent >= -1;
-          const showRadar =
-            !event.archived_at &&
-            (isSevere || livePrecipNearby) &&
-            typeof event.lat === 'number' &&
-            typeof event.lon === 'number';
-          if (showRadar) {
-            return <LiveRadarMap lat={event.lat as number} lon={event.lon as number} />;
-          }
-          return null;
-        })()}
-
-        {/* Current forecast — flat block */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+        {/* Verdict card */}
+        <div
+          style={{
+            backgroundColor: DARK,
+            color: '#ffffff',
+            borderRadius: 16,
+            padding: '16px 18px',
+            marginBottom: 22,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span
               style={{
                 display: 'inline-block',
                 backgroundColor: colors.bg,
-                color: colors.text,
-                padding: '4px 12px',
-                borderRadius: '100px',
+                color: '#ffffff',
+                padding: '4px 10px',
+                borderRadius: 999,
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.65rem',
-                letterSpacing: '0.14em',
+                fontSize: '0.55rem',
+                letterSpacing: '0.18em',
                 fontWeight: 700,
+                textTransform: 'uppercase',
               }}
             >
               {displayVerdict === 'MAYBE' ? 'CAUTION' : displayVerdict}
             </span>
+            <div style={{ flex: 1 }} />
             {showPercentage && (
-              <span
-                style={{
-                  fontFamily: 'Fraunces, serif',
-                  fontSize: '1.05rem',
-                  color: INK,
-                }}
-              >
-                {event.current_percentage}%
-              </span>
+              <>
+                <span
+                  style={{
+                    fontFamily: 'Fraunces, serif',
+                    fontWeight: 700,
+                    fontSize: '1.6rem',
+                    lineHeight: 1,
+                    color: '#ffffff',
+                  }}
+                >
+                  {event.current_percentage}
+                  <span style={{ fontSize: '1rem', fontWeight: 400 }}>%</span>
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.44rem', letterSpacing: '0.2em',
+                    color: `${PAPER}80`,
+                    textTransform: 'uppercase',
+                    textAlign: 'right',
+                    maxWidth: 70,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  IMPACT
+                </span>
+              </>
             )}
+          </div>
+          {displaySentence && (
+            <div
+              style={{
+                marginTop: 12,
+                fontFamily: 'Fraunces, serif',
+                fontStyle: 'italic',
+                fontSize: '0.84rem',
+                lineHeight: 1.45,
+                color: `${PAPER}E6`,
+              }}
+            >
+              {displaySentence}
+            </div>
+          )}
+        </div>
+
+        {/* Forecast history */}
+        <div style={{ marginBottom: 22 }}>
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.48rem',
+              letterSpacing: '0.22em',
+              color: MUTED,
+              textTransform: 'uppercase',
+              marginBottom: 10,
+            }}
+          >
+            FORECAST HISTORY
           </div>
           <div
             style={{
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: '0.95rem',
-              color: INK,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '100%',
+              borderLeft: `1px solid ${INK}15`,
+              paddingLeft: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
             }}
           >
-            {displaySentence}
+            {historyRows.map((row) => (
+              <div
+                key={row.id}
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: -19,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 8, height: 8, borderRadius: '50%',
+                    backgroundColor: row.isLatest ? ACCENT : `${INK}40`,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.5rem',
+                    letterSpacing: '0.16em',
+                    color: row.isLatest ? ACCENT : MUTED,
+                    minWidth: 56,
+                  }}
+                >
+                  {row.when}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                    fontSize: '0.5rem',
+                    letterSpacing: '0.14em',
+                    color: row.isLatest ? ACCENT : INK,
+                    fontWeight: row.isLatest ? 700 : 500,
+                  }}
+                >
+                  {row.word}
+                </span>
+                {row.pct && (
+                  <span
+                    style={{
+                      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                      fontSize: '0.5rem',
+                      letterSpacing: '0.14em',
+                      color: row.isLatest ? ACCENT : MUTED,
+                      fontWeight: row.isLatest ? 700 : 500,
+                    }}
+                  >
+                    {row.pct}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Forecast change timeline — compact, only when >1 snapshot */}
-        {snapshots.length > 1 && (
-          <div style={{ marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {snapshots.slice(0, 4).map((s) => {
-              const d = new Date(s.created_at).toLocaleDateString(undefined, {
-                month: 'short', day: 'numeric',
-              }).toUpperCase();
-              const word = (s.decision_label ?? '—').toUpperCase();
-              const pct = typeof s.chance_of_impact === 'number' ? `${s.chance_of_impact}%` : '—';
-              return (
-                <div
-                  key={s.id}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '90px 1fr 60px',
-                    gap: '12px',
-                    alignItems: 'baseline',
-                    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                    fontSize: '0.58rem',
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    color: MUTED,
-                    paddingBottom: '6px',
-                    borderBottom: `1px solid ${INK}10`,
-                  }}
-                >
-                  <span>{d}</span>
-                  <span style={{ color: INK }}>{word}</span>
-                  <span style={{ color: ACCENT, textAlign: 'right' as const }}>{pct}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Why MAYBE — three-part rationale shown only on uncertain answers */}
-        {displayVerdict === 'MAYBE' && event.current_maybe_explanation && (
-          <div
+        {/* Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshDisabled}
             style={{
-              marginTop: '14px',
-              padding: '16px 18px',
-              borderRadius: '14px',
-              border: `1px solid ${INK}1f`,
-              backgroundColor: '#fff',
+              width: '100%',
+              padding: '15px',
+              background: ACCENT,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 12,
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.65rem',
+              letterSpacing: '0.2em',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              cursor: refreshDisabled ? 'default' : 'pointer',
+              opacity: refreshDisabled ? 0.5 : 1,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}
           >
-            <div
-              style={{
-                fontSize: '0.62rem',
-                letterSpacing: '0.14em',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                color: ACCENT,
-                marginBottom: '8px',
-              }}
-            >
-              Why we're saying maybe
-            </div>
-            <div
-              style={{
-                fontFamily: 'Fraunces, serif',
-                fontSize: '0.98rem',
-                lineHeight: 1.45,
-                color: INK,
-              }}
-            >
-              {event.current_maybe_explanation.afd_quote}{' '}
-              {event.current_maybe_explanation.model_reconciliation}{' '}
-              <span style={{ color: MUTED }}>
-                {event.current_maybe_explanation.why_uncertain}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Climate facts (climate / outlook stage only) */}
-        {Array.isArray(event.current_climate_facts) &&
-          event.current_climate_facts.length > 0 &&
-          (() => {
-            const facts = event.current_climate_facts!;
-            const findVal = (label: string) =>
-              facts.find((f) => f.label === label)?.value ?? null;
-            const high = findVal('NORMAL HIGH');
-            const low = findVal('NORMAL LOW');
-            const meanTemp = findVal('NORMAL TEMP');
-            const rainPct = findVal('RAIN FREQUENCY');
-            const station = facts.find((f) => f.label === 'STATION');
-            const tempDisplay =
-              high && low ? `${high} / ${low}` : high ?? low ?? meanTemp ?? null;
-            const dateChip = event.event_at
-              ? new Date(event.event_at).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                })
-              : null;
-            return (
-              <div
-                style={{
-                  backgroundColor: '#fff',
-                  border: `1px solid ${INK}14`,
-                  borderRadius: '16px',
-                  padding: '18px 18px 14px',
-                  marginBottom: '24px',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'baseline',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '0.7rem',
-                      letterSpacing: '0.12em',
-                      color: MUTED,
-                    }}
-                  >
-                    CLIMATE FOR THIS DATE
-                  </div>
-                  {dateChip && (
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: '0.95rem',
-                        color: INK,
-                      }}
-                    >
-                      {dateChip}
-                    </div>
-                  )}
-                </div>
-
-                {event.current_climate_interpretation && (
-                  <div
-                    style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontSize: '1rem',
-                      lineHeight: 1.5,
-                      color: INK,
-                      marginBottom: '14px',
-                    }}
-                  >
-                    {event.current_climate_interpretation}
-                  </div>
-                )}
-
-                {(tempDisplay || rainPct) && (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '12px 18px',
-                      paddingTop: '4px',
-                      paddingBottom: '4px',
-                    }}
-                  >
-                    {tempDisplay && (
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontFamily: 'Fraunces, serif',
-                            fontSize: '1.25rem',
-                            color: INK,
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {tempDisplay}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
-                          typical high / low
-                        </div>
-                      </div>
-                    )}
-                    {rainPct && (
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontFamily: 'Fraunces, serif',
-                            fontSize: '1.25rem',
-                            color: INK,
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          ~{rainPct}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: MUTED, marginTop: '3px' }}>
-                          chance of rain, this date
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {event.current_climate_framing && (
-                  <div
-                    style={{
-                      marginTop: '14px',
-                      fontSize: '0.78rem',
-                      fontStyle: 'italic',
-                      color: MUTED,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {event.current_climate_framing}
-                  </div>
-                )}
-
-                {station && (
-                  <button
-                    type="button"
-                    onClick={() => setStationOpen((v) => !v)}
-                    style={{
-                      marginTop: '12px',
-                      paddingTop: '10px',
-                      borderTop: `1px solid ${INK}0d`,
-                      width: '100%',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '10px 0 0',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      fontSize: '0.7rem',
-                      color: MUTED,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    Source: NOAA · {station.value}
-                    {stationOpen && station.hint ? ` — ${station.hint}` : ' ▾'}
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
-        {/* Actions */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            marginTop: '8px',
-            marginBottom: '32px',
-          }}
-        >
-          {!event.archived_at && !(event.event_at && new Date(event.event_at).getTime() < Date.now()) && (
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || busy}
-              style={{
-                padding: '14px',
-                background: ACCENT,
-                color: '#faf7f0',
-                border: 'none',
-                borderRadius: '100px',
-                fontSize: '0.92rem',
-                fontWeight: 600,
-                letterSpacing: '0.01em',
-                cursor: refreshing || busy ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                opacity: refreshing || busy ? 0.6 : 1,
-                boxShadow: `0 6px 16px -8px ${ACCENT}80`,
-              }}
-            >
-              {refreshing ? 'Refreshing forecast…' : '↻  Refresh forecast'}
-            </button>
-          )}
-          {!event.archived_at && event.event_at && new Date(event.event_at).getTime() < Date.now() && (
-            <div
-              style={{
-                fontSize: '0.82rem',
-                color: MUTED,
-                textAlign: 'center',
-                lineHeight: 1.5,
-                padding: '10px 14px',
-              }}
-            >
-              {t('event.time_passed')}
-            </div>
-          )}
+            <RotateCw size={13} />
+            {refreshing ? 'REFRESHING…' : 'REFRESH FORECAST'}
+          </button>
           {refreshError && (
-            <div
-              style={{
-                fontSize: '0.78rem',
-                color: '#b91c1c',
-                textAlign: 'center',
-              }}
-            >
+            <div style={{ fontSize: '0.72rem', color: '#b91c1c', textAlign: 'center' }}>
               {refreshError}
             </div>
           )}
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => {
-                setEditText(event.question);
-                setEditing(true);
-              }}
-              disabled={editing || busy}
-              style={{
-                flex: 1,
-                padding: '11px',
-                background: 'transparent',
-                color: INK,
-                border: `1px solid ${INK}1f`,
-                borderRadius: '100px',
-                fontSize: '0.82rem',
-                cursor: editing ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                opacity: editing ? 0.5 : 1,
-              }}
-            >
-              ✎  {t('event.action_edit')}
-            </button>
-            <button
-              onClick={handleComplete}
-              disabled={busy}
-              style={{
-                flex: 1,
-                padding: '11px',
-                background: 'transparent',
-                color: INK,
-                border: `1px solid ${INK}1f`,
-                borderRadius: '100px',
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              ✓  {t('event.action_complete')}
-            </button>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: '12px',
-              marginTop: '6px',
-              minHeight: '24px',
-            }}
-          >
-            {confirmingDelete ? (
-              <>
-                <span style={{ fontSize: '0.78rem', color: MUTED }}>
-                  Delete this question?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(false)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: MUTED,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    padding: '4px 6px',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={busy}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#b91c1c',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: busy ? 'default' : 'pointer',
-                    fontFamily: 'inherit',
-                    padding: '4px 6px',
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { key: 'edit', label: t('event.action_edit'), icon: Pencil, color: INK,
+                onClick: () => { setEditText(event.question); setEditing(true); }, disabled: editing || busy },
+              { key: 'done', label: t('event.action_complete'), icon: CheckCircle2, color: INK,
+                onClick: handleComplete, disabled: busy },
+              { key: 'delete', label: t('event.action_delete'), icon: Trash2, color: '#dc2626',
+                onClick: confirmingDelete ? handleDelete : () => setConfirmingDelete(true), disabled: busy },
+            ].map((b) => (
               <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                disabled={busy}
+                key={b.key}
+                onClick={b.onClick}
+                disabled={b.disabled}
                 style={{
+                  flex: 1,
+                  padding: '11px 8px',
                   background: 'transparent',
-                  border: 'none',
-                  color: MUTED,
-                  fontSize: '0.75rem',
-                  textDecoration: 'underline',
-                  textUnderlineOffset: '3px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  padding: '4px 8px',
+                  color: b.color,
+                  border: `1px solid ${INK}18`,
+                  borderRadius: 10,
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.48rem',
+                  letterSpacing: '0.18em',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  cursor: b.disabled ? 'default' : 'pointer',
+                  opacity: b.disabled ? 0.5 : 1,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
               >
-                {t('event.action_delete')}
+                <b.icon size={12} />
+                {b.key === 'delete' && confirmingDelete ? 'CONFIRM' : b.label}
               </button>
-            )}
+            ))}
           </div>
-        </div>
-
-        {/* INVITE — share this tracked event */}
-        {(() => {
-          const eventUrl =
-            typeof window !== 'undefined'
-              ? `${window.location.origin}/event/${event.id}`
-              : `/event/${event.id}`;
-          const title = synthesizeEventTitle(event.question);
-          const shareText = `${title} — tracking the weather together on Pluvik`;
-          const onShare = async () => {
-            try {
-              await navigator.clipboard?.writeText(eventUrl);
-              setShareCopied(true);
-              setTimeout(() => setShareCopied(false), 1800);
-            } catch {
-              /* clipboard may be blocked — ignore */
-            }
-            if (typeof navigator !== 'undefined' && 'share' in navigator) {
-              try {
-                await (navigator as Navigator & { share: (d: ShareData) => Promise<void> }).share({
-                  title,
-                  text: shareText,
-                  url: eventUrl,
-                });
-              } catch {
-                /* user dismissed share sheet — ignore */
-              }
-            }
-          };
-          return (
-            <div
+          {confirmingDelete && (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
               style={{
-                backgroundColor: '#fff',
-                border: `1px solid ${INK}14`,
-                borderRadius: '16px',
-                padding: '16px 18px',
-                marginBottom: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.5rem', letterSpacing: '0.18em',
+                color: MUTED, textTransform: 'uppercase',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    backgroundColor: `${ACCENT}14`,
-                    color: ACCENT,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Users size={18} />
-                </div>
-                <div
-                  style={{
-                    flex: 1,
-                    fontSize: '0.9rem',
-                    color: INK,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Invite friends to track this with you
-                </div>
-                <button
-                  type="button"
-                  onClick={onShare}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    backgroundColor: INK,
-                    color: PAGE_BG,
-                    border: 'none',
-                    borderRadius: '100px',
-                    padding: '8px 14px',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.04em',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {shareCopied ? <Check size={14} /> : <Share2 size={14} />}
-                  {shareCopied ? 'Copied' : 'Share'}
-                </button>
-              </div>
-              {participants.length > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '-6px' }}>
-                  {participants.slice(0, 6).map((p, i) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: '50%',
-                        backgroundColor: `${ACCENT}22`,
-                        color: ACCENT,
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: `2px solid ${PAGE_BG}`,
-                        marginLeft: i === 0 ? 0 : -8,
-                      }}
-                    >
-                      {p.initials}
-                    </div>
-                  ))}
-                  {participants.length > 6 && (
-                    <div
-                      style={{
-                        marginLeft: -8,
-                        fontSize: '0.75rem',
-                        color: MUTED,
-                      }}
-                    >
-                      +{participants.length - 6}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    fontSize: '0.78rem',
-                    color: MUTED,
-                    fontStyle: 'italic',
-                  }}
-                >
-                  Just you so far
-                </div>
-              )}
-            </div>
-          );
-        })()}
+              CANCEL DELETE
+            </button>
+          )}
+        </div>
 
-        {/* Tracking journal */}
+        {/* Invite card */}
         <div
           style={{
-            fontSize: '0.7rem',
-            letterSpacing: '0.12em',
-            color: MUTED,
-            marginBottom: '14px',
+            border: `1px solid ${INK}15`,
+            borderRadius: 12,
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
         >
-          FORECAST TIMELINE
-        </div>
-
-        {snapshots.length > 0 ? (
-          <EventTimeline snapshots={snapshots} />
-        ) : (
-          <div
-            style={{
-              position: 'relative',
-              paddingLeft: '20px',
-              borderLeft: `1px solid ${INK}1a`,
-            }}
-          >
-            <div style={{ position: 'relative' }}>
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '-26px',
-                  top: '4px',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: ACCENT,
-                }}
-              />
-              <div
-                style={{
-                  fontSize: '0.95rem',
-                  fontStyle: 'italic',
-                  color: INK,
-                  lineHeight: 1.4,
-                }}
-              >
-                &ldquo;{t('event.started_tracking')}&rdquo;
-              </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: 'Fraunces, serif',
+                fontSize: '0.85rem',
+                lineHeight: 1.3,
+                color: INK,
+              }}
+            >
+              Invite friends to track this
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: '0.46rem',
+                letterSpacing: '0.2em',
+                color: MUTED,
+                textTransform: 'uppercase',
+              }}
+            >
+              {participants.length > 0
+                ? `${participants.length} TRACKING`
+                : 'JUST YOU SO FAR'}
             </div>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={onShare}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: DARK,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 10,
+              padding: '9px 14px',
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.55rem',
+              letterSpacing: '0.18em',
+              fontWeight: 700,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+            {shareCopied ? 'COPIED' : 'SHARE'}
+          </button>
+        </div>
       </div>
     </div>
   );
