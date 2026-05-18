@@ -1710,6 +1710,20 @@ function HomePage() {
         />
       )}
 
+      {selectedAddress.meta !== 'DEFAULT' && selectedAddress.label && (
+        <div style={{
+          fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+          fontSize: '0.52rem',
+          letterSpacing: '0.12em',
+          color: '#6b6357',
+          textAlign: 'center',
+          padding: '8px 20px 4px',
+          textTransform: 'uppercase',
+        }}>
+          US coverage only · International support coming soon
+        </div>
+      )}
+
       <BottomNav />
       {showPicker && <AddressPicker onClose={() => setShowPicker(false)} />}
       {whyOpen && briefing && (
