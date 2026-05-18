@@ -49,6 +49,18 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // normals don't change daily; one day
 const SEARCH_RADIUS_DEG = 0.6; // ~40 miles bbox
 const SEARCH_RADIUS_DEG_FALLBACK = 1.5; // ~100 miles bbox if first pass empty
 const NULL_CACHE_TTL_MS = 5 * 60 * 1000; // don't blank out climatology for a day on a transient 5xx
+const CACHE_MAX = 400;
+
+// Bound module-level Maps in long-lived Worker isolates: when a cache exceeds
+// CACHE_MAX entries, drop the 100 oldest by insertion order.
+function evictCacheIfNeeded(cache: Map<string, unknown>): void {
+  if (cache.size < CACHE_MAX) return;
+  let deleted = 0;
+  for (const key of cache.keys()) {
+    cache.delete(key);
+    if (++deleted >= 100) break;
+  }
+}
 
 const NCEI_UA = 'Pluvik Weather App (support@pluvik.app)';
 
