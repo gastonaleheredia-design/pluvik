@@ -1574,6 +1574,17 @@ function HomePage() {
       {/* Thin question input pinned near bottom */}
       {stormCardEligible && !stormCardDismissed && (
         <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            requestAnimationFrame(() => questionInputRef.current?.focus());
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              requestAnimationFrame(() => questionInputRef.current?.focus());
+            }
+          }}
           style={{
             margin: '0 20px 14px',
             padding: '6px 0 6px 12px',
@@ -1582,6 +1593,7 @@ function HomePage() {
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 12,
+            cursor: 'pointer',
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -1622,6 +1634,13 @@ function HomePage() {
             type="button"
             aria-label="Dismiss"
             onClick={() => {
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={(e) => {
+              e.stopPropagation();
               setStormCardDismissed(true);
               try { sessionStorage.setItem('stormCardDismissed', '1'); } catch {}
             }}
