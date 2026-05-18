@@ -763,6 +763,14 @@ function AnswerPage() {
       if (cancelled || !data) return;
       const sameDay = data.last_question_date === today;
       const next = (sameDay ? (data.daily_question_count ?? 0) : 0) + 1;
+      // Extra guard: only update if a user_profiles row actually exists
+      // (handle_new_user trigger should have created one, but verify).
+      const { data: existing } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled || !existing) return;
       await supabase
         .from('user_profiles')
         .update({ daily_question_count: next, last_question_date: today })
