@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      answer_feedback: {
+        Row: {
+          address: string | null
+          created_at: string
+          event_question: string | null
+          feedback: string
+          id: string
+          lat: number | null
+          lon: number | null
+          percentage: number | null
+          user_id: string | null
+          verdict: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          event_question?: string | null
+          feedback: string
+          id?: string
+          lat?: number | null
+          lon?: number | null
+          percentage?: number | null
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          event_question?: string | null
+          feedback?: string
+          id?: string
+          lat?: number | null
+          lon?: number | null
+          percentage?: number | null
+          user_id?: string | null
+          verdict?: string | null
+        }
+        Relationships: []
+      }
       business_profiles: {
         Row: {
           business_name: string
