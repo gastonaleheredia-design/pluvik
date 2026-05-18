@@ -5,8 +5,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
   "triggers": {
-    // Cloudflare cron is UTC-only. 7am UTC ≈ early morning across EU/Africa;
-    // adjust this expression to target a different region's morning.
-    "crons": ["0 7 * * *"]
+    // Cloudflare cron is UTC-only. 12:00 UTC = 7am CDT / 6am CST — primary US morning window.
+    // sendMorningBriefing filters recipients by their preferred_briefing_hour so only users
+    // whose local hour ≈ now receive a push.
+    "crons": ["0 12 * * *"]
   }
 }
