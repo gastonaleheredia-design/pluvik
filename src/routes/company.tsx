@@ -201,12 +201,54 @@ function CompanyPage() {
     return (
       <div style={pageStyle}>
         <p style={{ fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT }}>
-          COMPANY
+          FOR TEAMS
         </p>
-        <h1 style={{ fontFamily: SERIF, fontSize: '1.6rem', margin: '12px 0 16px' }}>No company yet</h1>
-        <p style={{ fontFamily: SERIF, color: MUTED, fontStyle: 'italic' }}>
-          Create a company profile from Settings to unlock this screen.
+        <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: '2rem', margin: '12px 0 12px', color: INK, lineHeight: 1.15 }}>
+          Weather intelligence for your team.
+        </h1>
+        <p style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: '1rem', color: MUTED, margin: '0 0 28px', lineHeight: 1.5 }}>
+          Track job sites, get storm alerts, and keep your crew safe — all in one dashboard.
         </p>
+
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {[
+            { icon: '⚡', text: 'Real-time severe weather alerts for your locations' },
+            { icon: '📊', text: 'Shared forecast dashboard for your whole team' },
+            { icon: '🤖', text: 'AI answers built for outdoor operations' },
+          ].map((f) => (
+            <li key={f.text} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <span aria-hidden style={{ fontSize: '1.1rem', lineHeight: 1.4, flexShrink: 0 }}>{f.icon}</span>
+              <span style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: '0.95rem', color: INK, lineHeight: 1.5 }}>{f.text}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div style={{
+          border: `2px solid ${ACCENT}`, borderRadius: 16, padding: 20, marginBottom: 24,
+          background: PAPER,
+        }}>
+          <p style={{ fontFamily: MONO, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, margin: '0 0 8px' }}>
+            PRICING
+          </p>
+          <p style={{ fontFamily: SERIF, fontSize: '1.4rem', color: INK, margin: '0 0 4px', fontWeight: 400 }}>
+            $49<span style={{ fontSize: '1rem', color: MUTED }}>/month</span>
+          </p>
+          <p style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: '0.9rem', color: MUTED, margin: 0 }}>
+            for up to 10 users
+          </p>
+        </div>
+
+        <button
+          onClick={() => navigate({ to: '/business' })}
+          style={{
+            width: '100%', padding: '14px 20px', borderRadius: 999,
+            background: ACCENT, color: PAPER, border: 'none',
+            fontFamily: MONO, fontSize: '0.7rem', letterSpacing: '0.14em',
+            textTransform: 'uppercase', cursor: 'pointer',
+          }}
+        >
+          Get started →
+        </button>
         <BottomNav />
       </div>
     );
