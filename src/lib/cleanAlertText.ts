@@ -55,9 +55,28 @@ export function cleanAlertText(raw: string | null | undefined): string {
     const cleaned = line.replace(/\b[A-Z]{3,8}\d{0,3}\b(?=\s|$)/g, (m) => {
       // Preserve common English all-caps words we actually want to keep.
       const safe = new Set([
-        'NWS', 'EF', 'EF0', 'EF1', 'EF2', 'EF3', 'EF4', 'EF5',
-        'MPH', 'KTS', 'PDT', 'EDT', 'CDT', 'MDT', 'AM', 'PM',
+        // Units and abbreviations
+        'NWS', 'MPH', 'KTS', 'KPH',
+        // Tornado and severe
+        'EF', 'EF0', 'EF1', 'EF2', 'EF3', 'EF4', 'EF5',
+        'TORNADO', 'TORNADOES', 'WATERSPOUT',
+        'SEVERE', 'EXTREME', 'DANGEROUS',
+        // Alert types
+        'WARNING', 'WATCH', 'ADVISORY', 'STATEMENT', 'EMERGENCY',
+        // Hazard types
+        'FLOOD', 'FLOODING', 'FLASH', 'BLIZZARD', 'HURRICANE',
+        'TROPICAL', 'THUNDERSTORM', 'LIGHTNING',
+        'HAIL', 'WIND', 'WINDS', 'GUSTS', 'SURGE',
+        'SNOW', 'ICE', 'SLEET', 'FREEZING', 'FROST',
+        'HEAT', 'COLD', 'FOG', 'SMOKE', 'DUST',
+        // Action words
+        'SHELTER', 'EVACUATE', 'EVACUATION', 'AVOID',
+        'IMMEDIATE', 'IMMINENT', 'CONFIRMED',
+        // Section headers
         'HAZARD', 'SOURCE', 'IMPACT', 'PRECAUTIONARY', 'ACTIONS',
+        // Timezone abbreviations
+        'PDT', 'EDT', 'CDT', 'MDT', 'PST', 'EST', 'CST', 'MST',
+        'AM', 'PM', 'UTC',
       ]);
       return safe.has(m) ? m : '';
     }).replace(/\s{2,}/g, ' ').trim();
