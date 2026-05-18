@@ -1574,19 +1574,6 @@ function HomePage() {
       {/* Thin question input pinned near bottom */}
       {stormCardEligible && !stormCardDismissed && (
         <div
-          role="button"
-          tabIndex={0}
-          onClick={() => {
-            const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
-            if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
-              if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-            }
-          }}
           style={{
             margin: '0 20px 14px',
             padding: '6px 0 6px 12px',
@@ -1595,7 +1582,6 @@ function HomePage() {
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 12,
-            cursor: 'pointer',
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -1613,11 +1599,7 @@ function HomePage() {
             </p>
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                const input = document.querySelector('input[placeholder*="rain"], input[placeholder*="Ask"], input[placeholder*="Listening"]') as HTMLInputElement;
-                if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-              }}
+              onClick={() => questionInputRef.current?.focus()}
               style={{
                 marginTop: 6,
                 fontFamily: '"JetBrains Mono", monospace',
