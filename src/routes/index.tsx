@@ -728,10 +728,25 @@ function HomePage() {
     // Increment is now performed in /answer once the answer succeeds.
     // Locally bump for immediate UI/gate consistency.
     if (isFree) setDailyCount((c) => c + 1);
+    // Ask Claude for a clean event-title rewrite of the raw question.
+    // Hard 3s budget; on any failure we just fall back to the original.
+    let displayQ: string | undefined;
+    try {
+      const result = await Promise.race<{ title: string | null }>([
+        rewriteQuestionTitle({ data: { question: composedQuestion } }),
+        new Promise<{ title: null }>((r) => setTimeout(() => r({ title: null }), 3000)),
+      ]);
+      if (result?.title && result.title !== composedQuestion) {
+        displayQ = result.title;
+      }
+    } catch {
+      /* fall back to original */
+    }
     navigate({
       to: '/answer',
       search: {
         q: composedQuestion,
+        displayQ,
         address: finalPlace?.label ?? selectedAddress.label,
         lat: finalPlace?.lat ?? submitLat,
         lon: finalPlace?.lon ?? submitLon,
