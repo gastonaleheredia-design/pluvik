@@ -77,4 +77,19 @@ export default {
       return brandedErrorResponse();
     }
   },
+  async scheduled(_event: unknown, _env: unknown, ctx: { waitUntil: (p: Promise<unknown>) => void }) {
+    // Daily morning briefing — invoke the server function directly so we
+    // don't need to round-trip through HTTP from the Worker itself.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const { sendMorningBriefing } = await import('./lib/sendMorningBriefing.functions');
+          const result = await sendMorningBriefing();
+          console.log('[cron] morning-briefing', result);
+        } catch (err) {
+          console.error('[cron] morning-briefing failed', err);
+        }
+      })(),
+    );
+  },
 };

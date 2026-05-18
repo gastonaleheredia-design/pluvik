@@ -4,4 +4,9 @@
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
+  "triggers": {
+    // Cloudflare cron is UTC-only. 7am UTC ≈ early morning across EU/Africa;
+    // adjust this expression to target a different region's morning.
+    "crons": ["0 7 * * *"]
+  }
 }
