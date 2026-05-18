@@ -192,19 +192,36 @@ function EventPage() {
         const eventMs = new Date(event.event_at).getTime();
         const nowMs = Date.now();
         let diffHours = (eventMs - nowMs) / 3_600_000;
-        if (diffHours < 1) {
+
+        if (diffHours < -1) {
+          // Event ended more than 1 hour ago — mark concluded and stop refresh.
           console.warn(
-            `[refresh] WARNING: hoursAhead is ${diffHours} — event may be in the past or timezone is wrong`,
+            `[refresh] event ${event.id} is in the past (${diffHours.toFixed(1)}h ago), skipping refresh`,
           );
-          // Roll forward by whole days to the next occurrence of the stored
-          // event time so the stage classifier still gets a forward-looking
-          // horizon instead of clamping to 0.
-          let rolled = eventMs;
-          while ((rolled - nowMs) / 3_600_000 < 1) {
-            rolled += 24 * 3_600_000;
+          const { count } = await supabase
+            .from('event_forecast_snapshots')
+            .select('id', { count: 'exact', head: true })
+            .eq('event_id', event.id)
+            .eq('is_final', true);
+          const hasFinal = (count ?? 0) > 0;
+          if (!hasFinal) {
+            await supabase.from('event_forecast_snapshots').insert({
+              event_id: event.id,
+              change_tag: 'CONCLUDED',
+              stage: 'live',
+              summary: 'This event has passed.',
+              is_final: true,
+            });
           }
-          diffHours = (rolled - nowMs) / 3_600_000;
+          setRefreshing(false);
+          return;
         }
+
+        if (diffHours < 1) {
+          // Event is imminent (within the hour) — treat as happening now.
+          diffHours = 0;
+        }
+
         hoursAhead = Math.max(0, diffHours);
       }
 
