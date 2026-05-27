@@ -264,22 +264,7 @@ function normalizeRawAnswer(raw: unknown): unknown {
   }
 
   if (typeof r.verdict_word === 'string') {
-    // Normalize whitespace + case, then accept any value in the expanded vocabulary.
-    const w = r.verdict_word.trim().toUpperCase().replace(/\s+/g, ' ')
-      .replace(/NOGO|NO_GO/g, 'NO-GO');
-    const ALLOWED = new Set([
-      'GO', 'GO EARLY', 'GO LATE', 'WINDOW', 'WATCH IT', 'BACKUP PLAN',
-      'TOUGH CALL', 'HOLD OFF', 'CONDITIONAL', 'RESCHEDULE', 'NOT TODAY', 'NO-GO',
-      'YES', 'LIKELY', 'LEANING YES', 'POSSIBLE', 'FLIP OF A COIN',
-      'LEANING NO', 'UNLIKELY', 'NO', 'CHECK BACK', 'PATTERN SUGGESTS',
-      'WATCHING', 'MONITOR', 'GET READY', 'PREPARE NOW', 'FINAL PREP',
-      'EVACUATE', 'SHELTER', 'WAIT IT OUT', 'SURVEY SAFELY', 'ALL CLEAR',
-      'HEADS UP', 'STAY AWARE', 'TAKE COVER', 'SHELTER NOW', 'STAY PUT', 'AVOID TRAVEL',
-    ]);
-    // Legacy MAYBE → POSSIBLE in the new vocabulary.
-    if (w === 'MAYBE') r.verdict_word = 'POSSIBLE';
-    else if (ALLOWED.has(w)) r.verdict_word = w;
-    else r.verdict_word = 'POSSIBLE';
+    r.verdict_word = r.verdict_word.trim().toUpperCase();
   }
 
   // maybe_explanation cleanup. Only meaningful for genuinely-uncertain verdicts.
