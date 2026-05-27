@@ -160,3 +160,102 @@ export function filterSourceKeysByStage(
     return isFamilyAllowed(stage, fam);
   });
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Source tiers (perf): decide WHICH briefing fetchers to fire BEFORE the
+// fan-out, not after. The stage/family system above only filters the
+// briefing AFTER all sources are fetched, so we still paid the latency on
+// sources the LLM never sees. Tiers let `buildMetBriefing` skip those
+// fetches entirely for the common short-range case (~25 → ~9 sources,
+// roughly one batch of subrequests instead of four).
+// Answer quality is preserved because the LLM prompt was already gated
+// by stage/family — skipped fetchers would have produced empty briefing
+// fields anyway.
+// ────────────────────────────────────────────────────────────────────────
+
+export type SourceTier =
+  | 'short_range_rain'    // ≤24h, plain rain/outdoor/sports, no warnings
+  | 'short_range_severe'  // ≤12h with severe lean OR an active warning
+  | 'mid_range'           // 24–96h
+  | 'long_range'          // >96h
+  | 'hurricane'           // hurricane mode override
+  | 'fire'                // fire weather / smoke / haze
+  | 'marine'              // marine / boating / surf
+  | 'full';               // safe fallback — fetches everything (legacy behavior)
+
+/** Source-key whitelists per tier. Anything not in this list is skipped.
+ *  Keys MUST match the property names in `MetBriefing` / the task list in
+ *  `buildMetBriefing`. */
+const TIER_SOURCES: Record<SourceTier, ReadonlySet<string>> = {
+  short_range_rain: new Set([
+    'hourlyForecast', 'namCrosscheck', 'alerts', 'radarCells',
+    'radarTrend', 'surfaceObs', 'spcOutlook', 'glmLightning',
+    'modelComparison',
+  ]),
+  short_range_severe: new Set([
+    'hourlyForecast', 'namCrosscheck', 'alerts', 'radarCells',
+    'radarTrend', 'surfaceObs', 'spcOutlook', 'glmLightning',
+    'modelComparison', 'sounding', 'shearProfile',
+    'rotationSignatures', 'mesoscaleDiscussion', 'satellite', 'afd',
+  ]),
+  mid_range: new Set([
+    'hourlyForecast', 'namCrosscheck', 'alerts', 'surfaceObs', 'afd',
+    'ensemble', 'modelComparison', 'spcOutlook', 'spcDay2', 'spcDay3',
+    'wpcEro', 'satellite',
+  ]),
+  long_range: new Set([
+    'hourlyForecast', 'alerts', 'afd', 'ensemble', 'modelComparison',
+    'spcDay48', 'wpcEro',
+  ]),
+  // Hurricane/fire/marine inherit "full" today — these paths already pull
+  // specialist sources downstream. Narrow them in a later pass.
+  hurricane: new Set(),  // empty → handled as "full" in shouldFetchKey
+  fire: new Set(),
+  marine: new Set(),
+  full: new Set(),
+};
+
+/** True when a given briefing key should be fetched for this tier.
+ *  Tiers with an empty whitelist are treated as "full" (fetch everything). */
+export function shouldFetchKey(tier: SourceTier, key: string): boolean {
+  const set = TIER_SOURCES[tier];
+  if (!set || set.size === 0) return true;   // full / hurricane / fire / marine
+  return set.has(key);
+}
+
+const RAIN_INTENTS = new Set<string>(['rain', 'outdoor', 'sports', 'general', 'running', 'cycling']);
+const SEVERE_KEYWORDS = /\b(tornado|hail|severe|thunderstorm|lightning|storm|wind|microburst|derecho)\b/i;
+
+/**
+ * Pick the source tier for a question. Falls back to "full" whenever inputs
+ * are missing or ambiguous so we never accidentally starve the LLM.
+ */
+export function resolveSourceTier(opts: {
+  intent?: string | null;
+  hoursAhead?: number | null;
+  hasActiveWarnings?: boolean;
+  mode?: 'severe' | 'hurricane' | 'normal' | null;
+  question?: string;
+}): SourceTier {
+  const { intent, hoursAhead, hasActiveWarnings, mode, question } = opts;
+  if (mode === 'hurricane') return 'hurricane';
+
+  const h = typeof hoursAhead === 'number' && Number.isFinite(hoursAhead) ? hoursAhead : null;
+  const looksSevere =
+    hasActiveWarnings === true ||
+    mode === 'severe' ||
+    (question != null && SEVERE_KEYWORDS.test(question));
+
+  if (intent === 'fire_weather' || intent === 'air_quality') return 'fire';
+  if (intent === 'marine') return 'marine';
+
+  if (h == null) return 'full';
+  if (looksSevere && h <= 24) return 'short_range_severe';
+  if (h <= 24) {
+    const i = (intent ?? '').toLowerCase();
+    if (!i || RAIN_INTENTS.has(i)) return 'short_range_rain';
+    return 'short_range_severe'; // unknown / specialty intent → safer wider net
+  }
+  if (h <= 96) return 'mid_range';
+  return 'long_range';
+}
