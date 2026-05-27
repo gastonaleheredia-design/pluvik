@@ -895,6 +895,38 @@ function AnswerPage() {
           }
         }
 
+        // Compute a deterministic local-time label for the event so the
+        // LLM never has to guess "tonight" vs "tomorrow". The browser owns
+        // the user's locale + timezone — the server cannot derive these.
+        let eventLocalLabel: string | undefined;
+        let eventLocalLong: string | undefined;
+        try {
+          const startMs = eventAtIso
+            ? new Date(eventAtIso).getTime()
+            : (typeof hoursAhead === 'number' ? Date.now() + hoursAhead * 3_600_000 : NaN);
+          const endMs = eventEndIso
+            ? new Date(eventEndIso).getTime()
+            : (typeof endHoursAhead === 'number' ? Date.now() + endHoursAhead * 3_600_000 : NaN);
+          if (Number.isFinite(startMs)) {
+            const wl = buildWindowLabel(
+              new Date(startMs),
+              Number.isFinite(endMs) ? new Date(endMs) : null,
+            );
+            if (wl) {
+              eventLocalLabel = wl.short; // e.g. "TOMORROW 6 PM"
+              eventLocalLong = wl.long;   // e.g. "Wed Nov 5 · 6 PM"
+            }
+          }
+        } catch { /* non-fatal */ }
+        const nowLocalLabel = (() => {
+          try {
+            return new Date().toLocaleString(undefined, {
+              weekday: 'short', month: 'short', day: 'numeric',
+              hour: 'numeric', minute: '2-digit',
+            });
+          } catch { return undefined; }
+        })();
+
         setLoadingStep('writing');
         const result = await askWeather({
           data: {
@@ -909,6 +941,9 @@ function AnswerPage() {
             hoursAhead,
             endHoursAhead,
             intent,
+            eventLocalLabel,
+            eventLocalLong,
+            nowLocalLabel,
           },
         });
         if (cancelled) return;
