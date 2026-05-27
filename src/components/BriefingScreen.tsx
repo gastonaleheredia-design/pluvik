@@ -1,4 +1,5 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
+import { SignalCard, type SignalCardData } from './SignalCard';
 
 export type BriefingScenario =
   | 'rain'
@@ -50,6 +51,16 @@ export interface BriefingProps {
   atmoLayers?: Array<{ level: 'UPPER' | 'MID' | 'SURFACE'; desc: string }> | null;
   /** Fallback narrative when atmoLayers is missing. */
   mechanism?: string | null;
+
+  // Answer-screen WHY mode
+  /** Accent color matching the answer screen verdict. */
+  accentColor?: string;
+  /** Forecast stage badge — drives pill colors and default label. */
+  forecastStage?: 'live' | 'short_range' | 'model_trend' | 'outlook' | 'climate' | null;
+  /** Signal cards from the answer payload. */
+  signals?: SignalCardData[] | null;
+  /** Summary paragraph; first sentence becomes the intro. */
+  answerSummary?: string | null;
 }
 
 export function BriefingScreen(props: BriefingProps): ReactElement {
@@ -64,7 +75,154 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
     confidenceReason,
     atmoLayers,
     mechanism,
+    accentColor,
+    forecastStage,
+    signals,
+    answerSummary,
   } = props;
+
+  const [openCards, setOpenCards] = useState<Set<number>>(new Set());
+  const toggleCard = (i: number) =>
+    setOpenCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  const hasSignals = Array.isArray(signals) && signals.length > 0;
+
+  // ──────── Answer-screen WHY layout (signal-card mode) ────────
+  if (hasSignals) {
+    const accent = accentColor ?? '#6b7280';
+
+    const stagePill = (() => {
+      const s = forecastStage ?? 'live';
+      if (s === 'live' || s === 'short_range') return { bg: '#dcfce7', fg: '#15803d' };
+      if (s === 'model_trend') return { bg: '#fef3c7', fg: '#92400e' };
+      return { bg: '#f3f4f6', fg: '#374151' };
+    })();
+
+    const stageLabel = (() => {
+      const fromSource = signals![0]?.source?.slice(0, 40);
+      if (fromSource) return fromSource;
+      const s = forecastStage ?? 'live';
+      if (s === 'live') return 'LIVE OBSERVATIONS';
+      if (s === 'short_range') return 'SHORT-RANGE FORECAST';
+      if (s === 'model_trend') return 'MODEL TREND · DAY 3–5';
+      if (s === 'outlook') return 'EXTENDED OUTLOOK';
+      return 'CLIMATOLOGY';
+    })();
+
+    const introSentence = (() => {
+      if (!answerSummary) return null;
+      const m = answerSummary.match(/^[^.!?]+[.!?]/);
+      return (m ? m[0] : answerSummary).trim();
+    })();
+
+    const monoFont = 'JetBrains Mono, ui-monospace, monospace';
+    const serifFont = 'Georgia, serif';
+
+    return (
+      <div style={{
+        minHeight: '100vh', backgroundColor: '#f8f5ef', display: 'flex', flexDirection: 'column',
+        paddingBottom: 56,
+      }}>
+        {/* Accent bar */}
+        <div style={{ height: 4, backgroundColor: accent, width: '100%' }} />
+
+        {/* Nav row */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 16px 4px',
+          fontFamily: monoFont, fontSize: 8, color: '#9ca3af', letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+        }}>
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit', letterSpacing: 'inherit',
+              textTransform: 'inherit',
+            }}
+          >
+            ← BACK TO ANSWER
+          </button>
+          <span>WHY THIS FORECAST</span>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ padding: '11px 15px', flex: 1 }}>
+          {/* Horizon badge */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center',
+            backgroundColor: stagePill.bg, color: stagePill.fg,
+            borderRadius: 999, padding: '4px 9px',
+            fontFamily: monoFont, fontSize: 7, fontWeight: 700,
+            letterSpacing: '0.18em', textTransform: 'uppercase',
+            marginBottom: 10,
+          }}>
+            {stageLabel}
+          </div>
+
+          {/* Intro sentence */}
+          {introSentence && (
+            <div style={{
+              fontFamily: serifFont, fontStyle: 'italic', fontSize: 12,
+              color: '#374151', lineHeight: 1.45, marginBottom: 12,
+            }}>
+              {introSentence}
+            </div>
+          )}
+
+          {/* Signal cards */}
+          {signals!.map((sig, i) => (
+            <SignalCard
+              key={i}
+              signal={sig}
+              accentColor={accent}
+              isOpen={openCards.has(i)}
+              onToggle={() => toggleCard(i)}
+            />
+          ))}
+        </div>
+
+        {/* Fixed bottom bar */}
+        <div style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0,
+          height: 56, borderTop: '1px solid #ede9e0', backgroundColor: '#f8f5ef',
+          padding: '8px 16px 10px', display: 'flex', gap: 7,
+        }}>
+          {onSaveTrack && (
+            <button
+              onClick={onSaveTrack}
+              disabled={saving}
+              style={{
+                flex: 1, border: 'none', borderRadius: 9, backgroundColor: accent,
+                color: '#fff', cursor: saving ? 'default' : 'pointer',
+                fontFamily: monoFont, fontSize: 9, fontWeight: 700, letterSpacing: '0.14em',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? '…' : 'TRACK THIS EVENT'}
+            </button>
+          )}
+          <button
+            onClick={onBack}
+            style={{
+              width: 70, borderRadius: 9, background: 'none', border: '1px solid #ddd',
+              color: '#6b7280', cursor: 'pointer',
+              fontFamily: monoFont, fontSize: 9, letterSpacing: '0.14em',
+            }}
+          >
+            ← BACK
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ──────── Fallback: existing CalmBody / atmosphere layout ────────
 
   const INK = '#0b1018';
   const MUTED = '#6b6357';
