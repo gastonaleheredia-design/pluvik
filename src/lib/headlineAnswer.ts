@@ -50,7 +50,8 @@ export function pickHeadlineWord(args: {
  */
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
 export type SoftHeadline =
-  | 'YES' | 'LIKELY' | 'POSSIBLE' | 'MAYBE' | 'MONITOR' | 'UNLIKELY' | 'NO';
+  | 'YES' | 'LIKELY' | 'LEANING YES' | 'POSSIBLE' | 'FLIP OF A COIN'
+  | 'LEANING NO' | 'UNLIKELY' | 'NO' | 'CHECK BACK';
 
 export function pickConfidenceAwareWord(args: {
   rawWord?: 'YES' | 'NO' | 'MAYBE' | null;
@@ -89,17 +90,17 @@ export function pickConfidenceAwareWord(args: {
   if (conf === 'HIGH') {
     if (lean === 'pos') return 'YES';
     if (lean === 'neg') return 'NO';
-    return 'MAYBE';
+    return 'FLIP OF A COIN';
   }
   if (conf === 'MEDIUM') {
     if (lean === 'pos') return 'LIKELY';
     if (lean === 'neg') return 'UNLIKELY';
-    return 'MAYBE';
+    return 'POSSIBLE';
   }
   // LOW / VERY_LOW
-  if (lean === 'pos') return 'POSSIBLE';
-  if (lean === 'neg') return 'UNLIKELY';
-  return 'MONITOR';
+  if (lean === 'pos') return 'LEANING YES';
+  if (lean === 'neg') return 'LEANING NO';
+  return 'CHECK BACK';
 }
 
 /**
