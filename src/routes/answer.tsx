@@ -1843,325 +1843,298 @@ function AnswerPage() {
       : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
   if (!showWhy) {
+    const answerAny = answer as unknown as Record<string, unknown>;
+    const vw = ((answerAny.verdict_word as string | undefined) ?? 'MONITOR').toString();
+    const vwUpper = vw.toUpperCase();
+    const accentColor = (() => {
+      if (!answerAny.verdict_word) return '#6b7280';
+      if (/(NO-GO|TAKE COVER|SHELTER NOW|EVACUATE)/.test(vwUpper)) return '#991b1b';
+      if (/\bNO\b/.test(vwUpper)) return '#991b1b';
+      if (/(PREPARE|FINAL PREP|SHELTER)/.test(vwUpper)) return '#9d174d';
+      if (/(GO|YES|LIKELY|ALL CLEAR)/.test(vwUpper)) return '#16a34a';
+      if (/(WINDOW|WATCH|BACKUP|POSSIBLE|LEANING)/.test(vwUpper)) return '#d97706';
+      return '#6b7280';
+    })();
+    const charCount = vw.replace(/\s/g, '').length;
+    const vwFontSize =
+      charCount <= 2 ? 58 :
+      charCount <= 4 ? 48 :
+      charCount <= 5 ? 40 :
+      charCount <= 6 ? 34 :
+      charCount <= 7 ? 28 : 24;
+    const vwDisplay = vw.split(/\s+/).join('\n');
+    const meterPct = Math.max(0, Math.min(100,
+      (answerAny.impact_percent as number | undefined) ?? (answer.percentage as number | undefined) ?? 0
+    ));
+    const qText = (displayQuestion || question || '').toLowerCase();
+    const isMarine = /(wave|offshore|\bsea\b)/.test(qText);
+    const isRain = /(rain|shower|storm|precip|snow)/.test(qText);
+    const meterLabels = isRain
+      ? ['0%', '25%', '50%', '75%+']
+      : isMarine
+      ? ['CALM', 'ROUGH', 'DANGER', 'EXTREME']
+      : ['NONE', 'LOW', 'MED', 'HIGH'];
+    const aExt = answer as {
+      question_type?: string;
+      timeline?: Array<{ hour_label: string; headline: string; severity?: 'ok' | 'watch' | 'bad' }> | null;
+      event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
+      secondary_factors?: Array<{ factor: string; note: string }> | null;
+      headline_number?: { value: string; label: string } | null;
+    };
+    const qType = (searchQuestionType ?? aExt.question_type ?? '').toString().toLowerCase();
+    const timelineRows = Array.isArray(aExt.timeline) ? aExt.timeline.slice(0, 5) : [];
+    const dotColor = (s?: 'ok' | 'watch' | 'bad') =>
+      s === 'bad' ? '#dc2626' : s === 'watch' ? '#f59e0b' : '#22c55e';
+    const ew = aExt.event_window;
+    const factors = aExt.secondary_factors ?? [];
+    const sideNote = factors[0]?.note ?? (answer as { decision_window?: string | null }).decision_window ?? null;
+
     return (
       <>
         <div
           style={{
             minHeight: '100vh',
-            backgroundColor: PAGE_BG,
+            backgroundColor: '#f8f5ef',
             color: INK,
             display: 'flex',
             flexDirection: 'column',
-            padding: '52px 28px 32px',
+            paddingBottom: 56,
             fontFamily: 'Inter, sans-serif',
           }}
         >
-          {/* Zone 1 — verdict word */}
-          {displayVerdictWord && (
-            <div
+          {/* Accent bar */}
+          <div style={{ height: 4, backgroundColor: accentColor, width: '100%' }} />
+
+          {/* Nav row */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 16px 4px',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: 8, color: '#9ca3af', letterSpacing: '0.12em',
+          }}>
+            <button
+              onClick={() => navigate({ to: '/' })}
               style={{
-                fontFamily: 'Fraunces, serif',
-                fontWeight: 700,
-                fontSize: 'clamp(2.8rem, 14vw, 5rem)',
-                lineHeight: 0.95,
-                letterSpacing: '-0.03em',
-                color:
-                  answer.verdict === 'GO' ? '#15803d'
-                  : answer.verdict === 'CAUTION' ? '#b45309'
-                  : answer.verdict === 'NO-GO' ? '#dc2626'
-                  : '#6b6357',
-                maxWidth: '100%',
-                overflowWrap: 'break-word',
-                wordBreak: 'break-word',
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit', letterSpacing: 'inherit',
               }}
             >
-              {displayVerdictWord}
-            </div>
-          )}
-
-          {/* Zone 1 — sentence (4px gap) */}
-          <div
-            style={{
-              marginTop: 4,
-              fontFamily: 'Fraunces, serif',
-              fontStyle: 'italic',
-              fontSize: '1rem',
-              lineHeight: 1.4,
-              color: '#0b1018',
-              maxWidth: 320,
-            }}
-          >
-            {isClimate ? climateBody : verdictSentence}
+              ← BACK
+            </button>
+            <span style={{ textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {resolvedAddress}
+            </span>
           </div>
 
-          {/* timing-state indicator: ACTIVE pulses amber, PASSED is gray */}
-          {timingState === 'ACTIVE' && (
+          {/* Body */}
+          <div style={{ padding: '10px 16px 0', display: 'flex', flexDirection: 'column' }}>
+            {/* Verdict word */}
             <div
               style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem',
-                letterSpacing: '0.14em',
-                color: '#f59e0b',
-                marginTop: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
+                fontFamily: 'Georgia, serif',
+                fontWeight: 700,
+                fontSize: vwFontSize,
+                lineHeight: 0.93,
+                letterSpacing: '-0.02em',
+                color: accentColor,
+                whiteSpace: 'pre-line',
               }}
             >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor: '#f59e0b',
-                  display: 'inline-block',
-                  animation: 'timingPulse 1.4s ease-in-out infinite',
-                }}
-              />
-              <style>{`@keyframes timingPulse {0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}`}</style>
-              HAPPENING NOW
+              {vwDisplay}
             </div>
-          )}
-          {timingState === 'PASSED' && (
+
+            {/* Verdict sentence */}
             <div
               style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.7rem',
-                letterSpacing: '0.14em',
-                color: MUTED,
-                marginTop: 16,
+                marginTop: 8,
+                marginBottom: 9,
+                fontFamily: 'Georgia, serif',
+                fontStyle: 'italic',
+                fontSize: 13,
+                lineHeight: 1.42,
+                color: '#374151',
               }}
             >
-              ✓ STORM HAS PASSED · CONDITIONS CLEARING
+              {verdictSentence ?? answer.summary}
             </div>
-          )}
 
-          {/* Zone 2 — key data card */}
-          {(() => {
-            const a = answer as {
-              question_type?: 'decision' | 'measurement' | 'timing' | 'comparison' | 'severe';
-              timeline?: Array<{ hour_label: string; headline: string; severity?: 'ok' | 'watch' | 'bad' }> | null;
-              event_window?: { before?: string | null; during?: string | null; after?: string | null } | null;
-              current_state?: string | null;
-            };
-            const qType = searchQuestionType ?? a.question_type;
-            const timeline = Array.isArray(a.timeline) ? a.timeline.slice(0, 5) : [];
-            const ew = a.event_window;
-            const hn = headlineForStage ?? (
-              typeof answer.percentage === 'number'
-                ? { value: `${answer.percentage}%`, label: (answer.main_concern ?? 'IMPACT').toUpperCase() }
-                : null
-            );
-            const useTimeline = (qType === 'timing' || timeline.length > 0) && timeline.length > 0;
-            const useWindow = !useTimeline && ew && (ew.before || ew.during || ew.after);
-            const dotColor = (s?: 'ok' | 'watch' | 'bad') =>
-              s === 'bad' ? '#dc2626' : s === 'watch' ? '#f59e0b' : '#22c55e';
+            {/* Meter */}
+            <div style={{ marginTop: 6 }}>
+              <div style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: 7, color: '#9ca3af', letterSpacing: '0.16em',
+                textTransform: 'uppercase', marginBottom: 4,
+              }}>
+                {(answer.main_concern ?? 'IMPACT LEVEL').toString().toUpperCase()}
+              </div>
+              <div style={{
+                height: 7, borderRadius: 4, backgroundColor: '#ede9e0', overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${meterPct}%`, height: '100%', backgroundColor: accentColor,
+                  transition: 'width 200ms',
+                }} />
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', marginTop: 3,
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: 6, color: '#ccc', letterSpacing: '0.1em',
+              }}>
+                {meterLabels.map((l, i) => <span key={i}>{l}</span>)}
+              </div>
+            </div>
 
-            return (
-              <div
-                style={{
-                  marginTop: 32,
-                  backgroundColor: '#0b1018',
-                  borderRadius: 18,
-                  padding: 18,
-                  color: '#ffffff',
-                }}
-              >
-                {hn && (
-                  <>
-                    <div
-                      style={{
-                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        fontSize: '0.48rem',
-                        letterSpacing: '0.2em',
-                        color: 'rgba(255,255,255,0.55)',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {hn.label}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontWeight: 700,
-                        fontSize: '2.8rem',
-                        lineHeight: 1.05,
-                        color: '#ffffff',
-                        marginTop: 2,
-                      }}
-                    >
-                      {hn.value}
-                    </div>
-                  </>
-                )}
-
-                {useTimeline && (
-                  <div style={{ marginTop: hn ? 18 : 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {timeline.map((row, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span
-                          aria-hidden
-                          style={{
-                            width: 8, height: 8, borderRadius: '50%',
-                            backgroundColor: dotColor(row.severity),
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span
-                          style={{
+            {/* Data card */}
+            <div style={{
+              marginTop: 12, backgroundColor: '#1a1a2e', borderRadius: 11,
+              padding: '10px 12px', color: '#fff',
+            }}>
+              {(() => {
+                if (timelineRows.length > 0) {
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {timelineRows.map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{
+                            width: 7, height: 7, borderRadius: '50%',
+                            backgroundColor: dotColor(row.severity), flexShrink: 0,
+                          }} />
+                          <span style={{
                             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                            fontSize: '0.6rem',
-                            letterSpacing: '0.14em',
-                            color: 'rgba(255,255,255,0.65)',
-                            minWidth: 56,
-                          }}
-                        >
-                          {row.hour_label}
-                        </span>
-                        <span
-                          style={{
-                            fontFamily: 'Fraunces, serif',
-                            fontSize: '0.85rem',
-                            color: '#ffffff',
-                          }}
-                        >
-                          {row.headline}
-                        </span>
+                            fontSize: 9, color: 'rgba(255,255,255,0.65)',
+                            letterSpacing: '0.12em', minWidth: 50,
+                          }}>{row.hour_label}</span>
+                          <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#fff' }}>
+                            {row.headline}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                if (isMarine) {
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <svg width="64" height="36" viewBox="0 0 64 36" fill="none">
+                        <path d="M0 24 Q8 12 16 24 T32 24 T48 24 T64 24"
+                          stroke={accentColor} strokeWidth="2" fill="none" />
+                        <path d="M0 30 Q8 20 16 30 T32 30 T48 30 T64 30"
+                          stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
+                      </svg>
+                      <div style={{
+                        fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 28,
+                        color: '#fff', lineHeight: 1,
+                      }}>
+                        {aExt.headline_number?.value ?? `${meterPct}%`}
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {useWindow && ew && (
-                  <div style={{ marginTop: hn ? 18 : 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {(['before', 'during', 'after'] as const).map((k) => {
-                      const text = ew[k];
-                      if (!text) return null;
-                      return (
-                        <div key={k}>
-                          <div
-                            style={{
+                    </div>
+                  );
+                }
+                if (qType === 'hurricane') {
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <svg width="60" height="40" viewBox="0 0 60 40">
+                        <path d="M6 36 L30 6 L54 36 Z"
+                          fill="rgba(255,255,255,0.08)" stroke={accentColor} strokeWidth="1.5" />
+                        <circle cx="30" cy="32" r="3" fill={accentColor} />
+                      </svg>
+                      <div style={{
+                        fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 24, color: '#fff',
+                      }}>
+                        {aExt.headline_number?.value ?? 'TRACK'}
+                      </div>
+                    </div>
+                  );
+                }
+                if (ew && (ew.before || ew.during || ew.after)) {
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(['before', 'during', 'after'] as const).map((k) => {
+                        const text = ew[k];
+                        if (!text) return null;
+                        return (
+                          <div key={k}>
+                            <div style={{
                               fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                              fontSize: '0.44rem',
-                              letterSpacing: '0.22em',
-                              color: 'rgba(255,255,255,0.5)',
-                              textTransform: 'uppercase',
-                              marginBottom: 2,
-                            }}
-                          >
-                            {k}
+                              fontSize: 7, color: 'rgba(255,255,255,0.5)',
+                              letterSpacing: '0.18em', textTransform: 'uppercase', marginBottom: 2,
+                            }}>{k}</div>
+                            <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, lineHeight: 1.4, color: '#fff' }}>
+                              {text}
+                            </div>
                           </div>
-                          <div
-                            style={{
-                              fontFamily: 'Fraunces, serif',
-                              fontSize: '0.82rem',
-                              lineHeight: 1.4,
-                              color: '#ffffff',
-                            }}
-                          >
-                            {text}
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                if (factors.length > 0) {
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {factors.slice(0, 4).map((f, i) => (
+                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <div style={{
+                            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                            fontSize: 7, color: 'rgba(255,255,255,0.55)',
+                            letterSpacing: '0.16em', textTransform: 'uppercase',
+                          }}>{f.factor}</div>
+                          <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#fff', lineHeight: 1.35 }}>
+                            {f.note}
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
+                    {answer.summary}
                   </div>
-                )}
+                );
+              })()}
+            </div>
 
-                {!useTimeline && !useWindow && a.current_state && (
-                  <div
-                    style={{
-                      marginTop: hn ? 18 : 0,
-                      fontFamily: 'Fraunces, serif',
-                      fontSize: '0.88rem',
-                      lineHeight: 1.5,
-                      color: 'rgba(255,255,255,0.9)',
-                    }}
-                  >
-                    {a.current_state}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Zone 3 — secondary insight */}
-          {(() => {
-            const factors = (answer as { secondary_factors?: Array<{ factor: string; note: string }> }).secondary_factors;
-            const first = Array.isArray(factors) && factors.length > 0 ? (factors[0].note || factors[0].factor) : null;
-            const decisionWin = (answer as { decision_window?: string | null }).decision_window ?? null;
-            const body = first ?? decisionWin;
-            if (!body) return null;
-            return (
-              <p
-                style={{
-                  marginTop: 20,
-                  marginBottom: 0,
-                  fontFamily: 'Fraunces, serif',
-                  fontStyle: 'italic',
-                  fontSize: '0.88rem',
-                  lineHeight: 1.55,
-                  color: '#6b6357',
-                  maxWidth: 340,
-                }}
-              >
-                {body}
-              </p>
-            );
-          })()}
-
-          <div style={{ flex: 1, minHeight: 24 }} />
-
-          {/* Zone 4 — pinned action row */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, paddingTop: 18, paddingBottom: 28,
-            borderTop: '1px solid rgba(11,16,24,0.08)',
-          }}>
-            {isClimate ? (
-              <span style={{
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+            {/* Side note */}
+            {sideNote && (
+              <div style={{
+                marginTop: 10, display: 'flex', alignItems: 'center', flex: 1,
+                fontFamily: 'Georgia, serif', fontStyle: 'italic',
+                fontSize: 11, color: '#9ca3af', lineHeight: 1.4,
               }}>
-                NO FORECAST YET
-              </span>
-            ) : (
-              <button
-                onClick={() => setShowWhy(true)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.6rem', letterSpacing: '0.18em', color: '#c2410c',
-                  textTransform: 'uppercase', fontWeight: 600,
-                }}
-              >
-                WHY? →
-              </button>
+                {sideNote}
+              </div>
             )}
+          </div>
+
+          {/* Fixed bottom bar */}
+          <div style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0,
+            height: 56, borderTop: '1px solid #ede9e0', backgroundColor: '#f8f5ef',
+            padding: '8px 16px 10px', display: 'flex', gap: 7,
+          }}>
             <button
               onClick={handleSaveTrack}
               disabled={saving}
               style={{
-                background: 'none', border: 'none', padding: 0,
-                cursor: saving ? 'default' : 'pointer',
+                flex: 1, border: 'none', borderRadius: 9, backgroundColor: accentColor,
+                color: '#fff', cursor: saving ? 'default' : 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
-                opacity: saving ? 0.6 : 1,
+                fontSize: 9, fontWeight: 700, letterSpacing: '0.14em',
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? '…' : 'SAVE & TRACK'}
+              {saving ? '…' : 'TRACK THIS EVENT'}
             </button>
             <button
-              onClick={() => {
-                if (user) setShowCreateGroup(true);
-                else setShowAuthModal(true);
-              }}
+              onClick={() => setShowWhy(true)}
               style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                width: 70, borderRadius: 9, background: 'none', border: '1px solid #ddd',
+                color: '#6b7280', cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                fontSize: '0.6rem', letterSpacing: '0.18em', color: MUTED,
+                fontSize: 9, letterSpacing: '0.14em',
               }}
             >
-              + GROUP
+              WHY →
             </button>
           </div>
         </div>
