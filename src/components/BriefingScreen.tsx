@@ -125,7 +125,7 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
 
     return (
       <div style={{
-        minHeight: '100vh', backgroundColor: '#f8f5ef', display: 'flex', flexDirection: 'column',
+        minHeight: '100vh', backgroundColor: '#faf7f0', display: 'flex', flexDirection: 'column',
         paddingBottom: 56,
       }}>
         {/* Accent bar */}
@@ -152,7 +152,7 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
         </div>
 
         {/* Scrollable body */}
-        <div style={{ padding: '11px 15px', flex: 1 }}>
+        <div style={{ padding: '11px 15px', flex: 1, paddingBottom: 80 }}>
           {/* Horizon badge */}
           <div style={{
             display: 'inline-flex', alignItems: 'center',
