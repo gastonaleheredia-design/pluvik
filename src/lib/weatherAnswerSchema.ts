@@ -116,7 +116,19 @@ export const WeatherAnswerSchema = z.object({
   check_back_minutes: z.number().nullable().optional(),
 
   // Minimal-view fields (3-second test layer).
-  verdict_word: z.enum(['YES', 'NO', 'MAYBE']).optional(),
+  verdict_word: z.enum([
+    // DECISION
+    'GO', 'GO EARLY', 'GO LATE', 'WINDOW', 'WATCH IT', 'BACKUP PLAN',
+    'TOUGH CALL', 'HOLD OFF', 'CONDITIONAL', 'RESCHEDULE', 'NOT TODAY', 'NO-GO',
+    // CONFIDENCE SPECTRUM
+    'YES', 'LIKELY', 'LEANING YES', 'POSSIBLE', 'FLIP OF A COIN',
+    'LEANING NO', 'UNLIKELY', 'NO', 'CHECK BACK', 'PATTERN SUGGESTS',
+    // HURRICANE MODE
+    'WATCHING', 'MONITOR', 'GET READY', 'PREPARE NOW', 'FINAL PREP',
+    'EVACUATE', 'SHELTER', 'WAIT IT OUT', 'SURVEY SAFELY', 'ALL CLEAR',
+    // SEVERE MODE
+    'HEADS UP', 'STAY AWARE', 'TAKE COVER', 'SHELTER NOW', 'STAY PUT', 'AVOID TRAVEL',
+  ]).optional(),
   verdict_sentence: z.string().optional(),
   // Threat timing state from the THREAT TIMING CLASSIFICATION reasoning step.
   timing_state: z.enum(['UPCOMING', 'ACTIVE', 'PASSED']).optional(),
@@ -233,15 +245,32 @@ function normalizeRawAnswer(raw: unknown): unknown {
   }
 
   if (typeof r.verdict_word === 'string') {
-    const w = r.verdict_word.trim().toUpperCase();
-    if (w === 'YES' || w === 'NO' || w === 'MAYBE') r.verdict_word = w;
-    else r.verdict_word = 'MAYBE';
+    // Normalize whitespace + case, then accept any value in the expanded vocabulary.
+    const w = r.verdict_word.trim().toUpperCase().replace(/\s+/g, ' ')
+      .replace(/NOGO|NO_GO/g, 'NO-GO');
+    const ALLOWED = new Set([
+      'GO', 'GO EARLY', 'GO LATE', 'WINDOW', 'WATCH IT', 'BACKUP PLAN',
+      'TOUGH CALL', 'HOLD OFF', 'CONDITIONAL', 'RESCHEDULE', 'NOT TODAY', 'NO-GO',
+      'YES', 'LIKELY', 'LEANING YES', 'POSSIBLE', 'FLIP OF A COIN',
+      'LEANING NO', 'UNLIKELY', 'NO', 'CHECK BACK', 'PATTERN SUGGESTS',
+      'WATCHING', 'MONITOR', 'GET READY', 'PREPARE NOW', 'FINAL PREP',
+      'EVACUATE', 'SHELTER', 'WAIT IT OUT', 'SURVEY SAFELY', 'ALL CLEAR',
+      'HEADS UP', 'STAY AWARE', 'TAKE COVER', 'SHELTER NOW', 'STAY PUT', 'AVOID TRAVEL',
+    ]);
+    // Legacy MAYBE → POSSIBLE in the new vocabulary.
+    if (w === 'MAYBE') r.verdict_word = 'POSSIBLE';
+    else if (ALLOWED.has(w)) r.verdict_word = w;
+    else r.verdict_word = 'POSSIBLE';
   }
 
-  // maybe_explanation cleanup. Null it out unless verdict_word === 'MAYBE'.
+  // maybe_explanation cleanup. Only meaningful for genuinely-uncertain verdicts.
   // Strip jargon. If any sub-field is empty after cleaning, null the whole block.
   const me = r.maybe_explanation as Record<string, unknown> | null | undefined;
-  if (r.verdict_word !== 'MAYBE') {
+  const UNCERTAIN_WORDS = new Set([
+    'POSSIBLE', 'FLIP OF A COIN', 'TOUGH CALL', 'LEANING YES', 'LEANING NO',
+    'WATCH IT', 'BACKUP PLAN', 'CONDITIONAL', 'HOLD OFF',
+  ]);
+  if (typeof r.verdict_word !== 'string' || !UNCERTAIN_WORDS.has(r.verdict_word as string)) {
     r.maybe_explanation = null;
   } else if (me && typeof me === 'object') {
     const jargon = /\b(CAPE|CIN|LI|TPW|dBZ|hodograph|shear|MUCAPE|MLCAPE|SBCAPE|0[-–]6\s?km|bulk shear)\b/gi;
@@ -298,7 +327,7 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       d.headline_number = null;
       d.percentage = undefined;
       d.impact_percent = undefined;
-      if (!d.verdict_word) d.verdict_word = 'MAYBE';
+      if (!d.verdict_word) d.verdict_word = 'PATTERN SUGGESTS';
       // Scrub fabricated specifics out of prose fields. The model is
       // forbidden from including percentages or absolute "it will be dry"
       // claims at climate/outlook; if it slipped any in, drop the line.
@@ -354,7 +383,7 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
     // Derive minimal-view fields if the model didn't return them.
     if (!d.verdict_word) {
       const v = d.verdict;
-      d.verdict_word = v === 'GO' ? 'YES' : v === 'NO-GO' ? 'NO' : v === 'CAUTION' ? 'MAYBE' : 'MAYBE';
+      d.verdict_word = v === 'GO' ? 'GO' : v === 'NO-GO' ? 'NO-GO' : v === 'CAUTION' ? 'WATCH IT' : 'POSSIBLE';
     }
     if (!d.verdict_sentence && typeof d.summary === 'string') {
       d.verdict_sentence = d.summary;
@@ -363,8 +392,14 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       const pct = typeof d.percentage === 'number' ? d.percentage : (typeof d.impact_percent === 'number' ? d.impact_percent : null);
       d.headline_number = pct != null ? { value: `${pct}%`, label: 'CHANCE OF RAIN' } : null;
     }
-    // Final guard: maybe_explanation is only meaningful when verdict_word === 'MAYBE'.
-    if (d.verdict_word !== 'MAYBE') d.maybe_explanation = null;
+    // Final guard: maybe_explanation is only meaningful for uncertain verdicts.
+    const UNCERTAIN = new Set([
+      'POSSIBLE', 'FLIP OF A COIN', 'TOUGH CALL', 'LEANING YES', 'LEANING NO',
+      'WATCH IT', 'BACKUP PLAN', 'CONDITIONAL', 'HOLD OFF',
+    ]);
+    if (typeof d.verdict_word !== 'string' || !UNCERTAIN.has(d.verdict_word as string)) {
+      d.maybe_explanation = null;
+    }
     return { ok: true, data: d };
   }
   const issues = parsed.error.issues.map(i => `${i.path.join('.') || '<root>'}: ${i.message}`);
@@ -384,7 +419,7 @@ export function validateWeatherAnswer(raw: unknown): ValidationOutcome {
       confidence_reason: 'Model response failed schema validation.',
       main_concern: 'Data unavailable',
       action: 'Try again in a minute or rephrase your question.',
-      verdict_word: 'MAYBE',
+      verdict_word: 'POSSIBLE',
       verdict_sentence: summary,
       headline_number: null,
     },
