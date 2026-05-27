@@ -1191,7 +1191,15 @@ function AnswerPage() {
   }
 
   if (status === 'loading') {
-    const activeIdx = loadingSteps.findIndex((s) => s.key === loadingStep);
+    // Single honest status line. The 3-step list previously implied
+    // discrete progress, but the first two flips happened in <100ms and
+    // the third held for the entire briefing + LLM round-trip — which
+    // felt like a stall. One rotating line that swaps when phases
+    // actually change is more honest and reads as "moving".
+    const statusLabel =
+      loadingStep === 'warnings' ? 'Checking active warnings'
+      : loadingStep === 'radar'  ? 'Reading forecast'
+      : 'Writing your answer';
     return (
       <div
         style={{
@@ -1222,68 +1230,28 @@ function AnswerPage() {
 
         <div
           style={{
-            marginTop: 48,
-            width: 260,
+            marginTop: 40,
             display: 'flex',
-            flexDirection: 'column',
-            gap: 14,
+            alignItems: 'center',
+            gap: 10,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: '0.7rem',
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: '#c2410c',
           }}
         >
-          {loadingSteps.map((step, idx) => {
-            const state: 'done' | 'active' | 'pending' =
-              idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : 'pending';
-            return (
-              <div
-                key={step.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                  fontSize: '0.65rem',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: state === 'active' ? '#c2410c' : '#0b1018',
-                  opacity: state === 'pending' ? 0.3 : 1,
-                }}
-              >
-                <span
-                  style={{
-                    width: 14,
-                    display: 'inline-flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {state === 'done' ? (
-                    <span style={{ color: '#16a34a', fontSize: '0.8rem', lineHeight: 1 }}>✓</span>
-                  ) : state === 'active' ? (
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        backgroundColor: '#c2410c',
-                        animation: 'stepPulse 1.2s ease-in-out infinite',
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        border: '1px solid #0b1018',
-                        backgroundColor: 'transparent',
-                      }}
-                    />
-                  )}
-                </span>
-                <span>{step.label}{state === 'active' ? '…' : ''}</span>
-              </div>
-            );
-          })}
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: '#c2410c',
+              animation: 'stepPulse 1.2s ease-in-out infinite',
+              flexShrink: 0,
+            }}
+          />
+          <span>{statusLabel}…</span>
           <style>{`@keyframes stepPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.25)}}`}</style>
         </div>
       </div>
