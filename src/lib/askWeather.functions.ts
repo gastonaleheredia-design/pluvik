@@ -205,7 +205,21 @@ export interface ExtendedWeatherAnswer {
   mode: 'regular' | 'severe' | 'hurricane';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
   /** Classification of the user's question shape. */
-  question_type?: 'decision' | 'measurement' | 'timing' | 'comparison' | 'severe';
+  question_type?: 'decision' | 'measurement' | 'timing' | 'severe' | 'hurricane';
+  /** Evidence cards backing the verdict. Exactly 3 entries when present. */
+  signals?: Array<{
+    title: string;
+    desc: string;
+    icon: string;
+    expand_type: 'stats_quote' | 'bars' | 'timeline';
+    source: string;
+    quote?: string;
+    stats?: Array<{ val: string; label: string }>;
+    bars?: Array<{ label: string; value: number }>;
+    bar_unit?: string;
+    bar_text?: string;
+    timeline?: Array<{ time: string; event: string; risk: 'low' | 'med' | 'high' }>;
+  }>;
   /** Plain-English description of what each atmospheric layer is doing. */
   atmo_layers?: Array<{ level: 'UPPER' | 'MID' | 'SURFACE'; desc: string }>;
   /** Forecast maturity at the time this answer was produced. */

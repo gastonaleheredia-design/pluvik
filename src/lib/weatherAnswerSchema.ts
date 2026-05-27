@@ -18,7 +18,26 @@ export const WeatherAnswerSchema = z.object({
   verdict: z.enum(['GO', 'CAUTION', 'NO-GO', 'UNKNOWN']).nullable(),
 
   /** Classification of the user's question shape. */
-  question_type: z.enum(['decision', 'measurement', 'timing', 'comparison', 'severe']).optional(),
+  question_type: z.enum(['decision', 'measurement', 'timing', 'severe', 'hurricane']).optional(),
+
+  /** Evidence cards backing the verdict. Exactly 3 when present. */
+  signals: z.array(z.object({
+    title: z.string(),
+    desc: z.string(),
+    icon: z.string(),
+    expand_type: z.enum(['stats_quote', 'bars', 'timeline']),
+    source: z.string(),
+    quote: z.string().optional(),
+    stats: z.array(z.object({ val: z.string(), label: z.string() })).optional(),
+    bars: z.array(z.object({ label: z.string(), value: z.number() })).optional(),
+    bar_unit: z.string().optional(),
+    bar_text: z.string().optional(),
+    timeline: z.array(z.object({
+      time: z.string(),
+      event: z.string(),
+      risk: z.enum(['low', 'med', 'high']),
+    })).optional(),
+  })).length(3).optional(),
 
   /** Plain-English description of what each atmospheric layer is doing. Exactly 3 entries. */
   atmo_layers: z.array(z.object({
@@ -245,22 +264,7 @@ function normalizeRawAnswer(raw: unknown): unknown {
   }
 
   if (typeof r.verdict_word === 'string') {
-    // Normalize whitespace + case, then accept any value in the expanded vocabulary.
-    const w = r.verdict_word.trim().toUpperCase().replace(/\s+/g, ' ')
-      .replace(/NOGO|NO_GO/g, 'NO-GO');
-    const ALLOWED = new Set([
-      'GO', 'GO EARLY', 'GO LATE', 'WINDOW', 'WATCH IT', 'BACKUP PLAN',
-      'TOUGH CALL', 'HOLD OFF', 'CONDITIONAL', 'RESCHEDULE', 'NOT TODAY', 'NO-GO',
-      'YES', 'LIKELY', 'LEANING YES', 'POSSIBLE', 'FLIP OF A COIN',
-      'LEANING NO', 'UNLIKELY', 'NO', 'CHECK BACK', 'PATTERN SUGGESTS',
-      'WATCHING', 'MONITOR', 'GET READY', 'PREPARE NOW', 'FINAL PREP',
-      'EVACUATE', 'SHELTER', 'WAIT IT OUT', 'SURVEY SAFELY', 'ALL CLEAR',
-      'HEADS UP', 'STAY AWARE', 'TAKE COVER', 'SHELTER NOW', 'STAY PUT', 'AVOID TRAVEL',
-    ]);
-    // Legacy MAYBE → POSSIBLE in the new vocabulary.
-    if (w === 'MAYBE') r.verdict_word = 'POSSIBLE';
-    else if (ALLOWED.has(w)) r.verdict_word = w;
-    else r.verdict_word = 'POSSIBLE';
+    r.verdict_word = r.verdict_word.trim().toUpperCase();
   }
 
   // maybe_explanation cleanup. Only meaningful for genuinely-uncertain verdicts.
