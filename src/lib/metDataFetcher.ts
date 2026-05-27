@@ -270,6 +270,35 @@ export async function fetchNearestMetar(
   const observedAt = nearest.obsTime || new Date().toISOString();
   const ageMs = Math.max(0, Date.now() - new Date(observedAt).getTime());
 
+  console.log('[metar] selected station', {
+    icao: nearest.id,
+    name: nearest.name ?? null,
+    stationLat: Number(nearest.lat.toFixed(4)),
+    stationLon: Number(nearest.lon.toFixed(4)),
+    queryLat: Number(lat.toFixed(4)),
+    queryLon: Number(lon.toFixed(4)),
+    distanceMi: Number(nearest.dist.toFixed(1)),
+    ageMin: Math.round(ageMs / 60000),
+    observedAt,
+    presentWeather: parsed.presentWeather,
+  });
+
+  // Present-weather text (snow/TSRA/FZRA/etc.) is categorical and only valid
+  // very close to the station. Temperature, dewpoint, and wind interpolate
+  // gracefully over 30–50 mi, but a "snow" call from a station 100 mi away
+  // applied to the user's location is the classic "Miami snow at 87°F" bug.
+  // Suppress the present-weather array beyond 35 mi; keep all scalar fields.
+  const PRESENT_WX_MAX_MI = 35;
+  const presentWxOk = nearest.dist <= PRESENT_WX_MAX_MI;
+  if (!presentWxOk) {
+    console.warn('[metar] suppressing present-weather (station too far)', {
+      icao: nearest.id,
+      distanceMi: Number(nearest.dist.toFixed(1)),
+      limitMi: PRESENT_WX_MAX_MI,
+      suppressed: parsed.presentWeather,
+    });
+  }
+
   return {
     stationId: nearest.id,
     stationName: nearest.name,
@@ -280,6 +309,8 @@ export async function fetchNearestMetar(
     ageMinutes: Math.round(ageMs / 60000),
     rawText: nearest.rawOb,
     ...parsed,
+    presentWeather: presentWxOk ? parsed.presentWeather : [],
+    intensity: presentWxOk ? parsed.intensity : [],
   };
 }
 
