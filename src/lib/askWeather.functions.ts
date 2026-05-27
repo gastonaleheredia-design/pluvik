@@ -16,6 +16,7 @@ import { buildSystemPrompt as buildScenarioSystemPrompt } from './systemPrompt';
 import { resolveForecastStage } from './forecastStage';
 import { buildStageRules } from './stagePrompt';
 import { filterSourceKeysByStage, getStageSourcePlan } from './sourceRouter';
+import { resolveSourceTier } from './sourceRouter';
 import { fetchClimateNormals, fetchDailyClimateNormal } from './fetchers/fetchClimateNormals';
 import { fetchAirNowAQI, fetchNearbyWildfires } from './metDataFetcher';
 import { fetchCpcOutlooks, selectHorizonForLead, type CpcOutlooks } from './fetchers/fetchCpcOutlooks';
@@ -505,8 +506,20 @@ export const askWeather = createServerFn({ method: 'POST' })
     const parsed = parseQuestion(distilledQuestion);
     const intent: ForecastIntent = data.intent ?? classifyIntent(distilledQuestion);
 
-    // 2. Fetch all data (existing 21-source fan-out)
-    const briefing = await buildMetBriefing(lat, lon, parsed);
+    // 2. Pick the source tier BEFORE the fan-out so we only pay for the
+    //    fetches this question actually needs. Severe / hurricane intercepts
+    //    are handled client-side ahead of this call (see answer.tsx), so a
+    //    question reaching us is almost always non-severe; if the question
+    //    text itself sounds severe we widen back to short_range_severe.
+    const tier = resolveSourceTier({
+      intent,
+      hoursAhead: typeof hoursAhead === 'number' ? hoursAhead : null,
+      hasActiveWarnings: false, // unknown pre-fetch — text check inside resolveSourceTier covers it
+      mode: null,
+      question: distilledQuestion,
+    });
+    console.log('[askWeather:diag] tier', { tier, intent, hoursAhead });
+    const briefing = await buildMetBriefing(lat, lon, parsed, tier);
 
     // 2a. Multi-model POP blend for the event window. We compute this once
     // here so (a) the LLM sees the per-member spread in modelComparison and
