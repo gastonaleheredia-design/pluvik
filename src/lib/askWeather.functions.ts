@@ -508,6 +508,31 @@ export const askWeather = createServerFn({ method: 'POST' })
     // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
 
+    // 2a. Multi-model POP blend for the event window. We compute this once
+    // here so (a) the LLM sees the per-member spread in modelComparison and
+    // (b) the deterministic rain fallback below can use it directly. Without
+    // this the fallback used HRRR alone and ran systematically drier than
+    // consumer apps (Apple/Google) for warm-season Gulf Coast convection.
+    const popBlend = blendPopForWindow(
+      briefing,
+      typeof hoursAhead === 'number' ? hoursAhead : 24,
+      typeof endHoursAhead === 'number' ? endHoursAhead : undefined,
+    );
+    if (popBlend) {
+      console.log('[askWeather:diag] popBlend', {
+        blended: popBlend.blended,
+        peakHourOffset: popBlend.peakHourOffset,
+        members: popBlend.members,
+        spread: popBlend.spread,
+        memberCount: popBlend.memberCount,
+      });
+      // Surface the spread to the LLM through the same field it already
+      // reasons about for model agreement.
+      briefing.modelComparison = (briefing.modelComparison ?? '').trim()
+        ? `${briefing.modelComparison}\n${popBlend.spreadNote}`
+        : popBlend.spreadNote;
+    }
+
     // 3. Classify scenario + time horizon
     const scenarioProfile = classifyScenario(briefing, parsed);
 
