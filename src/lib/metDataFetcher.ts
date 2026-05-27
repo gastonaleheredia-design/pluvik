@@ -97,7 +97,12 @@ export function parseMetar(raw: string): {
   altimeterInHg: number | null;
   cloudCoverPct: number | null;
 } {
-  const tokens = raw.trim().split(/\s+/);
+  // Truncate at RMK — anything after RMK is remarks (e.g. "DSNT" for distant
+  // lightning) and must not feed the present-weather scanner, or substrings
+  // like "SN" inside "DSNT" get mis-parsed as snow.
+  const allTokens = raw.trim().split(/\s+/);
+  const rmkIdx = allTokens.indexOf('RMK');
+  const tokens = rmkIdx >= 0 ? allTokens.slice(0, rmkIdx) : allTokens;
 
   // Recognized phenomena descriptors/qualifiers we ignore as standalone but
   // strip when they appear glued to a phenomenon code.
@@ -174,21 +179,29 @@ export function parseMetar(raw: string): {
       let body = wx[2];
       // VC = vicinity; treat as present but at observation site only if also bare code.
       if (body.startsWith('VC')) body = body.slice(2);
-      // Compound codes first (FZRA before RA, TSRA before RA, SHRA before RA).
+      // Exact-token matching (no substring includes — "DSNT" must NEVER
+      // satisfy "SN"). Compound codes (FZRA, FZDZ, TSRA, SHRA) match the
+      // whole body verbatim; otherwise split the body into 2-char chunks
+      // and match each chunk against the simple-code set, skipping pure
+      // descriptors (MI/PR/BC/DR/BL/SH/TS/FZ used as a qualifier prefix).
       let matched = false;
-      for (const code of COMPOUND) {
-        if (body.includes(code)) {
-          pushWx(code, inten);
-          matched = true;
-        }
+      if ((COMPOUND as readonly string[]).includes(body)) {
+        pushWx(body as MetarWxCode, inten);
+        matched = true;
       }
-      if (!matched) {
-        for (const code of SIMPLE) {
-          // Avoid double-counting RA if FZRA / TSRA / SHRA was already added.
-          if (body.includes(code)) {
-            if (code === 'RA' && presentWeather.some((c) => c === 'FZRA' || c === 'TSRA' || c === 'SHRA')) continue;
-            if (code === 'DZ' && presentWeather.includes('FZDZ')) continue;
-            pushWx(code, inten);
+      if (!matched && body.length % 2 === 0) {
+        const chunks: string[] = [];
+        for (let i = 0; i < body.length; i += 2) chunks.push(body.slice(i, i + 2));
+        const DESCRIPTORS = new Set(['MI', 'PR', 'BC', 'DR', 'BL']);
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          // SH/TS/FZ are descriptors only when followed by another chunk.
+          if ((chunk === 'SH' || chunk === 'TS' || chunk === 'FZ') && i < chunks.length - 1) continue;
+          if (DESCRIPTORS.has(chunk)) continue;
+          if ((SIMPLE as readonly string[]).includes(chunk)) {
+            if (chunk === 'RA' && presentWeather.some((c) => c === 'FZRA' || c === 'TSRA' || c === 'SHRA')) continue;
+            if (chunk === 'DZ' && presentWeather.includes('FZDZ')) continue;
+            pushWx(chunk as MetarWxCode, inten);
           }
         }
       }

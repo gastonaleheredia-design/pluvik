@@ -395,9 +395,21 @@ function classifyByMetHierarchy(ctx: MetHierarchyCtx): {
     };
     // Compound codes first so plain RA/DZ don't shadow them.
     if (has('TSRA') || has('TS')) return { word: 'THUNDERSTORMS', source: 'metar' };
-    if (has('FZRA') || has('FZDZ')) return { word: 'FREEZING RAIN', source: 'metar' };
+    if (has('FZRA') || has('FZDZ')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=FZRA/FZDZ');
+        return { word: 'RAIN', source: 'metar' };
+      }
+      return { word: 'FREEZING RAIN', source: 'metar' };
+    }
     if (has('GR')) return { word: 'HAIL', source: 'metar' };
-    if (has('PL')) return { word: 'SLEET', source: 'metar' };
+    if (has('PL')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=PL');
+        return { word: 'LIGHT RAIN', source: 'metar' };
+      }
+      return { word: 'SLEET', source: 'metar' };
+    }
     if (has('SHRA')) return { word: 'SHOWERS', source: 'metar' };
     if (has('RA')) {
       const inten = intensityFor('RA');
@@ -408,6 +420,12 @@ function classifyByMetHierarchy(ctx: MetHierarchyCtx): {
     }
     if (has('DZ')) return { word: 'LIGHT RAIN', source: 'metar' };
     if (has('SN') || has('SG') || has('IC')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=SN/SG/IC');
+        const intenWarm = intensityFor('SN');
+        if (intenWarm === '+') return { word: 'HEAVY RAIN', source: 'metar' };
+        return { word: 'RAIN', source: 'metar' };
+      }
       const inten = intensityFor('SN');
       if (inten === '+') return { word: 'HEAVY SNOW', source: 'metar' };
       return { word: 'SNOW', source: 'metar' };
@@ -873,7 +891,17 @@ export const getHomeBriefing = createServerFn({ method: 'POST' })
     }
 
     const rainingNow = curPrecip > 0.05 || (curCode >= 51 && curCode <= 67) || (curCode >= 80 && curCode <= 82);
-    const snowNow = (curCode >= 71 && curCode <= 77) || (curCode >= 85 && curCode <= 86);
+    const snowNowRaw = (curCode >= 71 && curCode <= 77) || (curCode >= 85 && curCode <= 86);
+    // Temperature sanity guard: above 38°F, frozen-precip verdicts from the
+    // gridded model are essentially impossible. METAR temp wins when fresh.
+    const currentTempF = (metarFresh && metarFresh.tempC != null)
+      ? metarFresh.tempC * 9 / 5 + 32
+      : (typeof j.current?.temperature_2m === 'number' ? j.current.temperature_2m * 9 / 5 + 32 : null);
+    const tooWarmForFrozen = currentTempF != null && currentTempF > 38;
+    if (snowNowRaw && tooWarmForFrozen) {
+      console.warn('[homeBriefing] suppressed SNOW: temp=', currentTempF, 'curCode=', curCode);
+    }
+    const snowNow = snowNowRaw && !tooWarmForFrozen;
     const thunderNow = curCode >= 95;
 
     // SHARED nowcast (single source of truth used by the answer engine too).
