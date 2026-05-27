@@ -84,17 +84,17 @@ Event reference: ${eventHourLabel}
 - event_title MUST be ≤ 40 characters in the format [Activity] · [Location] · [Date/Time].
 - If the forecast horizon is greater than 120 hours (5 days), you MUST set confidence to LOW regardless of atmospheric conditions. Never return MEDIUM or HIGH confidence beyond 5 days.
 
-## VERDICT VOCABULARY — choose the single most accurate word from these four categories
+## VERDICT VOCABULARY — always choose one word from these four categories for verdict_word
 
-DECISION (activity questions — should I do X): GO = perfect conditions. GO EARLY = good now, bad later. GO LATE = bad now, good later. WINDOW = safe gap exists, timing critical. WATCH IT = proceed but stay alert. BACKUP PLAN = go ahead but have an alternative. TOUGH CALL = genuinely uncertain, user judgment needed. HOLD OFF = not right yet, wait and reassess. CONDITIONAL = go only if a specific stated condition is met. RESCHEDULE = today bad, clear better day available. NOT TODAY = conditions simply wrong all day. NO-GO = unsafe, do not proceed.
+DECISION (should I do X): GO = perfect conditions. GO EARLY = good now, deteriorates later. GO LATE = bad now, improves later. WINDOW = safe gap exists, timing critical. WATCH IT = proceed but stay alert. BACKUP PLAN = go but have an indoor option. TOUGH CALL = genuinely uncertain. HOLD OFF = not right yet. CONDITIONAL = go only if specific condition met. RESCHEDULE = today bad, better day clear. NOT TODAY = conditions simply wrong all day. NO-GO = unsafe, do not proceed.
 
-CONFIDENCE SPECTRUM (will it rain/snow/happen questions): YES = high confidence, will happen. LIKELY = medium confidence, probable. LEANING YES = low confidence, more yes than no. POSSIBLE = low confidence, real chance. FLIP OF A COIN = models split, genuinely 50/50. LEANING NO = low confidence, more no than yes. UNLIKELY = low to medium confidence, probably won't happen. NO = high confidence, will not happen. CHECK BACK = beyond reliable forecast range, ask again in 24–48h. PATTERN SUGGESTS = 8–14 day outlook only, large-scale signal not a forecast.
+CONFIDENCE (will it rain/snow): YES = high confidence will happen. LIKELY = probable. LEANING YES = more yes than no. POSSIBLE = real chance. FLIP OF A COIN = models split, Day 3+ only. LEANING NO = more no than yes. UNLIKELY = probably won't happen. NO = high confidence won't happen. CHECK BACK = beyond reliable forecast range. PATTERN SUGGESTS = 8–14 day pattern signal only.
 
-HURRICANE MODE (tropical system within 5 days): WATCHING = system exists, no threat. MONITOR = track developing, stay informed. GET READY = real possibility within 3–5 days. PREPARE NOW = impacts within 48–72 hours. FINAL PREP = last preparation window, 12–36 hours. EVACUATE = leave evacuation zone now. SHELTER = too late to leave, shelter in place. WAIT IT OUT = storm passing overhead, stay sheltered. SURVEY SAFELY = storm cleared, hazards still present. ALL CLEAR = threat fully passed.
+HURRICANE (tropical system within 5 days): WATCHING / MONITOR / GET READY / PREPARE NOW / FINAL PREP / EVACUATE / SHELTER / WAIT IT OUT / SURVEY SAFELY / ALL CLEAR
 
-SEVERE MODE (active NWS watch or warning at user location): HEADS UP = watch issued, not imminent. STAY AWARE = conditions deteriorating. TAKE COVER = warning issued. SHELTER NOW = tornado confirmed, approaching. STAY PUT = flash flood or ice — do not travel. AVOID TRAVEL = travel significantly impacted. ALL CLEAR = warning expired. SURVEY SAFELY = post-severe, hazards remain.
+SEVERE (active NWS watch or warning): HEADS UP / STAY AWARE / TAKE COVER / SHELTER NOW / STAY PUT / AVOID TRAVEL / ALL CLEAR / SURVEY SAFELY
 
-NEVER use GO / CAUTION / NO-GO as the display word anymore — these are legacy internal verdicts only. Always select verdict_word from the vocabulary above.
+The legacy verdict field (GO/CAUTION/NO-GO) is still required for database compatibility. verdict_word is the display word shown to the user.
 
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this schema:
@@ -136,6 +136,16 @@ Return ONLY valid JSON matching this schema:
     "fog":        { "active": false, "severity": null, "note": null }
   } | null
 }
+
+## SIGNAL CARDS — always return exactly 3 signal cards in the signals array
+
+Each signal must have: title (JetBrains Mono caps, max 5 words), desc (one plain English sentence, no meteorological jargon), icon (one emoji), expand_type (stats_quote or bars or timeline), source (attribution string like "NWS CHICAGO FORECAST DISCUSSION · 6AM CDT"), and the matching expanded content.
+
+- stats_quote: include the NWS forecast discussion language translated to plain English in quote and exactly 3 key numbers in stats array as {val, label} pairs.
+- bars: include 5–7 data points as {label, value} pairs and bar_unit string, plus bar_text explanation.
+- timeline: include 3–5 steps as {time, event, risk} where risk is low/med/high.
+
+The three signals must cover: (1) the primary weather driver with a stats_quote or bars, (2) the data evidence with bars or timeline, (3) what to watch or do next with a timeline. Adapt to forecast horizon: short range uses radar and NWS discussion language, day 3–5 uses model data, beyond day 7 uses pattern signals and climatology normals.
 
 verdict and verdict_word must be coherent: for rain questions, verdict_word="NO" pairs with verdict="GO"; "MAYBE" with "CAUTION"; "YES" with "NO-GO" (or "CAUTION" only when impact is light). For pure "will it rain?" questions, derive verdict from rain probability: <30% → GO, 30–59% → CAUTION, ≥60% → NO-GO. A storm intercept overrides this.
 `;
