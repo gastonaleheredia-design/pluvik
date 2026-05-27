@@ -1,56 +1,79 @@
-## What's wrong
+# METAR / geocode mismatch fix plan
 
-The "NEXT RAIN · TUE 12 PM" chip is computed from a different rule than the hourly grid the user sees below it, so the two disagree.
+## What's in the code right now
 
-**Grid rule** (`src/routes/index.tsx` ~line 2113):
-```
-isHigh = h.prob > 40
-```
-Bars only turn red above 40% probability. In the screenshot, the first ≥40% bars are late Monday night (45) and again climbing TUE 10 PM and beyond — exactly what the user reported.
+### `fetchNearestMetar` (src/lib/metDataFetcher.ts, lines 216–284)
+- Default search radius is **25 mi** (`maxDistanceMi = 25`), enforced by a bbox + a haversine check at line 251.
+- Picks the nearest station within radius, returns the parsed METAR with `distanceMi` populated.
+- **No log line** identifies which station was picked, where it sits, or how far it is from the caller's coords. That's the missing observability that lets a "snow" string ride along silently with a temp from a totally different source.
 
-**Chip rule** (`src/lib/homeBriefing.functions.ts` lines 900–904):
-```ts
-const isRain = precs[i] > 0.1 || probs[i] >= 50 || (codes[i] >= 51 && codes[i] <= 99);
-if (isRain) { nextRainIdx = i; break; }
-```
-Three independent OR triggers, any of which can fire:
-1. `precs[i] > 0.1` — Open-Meteo's `precipitation` array is *amount* in mm, not probability. Open-Meteo routinely emits 0.1–0.3 mm at modest POPs (especially in haze/marine-layer regimes around the Gulf coast), so this fires on hours the grid leaves gray.
-2. `probs[i] >= 50` — stricter than the grid's 40% threshold; fine on its own.
-3. `codes[i] >= 51 && codes[i] <= 99` — WMO weather codes 51+ include light drizzle / rain showers / thunderstorm types. Open-Meteo emits these even when the matching hour's POP is well under 40%. This is almost certainly what's firing at TUE 12 PM in your screenshot: a "drizzle" code on a sub-40% hour.
-
-Net effect: chip locks onto the earliest "any signal" hour (TUE noon drizzle code), while the grid only colors hours where the user can actually *see* rain (TUE 10 PM+). The chip lies relative to what's on screen.
+### Geocode caching
+- `src/lib/geocodeVenue.ts` and `src/lib/addressContext.tsx` contain **no cache** — `rg -n "cache|Cache"` returns nothing in either file. Each `geocodeVenueNear` call hits Mapbox fresh.
+- So the "clear cache on selectedAddress change" piece has nothing to clear. The race condition the user is worried about can't come from a stale geocode in this layer. (The METAR + radar/HRRR fetchers do have their own caches; those are keyed by lat/lon and are safe across cities.)
 
 ## Fix
 
-In `src/lib/homeBriefing.functions.ts` lines 900–904, change the chip detector to match the grid's visible threshold, and require corroboration before trusting an Open-Meteo precip-amount or weather-code signal:
+### Step 1 — Log every METAR selection (always, not just on errors)
+Right after `nearest` is chosen (just before `return` on line 273), add:
 
 ```ts
-let nextRainIdx = -1;
-for (let i = Math.max(nowIdx, 0); i < times.length; i++) {
-  const prob = Number.isFinite(probs[i]) ? probs[i] : 0;
-  const mm   = Number.isFinite(precs[i]) ? precs[i] : 0;
-  const code = Number.isFinite(codes[i]) ? codes[i] : 0;
-
-  // Primary: matches the visible grid threshold (>40%).
-  const probSignal = prob > 40;
-
-  // Corroboration: a precip amount or rain code only counts when POP is
-  // at least borderline (>=30%). Drizzle codes at POP 15% are noise.
-  const supportedAmount = mm  >= 0.2 && prob >= 30;
-  const supportedCode   = code >= 51 && code <= 99 && prob >= 30;
-
-  if (probSignal || supportedAmount || supportedCode) { nextRainIdx = i; break; }
-}
+console.log('[metar] selected station', {
+  icao: nearest.id,
+  name: nearest.name ?? null,
+  stationLat: Number(nearest.lat.toFixed(4)),
+  stationLon: Number(nearest.lon.toFixed(4)),
+  queryLat: Number(lat.toFixed(4)),
+  queryLon: Number(lon.toFixed(4)),
+  distanceMi: Number(nearest.dist.toFixed(1)),
+  ageMin: Math.round(ageMs / 60000),
+  observedAt,
+});
 ```
 
-This guarantees the chip's first-rain hour is one the user can also see as a red bar (or at least an at-the-edge hour with multiple signals), and kills the "drizzle code at 15% POP" false positive driving the Houston TUE 12 PM chip.
+This is the single most useful diagnostic — every future "Miami snow at 87°F" report becomes trivial to triage because we'll see e.g. `KEYW · 145 mi · snow` right in the logs.
 
-## Files to change
+### Step 2 — Cap present-weather at 35 mi
+Even with the 25 mi default, some callers pass a larger `maxDistanceMi`. Guarantee the rule at the return boundary:
 
-- `src/lib/homeBriefing.functions.ts` — lines 900–904 only. No DB, no UI, no schema changes. The `nextRainCaption` formatting downstream stays as-is.
+```ts
+const PRESENT_WX_MAX_MI = 35;
+const presentWxOk = nearest.dist <= PRESENT_WX_MAX_MI;
+if (!presentWxOk) {
+  console.warn('[metar] suppressing present-weather (station too far)', {
+    icao: nearest.id,
+    distanceMi: Number(nearest.dist.toFixed(1)),
+    limitMi: PRESENT_WX_MAX_MI,
+  });
+}
+return {
+  stationId: nearest.id,
+  // ...existing fields...
+  ...parsed,
+  presentWeather: presentWxOk ? parsed.presentWeather : [],
+  presentWeatherIntensities: presentWxOk ? (parsed as any).presentWeatherIntensities ?? [] : [],
+};
+```
+
+Temperature, dewpoint, wind, pressure, visibility — all kept from the same station as before (those are physical scalars that interpolate gracefully over 30–50 mi). Only the categorical present-weather array (which is what drives "snow", "TSRA", "freezing rain" text in the briefing) is zeroed when the station is far. Downstream consumers that read `presentWeather.length === 0` already treat that as "no METAR-reported weather", so no further changes are needed.
+
+### Step 3 — Geocode cache audit
+Because no cache exists in `geocodeVenue.ts` or `addressContext.tsx`, there is nothing to clear. To make this verifiable instead of assumed:
+- In `geocodeVenueNear` (the resolver `geocodeVenue.ts` exports and `src/routes/index.tsx` calls at line 866), add a log on every successful resolve: `console.log('[geocode] resolved', { query, lat, lon, source: 'mapbox' })`. If anyone ever wires a cache in later, swap `source` to `'cache' | 'mapbox'` so the distinction shows up in logs.
+- In `src/routes/index.tsx` near the `selectedAddress` effect (around line 820), add a log when `selectedAddress.lat/lon` change so we can correlate "city switched at T" with "next METAR fetched query coords" in the log timeline.
+
+If logs ever show a query-coord/city mismatch, we'll add the cache invalidation hook then. Right now there's no evidence one is needed.
+
+## Files
+
+- `src/lib/metDataFetcher.ts` — selection log + 35 mi present-weather gate (Steps 1 & 2).
+- `src/lib/geocodeVenue.ts` — one log line on resolve (Step 3).
+- `src/routes/index.tsx` — one log line on selectedAddress lat/lon change (Step 3).
+
+No DB, no schema, no UI changes. No change to temperature/wind handling. The previous chip/window fixes stay untouched.
 
 ## Validation
 
-1. Re-fetch the briefing for the current Houston coords and confirm `next_rain_caption` resolves to a TUE-evening hour (~10 PM), matching the first red bar in the grid.
-2. Spot-check a known-rainy point (active POP ≥60% in the next 6 h) to confirm the chip still surfaces early rain, not a regression.
-3. Confirm the `legacyWord` / verdict path is untouched — this fix is independent of the previous HAZY/sentence-coherence work.
+1. Houston query → log shows `[metar] selected station { icao: 'KHOU' or 'KIAH', distanceMi: <25 }`.
+2. Miami query → log shows a KFL/KMIA station within 25 mi; no `presentWeather` suppression.
+3. Force a synthetic call with `maxDistanceMi: 60` to a remote point → log shows `[metar] suppressing present-weather` and the returned object has `presentWeather: []`.
+4. Switch active address from Houston to Miami → logs show `[geocode] resolved … Miami` and the next `[metar] selected station` uses Miami-range coords (verifies no stale geocode is in play).
