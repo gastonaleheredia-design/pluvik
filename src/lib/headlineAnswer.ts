@@ -54,7 +54,7 @@ export type SoftHeadline =
   | 'LEANING NO' | 'UNLIKELY' | 'NO' | 'CHECK BACK';
 
 export function pickConfidenceAwareWord(args: {
-  rawWord?: 'YES' | 'NO' | 'MAYBE' | null;
+  rawWord?: string | null;
   confidence?: ConfidenceLevel | null;
   percentage?: number | null;
   summary?: string | null;
