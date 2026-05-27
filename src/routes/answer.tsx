@@ -1957,7 +1957,7 @@ function AnswerPage() {
           </div>
 
           {/* Body */}
-          <div style={{ padding: '10px 16px 0', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 16px 0', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 112px)' }}>
             {/* Verdict word */}
             <div
               style={{
@@ -1980,7 +1980,7 @@ function AnswerPage() {
                 marginBottom: 9,
                 fontFamily: 'Georgia, serif',
                 fontStyle: 'italic',
-                fontSize: 13,
+                fontSize: 15,
                 lineHeight: 1.42,
                 color: '#374151',
               }}
@@ -2031,10 +2031,10 @@ function AnswerPage() {
                           }} />
                           <span style={{
                             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                            fontSize: 9, color: 'rgba(255,255,255,0.65)',
+                            fontSize: 11, color: 'rgba(255,255,255,0.65)',
                             letterSpacing: '0.12em', minWidth: 50,
                           }}>{row.hour_label}</span>
-                          <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#fff' }}>
+                          <span style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#fff' }}>
                             {row.headline}
                           </span>
                         </div>
@@ -2129,9 +2129,9 @@ function AnswerPage() {
             {/* Side note */}
             {sideNote && (
               <div style={{
-                marginTop: 10, display: 'flex', alignItems: 'center', flex: 1,
+                marginTop: 10, marginBottom: 16, flexShrink: 0,
                 fontFamily: 'Georgia, serif', fontStyle: 'italic',
-                fontSize: 11, color: '#9ca3af', lineHeight: 1.4,
+                fontSize: 13, color: '#9ca3af', lineHeight: 1.4,
               }}>
                 {sideNote}
               </div>
