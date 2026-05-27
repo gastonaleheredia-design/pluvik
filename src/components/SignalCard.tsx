@@ -223,7 +223,7 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
                     letterSpacing: '0.16em', textTransform: 'uppercase', minWidth: 44,
                   }}>{row.time}</span>
                   <span style={{
-                    fontFamily: serifFont, fontSize: 11, color: '#374151', lineHeight: 1.4,
+                    fontFamily: serifFont, fontSize: 13, color: '#374151', lineHeight: 1.4,
                   }}>{row.event}</span>
                 </div>
               ))}
