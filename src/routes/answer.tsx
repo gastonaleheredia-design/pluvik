@@ -1472,7 +1472,7 @@ function AnswerPage() {
       : []),
   ];
 
-  const verdictWord = (answer as { verdict_word?: 'YES' | 'NO' | 'MAYBE' }).verdict_word
+  const verdictWord = (answer as { verdict_word?: string }).verdict_word
     ?? (answer.verdict === 'GO' ? 'YES' : answer.verdict === 'NO-GO' ? 'NO' : 'MAYBE');
   const verdictSentence = (answer as { verdict_sentence?: string }).verdict_sentence
     ?? answer.summary;
