@@ -849,6 +849,10 @@ export const askWeather = createServerFn({ method: 'POST' })
       `Language: ${language.startsWith('es') ? 'Spanish' : 'English'}\n` +
       `Activity type detected: ${parsed.activityType}\n` +
       `Time window: ${parsed.timeWindow}\n` +
+      (nowLocalLabel ? `Current local time: ${nowLocalLabel}\n` : '') +
+      (eventLocalLabel
+        ? `Event local label (USE THIS EXACT PHRASE for the day word — do NOT substitute "tonight" or "today"): ${eventLocalLabel}${eventLocalLong ? `  (${eventLocalLong})` : ''}\n`
+        : '') +
       (typeof endHoursAhead === 'number' && typeof hoursAhead === 'number' && endHoursAhead > hoursAhead
         ? `Event window: ${new Date(Date.now() + hoursAhead * 3_600_000).toISOString()} → ${new Date(Date.now() + endHoursAhead * 3_600_000).toISOString()} (reason about the entire window, not a single instant — call out which hours look worst).\n`
         : '') +
@@ -859,7 +863,9 @@ export const askWeather = createServerFn({ method: 'POST' })
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
       `- Anchor every answer to the EXACT window the user asked about. Do not switch to a more dramatic forecast block outside that window.\n` +
-      `- Every time reference in summary, verdict_sentence, decision_window, main_concern, timing, and timeline.hour_label MUST include a day word: "tonight", "tomorrow morning", "Sun afternoon", "Mon 3 PM", etc. NEVER write a bare "2–3 PM" or "this afternoon" without anchoring it to a date.\n` +
+      (eventLocalLabel
+        ? `- The user's event is "${eventLocalLabel}". Every time reference (summary, verdict_sentence, decision_window, main_concern, timing, timeline.hour_label) MUST use a day word that matches this label. If the label says "TOMORROW", do NOT write "tonight" or "this evening". If the label says a weekday like "WED", use "Wed" / "Wednesday".\n`
+        : `- Every time reference in summary, verdict_sentence, decision_window, main_concern, timing, and timeline.hour_label MUST include a day word: "tonight", "tomorrow morning", "Sun afternoon", "Mon 3 PM", etc. NEVER write a bare "2–3 PM" or "this afternoon" without anchoring it to a date.\n`) +
       `- If a more severe event sits OUTSIDE the asked window (e.g. user asked about the next hour but a severe risk arrives overnight), put it in the "active_alerts" array as one short sentence — never in the headline.\n\n` +
       `RESPOND WITH A SINGLE JSON OBJECT ONLY. No prose, no markdown fences, no commentary. Start your reply with "{" and end with "}".`;
 
