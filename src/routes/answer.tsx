@@ -1887,7 +1887,7 @@ function AnswerPage() {
       s === 'bad' ? '#dc2626' : s === 'watch' ? '#f59e0b' : '#22c55e';
     const ew = aExt.event_window;
     const factors = aExt.secondary_factors ?? [];
-    const sideNote = (factors[0]?.note ?? null) ?? (answer as { decision_window?: string | null }).decision_window ?? null;
+    const sideNote = factors[0]?.note ?? (answer as { decision_window?: string | null }).decision_window ?? null;
 
     return (
       <>
