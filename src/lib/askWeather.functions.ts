@@ -108,6 +108,7 @@ function deriveRainFallback(
   hoursAhead: number,
   stage: 'short_range' | 'model_trend',
   endHoursAhead?: number,
+  blend?: PopBlend | null,
 ): null | {
   verdict: 'GO' | 'CAUTION' | 'NO-GO';
   verdict_word: 'YES' | 'NO' | 'MAYBE';
@@ -141,6 +142,14 @@ function deriveRainFallback(
     if (pcpM) totalPrecip += parseFloat(pcpM[1]);
   }
 
+  // Prefer the multi-model blend when available — it folds in NAM and the
+  // Tomorrow.io backup so we don't ship a single-source HRRR number as the
+  // verdict. The HRRR-only `maxPop` stays as a last resort.
+  if (blend && blend.memberCount > 0) {
+    maxPop = Math.max(maxPop, blend.blended);
+    if (blend.totalPrecipIn > totalPrecip) totalPrecip = blend.totalPrecipIn;
+  }
+
   const verdict: 'GO' | 'CAUTION' | 'NO-GO' =
     maxPop >= 60 || totalPrecip >= 0.25 ? 'NO-GO'
     : maxPop >= 30 || totalPrecip >= 0.05 ? 'CAUTION'
@@ -148,10 +157,11 @@ function deriveRainFallback(
   const verdict_word: 'YES' | 'NO' | 'MAYBE' =
     verdict === 'GO' ? 'NO' : verdict === 'NO-GO' ? 'YES' : 'MAYBE';
 
+  const blendTag = blend && blend.memberCount > 1 ? ' (model blend)' : '';
   const dryLine =
     stage === 'short_range'
-      ? `Forecast shows about ${maxPop}% chance of rain around your time, ${totalPrecip.toFixed(2)}" expected nearby.`
-      : `Models lean toward ~${maxPop}% rain chance around your time — early signal only, will sharpen as we get closer.`;
+      ? `Forecast shows about ${maxPop}% chance of rain around your time${blendTag}, ${totalPrecip.toFixed(2)}" expected nearby.`
+      : `Models lean toward ~${maxPop}% rain chance around your time${blendTag} — early signal only, will sharpen as we get closer.`;
   const concern =
     verdict === 'NO-GO' ? 'Rain likely during your window'
     : verdict === 'CAUTION' ? 'Some rain possible — keep a backup plan'
