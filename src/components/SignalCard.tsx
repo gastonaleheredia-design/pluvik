@@ -78,7 +78,7 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
 
   const descStyle: CSSProperties = {
     fontFamily: serifFont,
-    fontSize: 11,
+    fontSize: 13,
     color: '#4b5563',
     lineHeight: 1.35,
   };
@@ -100,7 +100,7 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
 
   const sourceStyle: CSSProperties = {
     fontFamily: monoFont,
-    fontSize: 6,
+    fontSize: 8,
     color: '#9ca3af',
     letterSpacing: '0.18em',
     textTransform: 'uppercase',
@@ -129,7 +129,7 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
                 <div style={{
                   fontFamily: serifFont,
                   fontStyle: 'italic',
-                  fontSize: 11,
+                  fontSize: 13,
                   color: '#374151',
                   lineHeight: 1.45,
                   borderLeft: `2px solid ${accentColor}`,
@@ -151,10 +151,10 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
                       gap: 2,
                     }}>
                       <div style={{
-                        fontFamily: monoFont, fontSize: 14, fontWeight: 700, color: '#111827',
+                        fontFamily: monoFont, fontSize: 17, fontWeight: 700, color: '#111827',
                       }}>{s.val}</div>
                       <div style={{
-                        fontFamily: monoFont, fontSize: 6, color: '#6b7280',
+                        fontFamily: monoFont, fontSize: 8, color: '#6b7280',
                         letterSpacing: '0.16em', textTransform: 'uppercase',
                       }}>{s.label}</div>
                     </div>
@@ -187,6 +187,9 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
                         alignItems: 'center', gap: 3,
                       }}>
                         <div style={{
+                          fontFamily: monoFont, fontSize: 7, color: '#6b7280',
+                        }}>{`${b.value}${signal.bar_unit ?? ''}`}</div>
+                        <div style={{
                           width: '100%', height: h, borderRadius: 3,
                           backgroundColor: isPeak ? accentColor : `${accentColor}44`,
                         }} />
@@ -200,7 +203,7 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
                 </div>
                 {signal.bar_text && (
                   <div style={{
-                    fontFamily: serifFont, fontSize: 11, color: '#4b5563', lineHeight: 1.4,
+                    fontFamily: serifFont, fontSize: 13, color: '#4b5563', lineHeight: 1.4,
                   }}>{signal.bar_text}</div>
                 )}
               </div>
