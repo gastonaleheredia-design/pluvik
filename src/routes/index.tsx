@@ -117,6 +117,16 @@ function HomePage() {
   const { focus: focusFlag } = useSearch({ from: '/' });
   const { address: selectedAddress, setAddress, freshness, followError, resumeFollowing } = useAddress();
   const { user, tier, loading: authLoading } = useAuth();
+  // Log every time the active address coords change so we can correlate
+  // a "city switch" in the UI with the next geocode + METAR fetches in
+  // the log timeline. Catches stale-coord race conditions.
+  useEffect(() => {
+    console.log('[address] selectedAddress changed', {
+      label: selectedAddress.label,
+      lat: selectedAddress.lat,
+      lon: selectedAddress.lon,
+    });
+  }, [selectedAddress.lat, selectedAddress.lon, selectedAddress.label]);
   const [showPicker, setShowPicker] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);

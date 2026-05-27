@@ -186,6 +186,14 @@ export async function geocodeVenueNear(
     if (!significantOverlap) return null;
   }
 
+  console.log('[geocode] resolved', {
+    query,
+    label: place.label,
+    lat: Number(place.lat.toFixed(4)),
+    lon: Number(place.lon.toFixed(4)),
+    placeType,
+    source: 'mapbox',
+  });
   return place;
 }
 
