@@ -2427,12 +2427,15 @@ async function fetchShearProfile(lat: number, lon: number): Promise<string> {
 export async function buildMetBriefing(
   lat: number,
   lon: number,
-  parsed: ParsedQuestion
+  parsed: ParsedQuestion,
+  tier: SourceTier = 'full',
 ): Promise<MetBriefing> {
   // 60-second in-memory cache keyed by rounded coords + question time window.
   // Workers reuse the same isolate for short bursts, so back-to-back identical
   // questions skip the 21-source fan-out and the Claude bill.
-  const cacheKey = `${lat.toFixed(2)}|${lon.toFixed(2)}|${parsed.timeWindow ?? ''}|${parsed.activityType ?? ''}`;
+  // Cache key includes tier — different tiers fetch different source sets, so
+  // a cached "short_range_rain" briefing must not be reused for a "full" call.
+  const cacheKey = `${lat.toFixed(2)}|${lon.toFixed(2)}|${parsed.timeWindow ?? ''}|${parsed.activityType ?? ''}|${tier}`;
   const now = Date.now();
   const cached = briefingCache.get(cacheKey);
   if (cached && now - cached.t < 60_000) return cached.v;
@@ -2477,9 +2480,13 @@ export async function buildMetBriefing(
   // Firing 24 fetches in parallel triggers "stalled HTTP response was
   // canceled to prevent deadlock" and breaks the briefing. We run the
   // fan-out through a small concurrency limiter instead.
-  const tasks: Array<() => Promise<void>> = [
-    () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; }),
-    () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(async v => {
+  // Each entry is [briefingKey, runner]. The briefingKey is checked against
+  // the tier whitelist; tasks not in the tier are skipped entirely (no
+  // subrequest, no latency).
+  type Task = [key: string, run: () => Promise<void>];
+  const allTasks: Task[] = [
+    ['surfaceObs', () => fetchSurfaceObs(lat, lon).then(v => { result.surfaceObs = v; })],
+    ['hourlyForecast', () => fetchHRRRForecast(lat, lon, parsed.hoursAhead).then(async v => {
       // If primary HRRR (Open-Meteo) returned empty / errored, fall back
       // to Tomorrow.io free-tier forecast so the briefing is not blank.
       if (!v || v.trim().length === 0) {
@@ -2490,53 +2497,59 @@ export async function buildMetBriefing(
       } else {
         result.hourlyForecast = v;
       }
-    }),
-    () => fetchNAMCrosscheck(lat, lon).then(v => { result.namCrosscheck = v; }),
-    () => fetchAFD(lat, lon, parsed.hoursAhead).then(v => { result.afd = v; }),
-    () => fetchAlerts(lat, lon).then(v => { result.alerts = v; }),
-    () => fetchRUCSounding(lat, lon).then(v => { result.sounding = v; }),
-    () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; }),
-    () => fetchEnsemble(lat, lon).then(v => { result.ensemble = v; }),
-    () => fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; }),
-    () => fetchSPCOutlook(lat, lon).then(v => { result.spcOutlook = v; }),
-    () => fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; }),
-    () => fetchMarine(lat, lon).then(v => { result.marine = v; }),
-    () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; }),
-    () => fetchAirQuality(lat, lon).then(v => { result.airQuality = v; }),
-    () => {
+    })],
+    ['namCrosscheck', () => fetchNAMCrosscheck(lat, lon).then(v => { result.namCrosscheck = v; })],
+    ['afd', () => fetchAFD(lat, lon, parsed.hoursAhead).then(v => { result.afd = v; })],
+    ['alerts', () => fetchAlerts(lat, lon).then(v => { result.alerts = v; })],
+    ['sounding', () => fetchRUCSounding(lat, lon).then(v => { result.sounding = v; })],
+    ['radarCells', () => fetchRadarCells(lat, lon).then(v => { result.radarCells = v; })],
+    ['ensemble', () => fetchEnsemble(lat, lon).then(v => { result.ensemble = v; })],
+    ['modelComparison', () => fetchModelComparison(lat, lon).then(v => { result.modelComparison = v; })],
+    ['spcOutlook', () => fetchSPCOutlook(lat, lon).then(v => { result.spcOutlook = v; })],
+    ['mesoscaleDiscussion', () => fetchMesoscaleDiscussion(lat, lon).then(v => { result.mesoscaleDiscussion = v; })],
+    ['marine', () => fetchMarine(lat, lon).then(v => { result.marine = v; })],
+    ['satellite', () => fetchSatelliteContext(lat, lon).then(v => { result.satellite = v; })],
+    ['airQuality', () => fetchAirQuality(lat, lon).then(v => { result.airQuality = v; })],
+    ['fireWeather', () => {
       const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
       if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
         return fetchFireWeather(lat, lon).then(v => { result.fireWeather = v; });
       }
       result.fireWeather = '';
       return Promise.resolve();
-    },
-    () => fetchSPCDayN(2).then(v => { result.spcDay2 = v; }),
-    () => fetchSPCDayN(3).then(v => { result.spcDay3 = v; }),
-    () => fetchSPCDay48().then(v => { result.spcDay48 = v; }),
-    () => fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; }),
-    () => {
+    }],
+    ['spcDay2', () => fetchSPCDayN(2).then(v => { result.spcDay2 = v; })],
+    ['spcDay3', () => fetchSPCDayN(3).then(v => { result.spcDay3 = v; })],
+    ['spcDay48', () => fetchSPCDay48().then(v => { result.spcDay48 = v; })],
+    ['wpcEro', () => fetchWPCExcessiveRainfall().then(v => { result.wpcEro = v; })],
+    ['fireOutlook', () => {
       const fireActivities = ['construction', 'outdoor_event', 'general', 'storm_general'];
       if (fireActivities.includes(parsed.activityType) && parsed.hoursAhead <= 48) {
         return fetchSPCFireOutlook().then(v => { result.fireOutlook = v; });
       }
       result.fireOutlook = '';
       return Promise.resolve();
-    },
-    () => {
+    }],
+    ['droughtMonitor', () => {
       const droughtActivities = ['fishing', 'construction', 'general'];
       if (droughtActivities.includes(parsed.activityType) && parsed.hoursAhead >= 48) {
         return fetchDroughtMonitor(lat, lon).then(v => { result.droughtMonitor = v; });
       }
       result.droughtMonitor = '';
       return Promise.resolve();
-    },
-    () => fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; }),
-    () => fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; }),
-    () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; }),
-    () => fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; }),
+    }],
+    ['glmLightning', () => fetchGLMLightning(lat, lon).then(v => { result.glmLightning = v; })],
+    ['shearProfile', () => fetchShearProfile(lat, lon).then(v => { result.shearProfile = v; })],
+    ['radarTrend', () => fetchRadarTrend(lat, lon).then(v => { result.radarTrend = v; })],
+    ['rotationSignatures', () => fetchRotationSignatures(lat, lon).then(v => { result.rotationSignatures = v; })],
   ];
-  await runWithConcurrency(tasks, 6);
+
+  const scheduled = allTasks.filter(([key]) => shouldFetchKey(tier, key));
+  const skipped = allTasks.length - scheduled.length;
+  console.log('[buildMetBriefing] tier routing', {
+    tier, scheduled: scheduled.length, skipped, total: allTasks.length,
+  });
+  await runWithConcurrency(scheduled.map(([, run]) => run), 6);
 
   // Derive plain-language atmospheric state from the assembled numeric data.
   result.atmosphericState = deriveAtmosphericState(result);
