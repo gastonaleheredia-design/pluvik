@@ -952,9 +952,18 @@ export const askWeather = createServerFn({ method: 'POST' })
               typeof hoursAhead === 'number' ? hoursAhead : 24,
               stageInfo.stage,
               typeof endHoursAhead === 'number' ? endHoursAhead : undefined,
+              popBlend,
             )
           : null;
       if (fb) {
+        console.warn('[askWeather] deterministic rain fallback fired', {
+          reason: modelError ? 'model_error' : 'schema_validation_failed',
+          modelError,
+          schemaIssues: validated.ok ? null : validated.issues,
+          blendedPop: popBlend?.blended ?? null,
+          blendMembers: popBlend?.members ?? null,
+          fallbackPercentage: fb.percentage,
+        });
         validated.data = {
           ...validated.data,
           verdict: fb.verdict,
@@ -966,7 +975,9 @@ export const askWeather = createServerFn({ method: 'POST' })
           confidence: fb.confidence,
           main_concern: fb.main_concern,
           headline_number: { value: `${fb.percentage}%`, label: 'CHANCE OF RAIN' },
-          confidence_reason: 'Derived directly from HRRR hourly forecast.',
+          confidence_reason: popBlend && popBlend.memberCount > 1
+            ? `Blended POP across ${popBlend.memberCount} models (${popBlend.spreadNote}).`
+            : 'Derived directly from HRRR hourly forecast.',
         };
       } else {
         // Truly unavailable — null the percentage so the UI doesn't show "0%".
