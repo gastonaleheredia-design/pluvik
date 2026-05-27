@@ -20,24 +20,26 @@ export const WeatherAnswerSchema = z.object({
   /** Classification of the user's question shape. */
   question_type: z.enum(['decision', 'measurement', 'timing', 'severe', 'hurricane']).optional(),
 
-  /** Evidence cards backing the verdict. Exactly 3 when present. */
+  /** Evidence cards backing the verdict. Typically 3 when present, but
+   *  we accept any length and unknown fields to avoid hard-rejecting valid
+   *  model responses. */
   signals: z.array(z.object({
-    title: z.string(),
-    desc: z.string(),
-    icon: z.string(),
-    expand_type: z.enum(['stats_quote', 'bars', 'timeline']),
-    source: z.string(),
+    title: z.string().optional(),
+    desc: z.string().optional(),
+    icon: z.string().optional(),
+    expand_type: z.string().optional(),
+    source: z.string().optional(),
     quote: z.string().optional(),
-    stats: z.array(z.object({ val: z.string(), label: z.string() })).optional(),
-    bars: z.array(z.object({ label: z.string(), value: z.number() })).optional(),
+    stats: z.array(z.object({ val: z.string(), label: z.string() }).passthrough()).optional(),
+    bars: z.array(z.object({ label: z.string(), value: z.number() }).passthrough()).optional(),
     bar_unit: z.string().optional(),
     bar_text: z.string().optional(),
     timeline: z.array(z.object({
-      time: z.string(),
-      event: z.string(),
-      risk: z.enum(['low', 'med', 'high']),
-    })).optional(),
-  })).length(3).optional(),
+      time: z.string().optional(),
+      event: z.string().optional(),
+      risk: z.string().optional(),
+    }).passthrough()).optional(),
+  }).passthrough()).optional(),
 
   /** Plain-English description of what each atmospheric layer is doing. Exactly 3 entries. */
   atmo_layers: z.array(z.object({
