@@ -835,7 +835,6 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     let rawAnswer: any = null;
     let modelError: string | null = null;
-    let lastResponseText = '';
     const callClaude = async (sys: string, msg: string, signal: AbortSignal) => {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -865,7 +864,6 @@ export const askWeather = createServerFn({ method: 'POST' })
     try {
       const first = await callClaude(systemPrompt, userMessage, controller.signal)
         .finally(() => clearTimeout(timeout));
-      lastResponseText = first.text;
       rawAnswer = extractJsonFromLlmResponse(first.text);
       if (!rawAnswer) {
         console.warn('[askWeather] LLM parse failed (attempt 1)', {
@@ -886,7 +884,6 @@ export const askWeather = createServerFn({ method: 'POST' })
             `Every key must be valid JSON. Begin your reply with "{" right now.`;
           const second = await callClaude(systemPrompt, strictMsg, retryController.signal)
             .finally(() => clearTimeout(retryTimeout));
-          lastResponseText = second.text;
           rawAnswer = extractJsonFromLlmResponse(second.text);
           if (!rawAnswer) {
             console.warn('[askWeather] LLM parse failed (attempt 2)', {
