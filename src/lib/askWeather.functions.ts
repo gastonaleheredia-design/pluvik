@@ -835,10 +835,11 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     let rawAnswer: any = null;
     let modelError: string | null = null;
-    try {
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    let lastResponseText = '';
+    const callClaude = async (sys: string, msg: string, signal: AbortSignal) => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        signal: controller.signal,
+        signal,
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
@@ -847,30 +848,57 @@ export const askWeather = createServerFn({ method: 'POST' })
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 1500,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: userMessage },
-          ],
+          system: sys,
+          messages: [{ role: 'user', content: msg }],
         }),
-      }).finally(() => clearTimeout(timeout));
-
-      if (!claudeRes.ok) {
-        const errBody = await claudeRes.text().catch(() => '');
-        throw new Error(`Claude API error: ${claudeRes.status} ${errBody.slice(0, 300)}`);
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Claude API error: ${res.status} ${errBody.slice(0, 300)}`);
       }
+      const data = await res.json();
+      const stopReason = data.stop_reason ?? 'unknown';
+      const text = (data.content?.[0]?.text ?? '').trim();
+      return { stopReason, text };
+    };
 
-      const claudeData = await claudeRes.json();
-      const stopReason = claudeData.stop_reason ?? 'unknown';
-      const rawText = claudeData.content?.[0]?.text ?? '';
-      const responseText = rawText.trim();
-      rawAnswer = extractJsonFromLlmResponse(responseText);
+    try {
+      const first = await callClaude(systemPrompt, userMessage, controller.signal)
+        .finally(() => clearTimeout(timeout));
+      lastResponseText = first.text;
+      rawAnswer = extractJsonFromLlmResponse(first.text);
       if (!rawAnswer) {
-        console.warn('[askWeather] failed to parse LLM JSON', {
-          stop_reason: stopReason,
-          len: responseText.length,
-          head: responseText.slice(0, 200),
-          tail: responseText.slice(-200),
+        console.warn('[askWeather] LLM parse failed (attempt 1)', {
+          stop_reason: first.stopReason,
+          len: first.text.length,
+          head: first.text.slice(0, 200),
+          tail: first.text.slice(-200),
         });
+        // One stricter retry — cheap, and fixes most malformed JSON cases
+        // before we silently drop to the deterministic template.
+        const retryController = new AbortController();
+        const retryTimeout = setTimeout(() => retryController.abort(), 20000);
+        try {
+          const strictMsg =
+            userMessage +
+            `\n\nSTRICT FORMAT: Your previous reply was not valid JSON. Reply with ONE JSON object only. ` +
+            `No prose before "{", no text after "}", no markdown fences. ` +
+            `Every key must be valid JSON. Begin your reply with "{" right now.`;
+          const second = await callClaude(systemPrompt, strictMsg, retryController.signal)
+            .finally(() => clearTimeout(retryTimeout));
+          lastResponseText = second.text;
+          rawAnswer = extractJsonFromLlmResponse(second.text);
+          if (!rawAnswer) {
+            console.warn('[askWeather] LLM parse failed (attempt 2)', {
+              stop_reason: second.stopReason,
+              len: second.text.length,
+              head: second.text.slice(0, 200),
+              tail: second.text.slice(-200),
+            });
+          }
+        } catch (retryErr) {
+          console.warn('[askWeather] LLM retry failed:', (retryErr as Error)?.message);
+        }
       }
     } catch (err) {
       modelError = err instanceof Error ? err.message : String(err);
