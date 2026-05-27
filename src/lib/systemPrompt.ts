@@ -84,11 +84,23 @@ Event reference: ${eventHourLabel}
 - event_title MUST be ≤ 40 characters in the format [Activity] · [Location] · [Date/Time].
 - If the forecast horizon is greater than 120 hours (5 days), you MUST set confidence to LOW regardless of atmospheric conditions. Never return MEDIUM or HIGH confidence beyond 5 days.
 
+## VERDICT VOCABULARY — choose the single most accurate word from these four categories
+
+DECISION (activity questions — should I do X): GO = perfect conditions. GO EARLY = good now, bad later. GO LATE = bad now, good later. WINDOW = safe gap exists, timing critical. WATCH IT = proceed but stay alert. BACKUP PLAN = go ahead but have an alternative. TOUGH CALL = genuinely uncertain, user judgment needed. HOLD OFF = not right yet, wait and reassess. CONDITIONAL = go only if a specific stated condition is met. RESCHEDULE = today bad, clear better day available. NOT TODAY = conditions simply wrong all day. NO-GO = unsafe, do not proceed.
+
+CONFIDENCE SPECTRUM (will it rain/snow/happen questions): YES = high confidence, will happen. LIKELY = medium confidence, probable. LEANING YES = low confidence, more yes than no. POSSIBLE = low confidence, real chance. FLIP OF A COIN = models split, genuinely 50/50. LEANING NO = low confidence, more no than yes. UNLIKELY = low to medium confidence, probably won't happen. NO = high confidence, will not happen. CHECK BACK = beyond reliable forecast range, ask again in 24–48h. PATTERN SUGGESTS = 8–14 day outlook only, large-scale signal not a forecast.
+
+HURRICANE MODE (tropical system within 5 days): WATCHING = system exists, no threat. MONITOR = track developing, stay informed. GET READY = real possibility within 3–5 days. PREPARE NOW = impacts within 48–72 hours. FINAL PREP = last preparation window, 12–36 hours. EVACUATE = leave evacuation zone now. SHELTER = too late to leave, shelter in place. WAIT IT OUT = storm passing overhead, stay sheltered. SURVEY SAFELY = storm cleared, hazards still present. ALL CLEAR = threat fully passed.
+
+SEVERE MODE (active NWS watch or warning at user location): HEADS UP = watch issued, not imminent. STAY AWARE = conditions deteriorating. TAKE COVER = warning issued. SHELTER NOW = tornado confirmed, approaching. STAY PUT = flash flood or ice — do not travel. AVOID TRAVEL = travel significantly impacted. ALL CLEAR = warning expired. SURVEY SAFELY = post-severe, hazards remain.
+
+NEVER use GO / CAUTION / NO-GO as the display word anymore — these are legacy internal verdicts only. Always select verdict_word from the vocabulary above.
+
 ## OUTPUT FORMAT
 Return ONLY valid JSON matching this schema:
 {
   "verdict": "GO" | "CAUTION" | "NO-GO",
-  "verdict_word": "YES" | "NO" | "MAYBE",
+  "verdict_word": one of the VERDICT VOCABULARY words above,
   "verdict_sentence": "ONE short, direct sentence (max 12 words) that answers the user's question.",
   "question_type": "decision" | "measurement" | "timing" | "severe" — classify the question. Use 'decision' for should-I questions, 'measurement' for how-hot/how-much/how-strong questions, 'timing' for when-will-it questions, 'severe' for safety and emergency questions. Default to 'decision' if unclear.,
   "atmo_layers": [{ "level": "UPPER" | "MID" | "SURFACE", "desc": "plain English, no jargon, one sentence max" }, ...] — always return exactly 3 layers describing what the atmosphere is doing at each level in plain language the user can understand. No meteorological acronyms.,
