@@ -7,6 +7,7 @@ import { fetchRadarTrend } from './fetchers/fetchRadarTrend';
 import { fetchRotationSignatures } from './fetchers/fetchRotationSignatures';
 import { classifyCell, cellTypeLabel } from './cellClassifier';
 import type { StormInterceptResult } from './stormIntercept';
+import { shouldFetchKey, type SourceTier } from './sourceRouter';
 
 /**
  * Module-scoped handoff: when the radar fetcher computes intercepts for
