@@ -45,7 +45,7 @@ export const WeatherAnswerSchema = z.object({
   atmo_layers: z.array(z.object({
     level: z.enum(['UPPER', 'MID', 'SURFACE']),
     desc: z.string(),
-  })).min(1).max(3).optional(),
+  })).min(0).max(3).optional(),
 
   // Forecast-maturity layer (Phase 2)
   forecast_stage: z.enum(['climate', 'outlook', 'model_trend', 'short_range', 'live']).optional(),
