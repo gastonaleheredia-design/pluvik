@@ -1843,10 +1843,11 @@ function AnswerPage() {
       : t('answer.save_track', { defaultValue: 'Save & track' }).toUpperCase();
 
   if (!showWhy) {
-    const vw = (answer.verdict_word ?? 'MONITOR').toString();
+    const answerAny = answer as unknown as Record<string, unknown>;
+    const vw = ((answerAny.verdict_word as string | undefined) ?? 'MONITOR').toString();
     const vwUpper = vw.toUpperCase();
     const accentColor = (() => {
-      if (!answer.verdict_word) return '#6b7280';
+      if (!answerAny.verdict_word) return '#6b7280';
       if (/(NO-GO|TAKE COVER|SHELTER NOW|EVACUATE)/.test(vwUpper)) return '#991b1b';
       if (/\bNO\b/.test(vwUpper)) return '#991b1b';
       if (/(PREPARE|FINAL PREP|SHELTER)/.test(vwUpper)) return '#9d174d';
@@ -1862,7 +1863,9 @@ function AnswerPage() {
       charCount <= 6 ? 34 :
       charCount <= 7 ? 28 : 24;
     const vwDisplay = vw.split(/\s+/).join('\n');
-    const meterPct = Math.max(0, Math.min(100, (answer.impact_percent ?? answer.percentage ?? 0)));
+    const meterPct = Math.max(0, Math.min(100,
+      (answerAny.impact_percent as number | undefined) ?? (answer.percentage as number | undefined) ?? 0
+    ));
     const qText = (displayQuestion || question || '').toLowerCase();
     const isMarine = /(wave|offshore|\bsea\b)/.test(qText);
     const isRain = /(rain|shower|storm|precip|snow)/.test(qText);
