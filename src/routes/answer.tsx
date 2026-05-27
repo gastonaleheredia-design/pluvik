@@ -528,7 +528,7 @@ function UpgradeSheet({
               Subscription coming soon
             </div>
             <div style={{
-              fontFamily: 'Inter, sans-serif', fontSize: '0.95rem',
+              fontFamily: 'Fraunces, serif', fontSize: '0.95rem',
               color: ink, lineHeight: 1.5, marginBottom: 20,
             }}>
               To get early access, email us at{' '}
@@ -541,7 +541,7 @@ function UpgradeSheet({
               style={{
                 width: '100%', padding: '14px 16px', borderRadius: 12,
                 background: accent, color: '#faf7f0', border: 'none',
-                fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.98rem',
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace', letterSpacing: '0.14em', fontWeight: 600, fontSize: '0.98rem',
                 cursor: 'pointer',
               }}
             >
@@ -558,14 +558,14 @@ function UpgradeSheet({
           Pluvik Pro
         </div>
         <div style={{
-          fontFamily: 'Inter, sans-serif', fontSize: '1.15rem',
+          fontFamily: 'Fraunces, serif', fontSize: '1.15rem',
           fontWeight: 600, color: ink, lineHeight: 1.3, marginBottom: 18,
         }}>
           Track this forecast and get notified the moment it changes.
         </div>
         <ul style={{
           listStyle: 'none', padding: 0, margin: '0 0 24px',
-          fontFamily: 'Inter, sans-serif', fontSize: '0.92rem',
+          fontFamily: 'Georgia, serif', fontSize: '0.92rem',
           color: ink, lineHeight: 1.55,
         }}>
           <li style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
@@ -586,7 +586,7 @@ function UpgradeSheet({
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 12,
             background: accent, color: '#faf7f0', border: 'none',
-            fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.98rem',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace', letterSpacing: '0.14em', fontWeight: 600, fontSize: '0.98rem',
             cursor: 'pointer', marginBottom: 10,
           }}
         >
@@ -598,7 +598,7 @@ function UpgradeSheet({
             width: '100%', padding: '12px 16px', borderRadius: 12,
             background: 'transparent', color: muted,
             border: '1px solid rgba(11,16,24,0.15)',
-            fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '0.9rem',
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace', letterSpacing: '0.1em', fontWeight: 500, fontSize: '0.9rem',
             cursor: 'pointer',
           }}
         >
