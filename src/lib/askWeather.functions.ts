@@ -242,11 +242,25 @@ export interface ExtendedWeatherAnswer {
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   current_conditions: string;
   // Minimal-view (3-second test) fields
-  verdict_word?: 'YES' | 'NO' | 'MAYBE';
+  verdict_word?:
+    | 'GO' | 'GO EARLY' | 'GO LATE' | 'WINDOW' | 'WATCH IT' | 'BACKUP PLAN'
+    | 'TOUGH CALL' | 'HOLD OFF' | 'CONDITIONAL' | 'RESCHEDULE' | 'NOT TODAY' | 'NO-GO'
+    | 'YES' | 'LIKELY' | 'LEANING YES' | 'POSSIBLE' | 'FLIP OF A COIN'
+    | 'LEANING NO' | 'UNLIKELY' | 'NO' | 'CHECK BACK' | 'PATTERN SUGGESTS'
+    | 'WATCHING' | 'MONITOR' | 'GET READY' | 'PREPARE NOW' | 'FINAL PREP'
+    | 'EVACUATE' | 'SHELTER' | 'WAIT IT OUT' | 'SURVEY SAFELY' | 'ALL CLEAR'
+    | 'HEADS UP' | 'STAY AWARE' | 'TAKE COVER' | 'SHELTER NOW' | 'STAY PUT' | 'AVOID TRAVEL';
   verdict_sentence?: string;
   headline_number?: { value: string; label: string } | null;
-  /** Confidence-matched soft headline (YES/LIKELY/POSSIBLE/MAYBE/MONITOR/UNLIKELY/NO). */
-  display_word?: 'YES' | 'LIKELY' | 'POSSIBLE' | 'MAYBE' | 'MONITOR' | 'UNLIKELY' | 'NO';
+  /** Confidence-matched soft headline — same vocabulary as verdict_word. */
+  display_word?:
+    | 'GO' | 'GO EARLY' | 'GO LATE' | 'WINDOW' | 'WATCH IT' | 'BACKUP PLAN'
+    | 'TOUGH CALL' | 'HOLD OFF' | 'CONDITIONAL' | 'RESCHEDULE' | 'NOT TODAY' | 'NO-GO'
+    | 'YES' | 'LIKELY' | 'LEANING YES' | 'POSSIBLE' | 'FLIP OF A COIN'
+    | 'LEANING NO' | 'UNLIKELY' | 'NO' | 'CHECK BACK' | 'PATTERN SUGGESTS'
+    | 'WATCHING' | 'MONITOR' | 'GET READY' | 'PREPARE NOW' | 'FINAL PREP'
+    | 'EVACUATE' | 'SHELTER' | 'WAIT IT OUT' | 'SURVEY SAFELY' | 'ALL CLEAR'
+    | 'HEADS UP' | 'STAY AWARE' | 'TAKE COVER' | 'SHELTER NOW' | 'STAY PUT' | 'AVOID TRAVEL';
   /** Human-readable label for the asked window, set by the client UI. */
   window_label?: string;
   /** Three-part rationale shown only when verdict_word === 'MAYBE'. */
