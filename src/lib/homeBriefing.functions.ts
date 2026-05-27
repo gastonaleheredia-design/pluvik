@@ -395,9 +395,21 @@ function classifyByMetHierarchy(ctx: MetHierarchyCtx): {
     };
     // Compound codes first so plain RA/DZ don't shadow them.
     if (has('TSRA') || has('TS')) return { word: 'THUNDERSTORMS', source: 'metar' };
-    if (has('FZRA') || has('FZDZ')) return { word: 'FREEZING RAIN', source: 'metar' };
+    if (has('FZRA') || has('FZDZ')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=FZRA/FZDZ');
+        return { word: 'RAIN', source: 'metar' };
+      }
+      return { word: 'FREEZING RAIN', source: 'metar' };
+    }
     if (has('GR')) return { word: 'HAIL', source: 'metar' };
-    if (has('PL')) return { word: 'SLEET', source: 'metar' };
+    if (has('PL')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=PL');
+        return { word: 'LIGHT RAIN', source: 'metar' };
+      }
+      return { word: 'SLEET', source: 'metar' };
+    }
     if (has('SHRA')) return { word: 'SHOWERS', source: 'metar' };
     if (has('RA')) {
       const inten = intensityFor('RA');
@@ -408,6 +420,12 @@ function classifyByMetHierarchy(ctx: MetHierarchyCtx): {
     }
     if (has('DZ')) return { word: 'LIGHT RAIN', source: 'metar' };
     if (has('SN') || has('SG') || has('IC')) {
+      if (ctx.tempF != null && ctx.tempF > 38) {
+        console.warn('[homeBriefing] suppressed frozen verdict: temp=', ctx.tempF, 'code=SN/SG/IC');
+        const intenWarm = intensityFor('SN');
+        if (intenWarm === '+') return { word: 'HEAVY RAIN', source: 'metar' };
+        return { word: 'RAIN', source: 'metar' };
+      }
       const inten = intensityFor('SN');
       if (inten === '+') return { word: 'HEAVY SNOW', source: 'metar' };
       return { word: 'SNOW', source: 'metar' };
