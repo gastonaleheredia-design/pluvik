@@ -111,7 +111,7 @@ function deriveRainFallback(
   blend?: PopBlend | null,
 ): null | {
   verdict: 'GO' | 'CAUTION' | 'NO-GO';
-  verdict_word: 'YES' | 'NO' | 'MAYBE';
+  verdict_word: 'YES' | 'NO' | 'POSSIBLE';
   percentage: number;
   summary: string;
   verdict_sentence: string;
@@ -154,8 +154,8 @@ function deriveRainFallback(
     maxPop >= 60 || totalPrecip >= 0.25 ? 'NO-GO'
     : maxPop >= 30 || totalPrecip >= 0.05 ? 'CAUTION'
     : 'GO';
-  const verdict_word: 'YES' | 'NO' | 'MAYBE' =
-    verdict === 'GO' ? 'NO' : verdict === 'NO-GO' ? 'YES' : 'MAYBE';
+  const verdict_word: 'YES' | 'NO' | 'POSSIBLE' =
+    verdict === 'GO' ? 'NO' : verdict === 'NO-GO' ? 'YES' : 'POSSIBLE';
 
   const blendTag = blend && blend.memberCount > 1 ? ' (model blend)' : '';
   const dryLine =
@@ -791,7 +791,7 @@ export const askWeather = createServerFn({ method: 'POST' })
         main_threat: '',
         summary: digest.cardSummary,
         plain_english_summary: digest.cardSummary,
-        verdict_word: 'MAYBE',
+        verdict_word: 'PATTERN SUGGESTS',
         verdict_sentence: digest.cardSummary,
         headline_number: null,
         confidence: stageInfo.stage === 'climate' ? 'VERY_LOW' : 'LOW',
@@ -949,7 +949,7 @@ export const askWeather = createServerFn({ method: 'POST' })
           : 'Unable to retrieve mountain forecast. Check weather.gov for summit conditions and plan for afternoon lightning risk above treeline.';
         return {
           verdict: 'CAUTION',
-          verdict_word: 'MAYBE',
+          verdict_word: 'WATCH IT',
           verdict_sentence: alpineSummary,
           summary: alpineSummary,
           main_concern: 'Check summit forecast — alpine conditions require NWS point forecast',
@@ -1055,7 +1055,7 @@ export const askWeather = createServerFn({ method: 'POST' })
           (validated.data as any).verdict_word = 'NO';
         } else if (pop < 60) {
           validated.data.verdict = 'CAUTION';
-          (validated.data as any).verdict_word = 'MAYBE';
+          (validated.data as any).verdict_word = 'POSSIBLE';
         } else {
           validated.data.verdict = 'NO-GO';
           (validated.data as any).verdict_word = 'YES';
@@ -1099,10 +1099,11 @@ export const askWeather = createServerFn({ method: 'POST' })
           validated.data.percentage = pct;
           (validated.data as any).impact_percent = pct;
           let rawWord: 'YES' | 'NO' | 'MAYBE';
-          if (pct >= 60) { validated.data.verdict = 'NO-GO'; rawWord = 'YES'; }
-          else if (pct >= 30) { validated.data.verdict = 'CAUTION'; rawWord = 'MAYBE'; }
-          else { validated.data.verdict = 'GO'; rawWord = 'NO'; }
-          (validated.data as any).verdict_word = rawWord;
+          let displayWord: 'YES' | 'NO' | 'POSSIBLE';
+          if (pct >= 60) { validated.data.verdict = 'NO-GO'; rawWord = 'YES'; displayWord = 'YES'; }
+          else if (pct >= 30) { validated.data.verdict = 'CAUTION'; rawWord = 'MAYBE'; displayWord = 'POSSIBLE'; }
+          else { validated.data.verdict = 'GO'; rawWord = 'NO'; displayWord = 'NO'; }
+          (validated.data as any).verdict_word = displayWord;
           validated.data.confidence = nowcast.confidence === 'high' ? 'HIGH'
             : nowcast.confidence === 'medium' ? 'MEDIUM' : 'LOW';
           (validated.data as any).headline_number = { value: `${pct}%`, label: 'CHANCE OF RAIN' };
