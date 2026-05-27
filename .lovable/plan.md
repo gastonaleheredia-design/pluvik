@@ -1,79 +1,47 @@
-# METAR / geocode mismatch fix plan
+## Problem
 
-## What's in the code right now
+For "Run outside tomorrow 6 PM, Houston," our app said **5%** while a consumer app said **30%**. Two real issues:
 
-### `fetchNearestMetar` (src/lib/metDataFetcher.ts, lines 216–284)
-- Default search radius is **25 mi** (`maxDistanceMi = 25`), enforced by a bbox + a haversine check at line 251.
-- Picks the nearest station within radius, returns the parsed METAR with `distanceMi` populated.
-- **No log line** identifies which station was picked, where it sits, or how far it is from the caller's coords. That's the missing observability that lets a "snow" string ride along silently with a temp from a totally different source.
+1. **Single-model POP.** When the LLM parse fails (or any time the deterministic fallback fires), the rain % comes from **HRRR only** via Open-Meteo. HRRR is a high-res short-range NOAA model that runs systematically **drier** than blended consumer sources for warm-season Gulf Coast convection. So a 5 vs 30% spread isn't a bug per se — it's us reporting one model's view as if it were the truth.
+2. **LLM fallback is firing too often.** The exact wording you saw ("Forecast shows about X% chance of rain around your time…") is the **deterministic template** at `askWeather.functions.ts:152`. That only runs when the LLM's structured answer fails validation. It's silently masking parse errors and hiding the richer blended view.
 
-### Geocode caching
-- `src/lib/geocodeVenue.ts` and `src/lib/addressContext.tsx` contain **no cache** — `rg -n "cache|Cache"` returns nothing in either file. Each `geocodeVenueNear` call hits Mapbox fresh.
-- So the "clear cache on selectedAddress change" piece has nothing to clear. The race condition the user is worried about can't come from a stale geocode in this layer. (The METAR + radar/HRRR fetchers do have their own caches; those are keyed by lat/lon and are safe across cities.)
+## Proposed solution
 
-## Fix
+Two changes, both in server-side logic — no UI changes.
 
-### Step 1 — Log every METAR selection (always, not just on errors)
-Right after `nearest` is chosen (just before `return` on line 273), add:
+### 1. Blend POP across available models (the real fix)
 
-```ts
-console.log('[metar] selected station', {
-  icao: nearest.id,
-  name: nearest.name ?? null,
-  stationLat: Number(nearest.lat.toFixed(4)),
-  stationLon: Number(nearest.lon.toFixed(4)),
-  queryLat: Number(lat.toFixed(4)),
-  queryLon: Number(lon.toFixed(4)),
-  distanceMi: Number(nearest.dist.toFixed(1)),
-  ageMin: Math.round(ageMs / 60000),
-  observedAt,
-});
-```
+Today `deriveRainFallback` reads only `briefing.hourlyForecast` (HRRR). Change it to consume a **blended POP** for the event window:
 
-This is the single most useful diagnostic — every future "Miami snow at 87°F" report becomes trivial to triage because we'll see e.g. `KEYW · 145 mi · snow` right in the logs.
+- Add a small helper `blendPopForWindow(briefing, startH, endH)` that:
+  - Reads HRRR hourly POP (already in `briefing.hourlyForecast`).
+  - Reads NAM POP if present in `briefing.modelComparison` (already fetched — see `confidenceSignals.ts` spread detection).
+  - Reads NDFD/NWS gridded POP from the existing NWS fetch path (already used in `nearterm` horizon).
+  - If Tomorrow.io backup is loaded (`fetchTomorrowIoBackup.ts`), include it as a fourth member.
+  - Returns `{ blended, members: {hrrr, nam, ndfd, tomorrow}, spread }` where `blended = max(median, mean)` across the window's peak hour — biased slightly toward the wetter side for warm-season convection (matches how Apple/Google present POP).
+- `deriveRainFallback` uses `blended` instead of raw HRRR. Verdict thresholds (30/60) stay the same.
+- Add the spread (e.g. "HRRR 5% / NDFD 35% / NAM 28%") into `briefing.modelComparison` so the LLM sees disagreement and the user-facing "why" can cite it.
 
-### Step 2 — Cap present-weather at 35 mi
-Even with the 25 mi default, some callers pass a larger `maxDistanceMi`. Guarantee the rule at the return boundary:
+This alone would have turned the Houston case from "5%" into something like "~28% — models disagree (HRRR drier than NDFD/NAM)."
 
-```ts
-const PRESENT_WX_MAX_MI = 35;
-const presentWxOk = nearest.dist <= PRESENT_WX_MAX_MI;
-if (!presentWxOk) {
-  console.warn('[metar] suppressing present-weather (station too far)', {
-    icao: nearest.id,
-    distanceMi: Number(nearest.dist.toFixed(1)),
-    limitMi: PRESENT_WX_MAX_MI,
-  });
-}
-return {
-  stationId: nearest.id,
-  // ...existing fields...
-  ...parsed,
-  presentWeather: presentWxOk ? parsed.presentWeather : [],
-  presentWeatherIntensities: presentWxOk ? (parsed as any).presentWeatherIntensities ?? [] : [],
-};
-```
+### 2. Make the LLM fallback observable and rarer
 
-Temperature, dewpoint, wind, pressure, visibility — all kept from the same station as before (those are physical scalars that interpolate gracefully over 30–50 mi). Only the categorical present-weather array (which is what drives "snow", "TSRA", "freezing rain" text in the briefing) is zeroed when the station is far. Downstream consumers that read `presentWeather.length === 0` already treat that as "no METAR-reported weather", so no further changes are needed.
+- Log every fallback fire with the LLM's raw response + validation error, so we can see how often it happens and why (`[askWeather] LLM parse failed: <reason>`).
+- Add a **second LLM attempt** with a stricter "respond with JSON only" reminder before falling back. One retry is cheap and fixes most malformed responses.
+- When fallback does fire, include "(model blend)" in the summary line so it's distinguishable from the LLM-authored answer during QA.
 
-### Step 3 — Geocode cache audit
-Because no cache exists in `geocodeVenue.ts` or `addressContext.tsx`, there is nothing to clear. To make this verifiable instead of assumed:
-- In `geocodeVenueNear` (the resolver `geocodeVenue.ts` exports and `src/routes/index.tsx` calls at line 866), add a log on every successful resolve: `console.log('[geocode] resolved', { query, lat, lon, source: 'mapbox' })`. If anyone ever wires a cache in later, swap `source` to `'cache' | 'mapbox'` so the distinction shows up in logs.
-- In `src/routes/index.tsx` near the `selectedAddress` effect (around line 820), add a log when `selectedAddress.lat/lon` change so we can correlate "city switched at T" with "next METAR fetched query coords" in the log timeline.
+### 3. Verification (one-time, no code)
 
-If logs ever show a query-coord/city mismatch, we'll add the cache invalidation hook then. Right now there's no evidence one is needed.
+Before/after the change, hit Open-Meteo directly for Houston (29.76, -95.37) tomorrow 17–19 local and compare HRRR POP vs NDFD POP vs NWS point forecast. Confirm the blended number lands within the consumer-app range.
 
-## Files
+## Files to touch
 
-- `src/lib/metDataFetcher.ts` — selection log + 35 mi present-weather gate (Steps 1 & 2).
-- `src/lib/geocodeVenue.ts` — one log line on resolve (Step 3).
-- `src/routes/index.tsx` — one log line on selectedAddress lat/lon change (Step 3).
+- `src/lib/askWeather.functions.ts` — new `blendPopForWindow`, update `deriveRainFallback`, add retry + logging around LLM call.
+- `src/lib/metDataFetcher.ts` — expose NDFD/NAM POP arrays on the briefing in a parseable form (they're already fetched; just need to be addressable).
+- No DB, no UI, no schema changes. Chip/window fixes from prior turns stay untouched.
 
-No DB, no schema, no UI changes. No change to temperature/wind handling. The previous chip/window fixes stay untouched.
+## Out of scope
 
-## Validation
-
-1. Houston query → log shows `[metar] selected station { icao: 'KHOU' or 'KIAH', distanceMi: <25 }`.
-2. Miami query → log shows a KFL/KMIA station within 25 mi; no `presentWeather` suppression.
-3. Force a synthetic call with `maxDistanceMi: 60` to a remote point → log shows `[metar] suppressing present-weather` and the returned object has `presentWeather: []`.
-4. Switch active address from Houston to Miami → logs show `[geocode] resolved … Miami` and the next `[metar] selected station` uses Miami-range coords (verifies no stale geocode is in play).
+- Switching default forecast provider away from Open-Meteo.
+- Adding a paid ensemble source (ECMWF, proprietary nowcast).
+- Any change to severe / hurricane / climate paths.

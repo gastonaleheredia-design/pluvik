@@ -30,6 +30,7 @@ import {
   impactProfileToBriefingText,
   type HurricaneImpactProfile,
 } from './hurricaneImpact';
+import { blendPopForWindow, type PopBlend } from './blendPop';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
@@ -107,6 +108,7 @@ function deriveRainFallback(
   hoursAhead: number,
   stage: 'short_range' | 'model_trend',
   endHoursAhead?: number,
+  blend?: PopBlend | null,
 ): null | {
   verdict: 'GO' | 'CAUTION' | 'NO-GO';
   verdict_word: 'YES' | 'NO' | 'MAYBE';
@@ -140,6 +142,14 @@ function deriveRainFallback(
     if (pcpM) totalPrecip += parseFloat(pcpM[1]);
   }
 
+  // Prefer the multi-model blend when available — it folds in NAM and the
+  // Tomorrow.io backup so we don't ship a single-source HRRR number as the
+  // verdict. The HRRR-only `maxPop` stays as a last resort.
+  if (blend && blend.memberCount > 0) {
+    maxPop = Math.max(maxPop, blend.blended);
+    if (blend.totalPrecipIn > totalPrecip) totalPrecip = blend.totalPrecipIn;
+  }
+
   const verdict: 'GO' | 'CAUTION' | 'NO-GO' =
     maxPop >= 60 || totalPrecip >= 0.25 ? 'NO-GO'
     : maxPop >= 30 || totalPrecip >= 0.05 ? 'CAUTION'
@@ -147,10 +157,11 @@ function deriveRainFallback(
   const verdict_word: 'YES' | 'NO' | 'MAYBE' =
     verdict === 'GO' ? 'NO' : verdict === 'NO-GO' ? 'YES' : 'MAYBE';
 
+  const blendTag = blend && blend.memberCount > 1 ? ' (model blend)' : '';
   const dryLine =
     stage === 'short_range'
-      ? `Forecast shows about ${maxPop}% chance of rain around your time, ${totalPrecip.toFixed(2)}" expected nearby.`
-      : `Models lean toward ~${maxPop}% rain chance around your time — early signal only, will sharpen as we get closer.`;
+      ? `Forecast shows about ${maxPop}% chance of rain around your time${blendTag}, ${totalPrecip.toFixed(2)}" expected nearby.`
+      : `Models lean toward ~${maxPop}% rain chance around your time${blendTag} — early signal only, will sharpen as we get closer.`;
   const concern =
     verdict === 'NO-GO' ? 'Rain likely during your window'
     : verdict === 'CAUTION' ? 'Some rain possible — keep a backup plan'
@@ -497,6 +508,31 @@ export const askWeather = createServerFn({ method: 'POST' })
     // 2. Fetch all data (existing 21-source fan-out)
     const briefing = await buildMetBriefing(lat, lon, parsed);
 
+    // 2a. Multi-model POP blend for the event window. We compute this once
+    // here so (a) the LLM sees the per-member spread in modelComparison and
+    // (b) the deterministic rain fallback below can use it directly. Without
+    // this the fallback used HRRR alone and ran systematically drier than
+    // consumer apps (Apple/Google) for warm-season Gulf Coast convection.
+    const popBlend = blendPopForWindow(
+      briefing,
+      typeof hoursAhead === 'number' ? hoursAhead : 24,
+      typeof endHoursAhead === 'number' ? endHoursAhead : undefined,
+    );
+    if (popBlend) {
+      console.log('[askWeather:diag] popBlend', {
+        blended: popBlend.blended,
+        peakHourOffset: popBlend.peakHourOffset,
+        members: popBlend.members,
+        spread: popBlend.spread,
+        memberCount: popBlend.memberCount,
+      });
+      // Surface the spread to the LLM through the same field it already
+      // reasons about for model agreement.
+      briefing.modelComparison = (briefing.modelComparison ?? '').trim()
+        ? `${briefing.modelComparison}\n${popBlend.spreadNote}`
+        : popBlend.spreadNote;
+    }
+
     // 3. Classify scenario + time horizon
     const scenarioProfile = classifyScenario(briefing, parsed);
 
@@ -799,10 +835,10 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     let rawAnswer: any = null;
     let modelError: string | null = null;
-    try {
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const callClaude = async (sys: string, msg: string, signal: AbortSignal) => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        signal: controller.signal,
+        signal,
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
@@ -811,30 +847,55 @@ export const askWeather = createServerFn({ method: 'POST' })
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 1500,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: userMessage },
-          ],
+          system: sys,
+          messages: [{ role: 'user', content: msg }],
         }),
-      }).finally(() => clearTimeout(timeout));
-
-      if (!claudeRes.ok) {
-        const errBody = await claudeRes.text().catch(() => '');
-        throw new Error(`Claude API error: ${claudeRes.status} ${errBody.slice(0, 300)}`);
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Claude API error: ${res.status} ${errBody.slice(0, 300)}`);
       }
+      const data = await res.json();
+      const stopReason = data.stop_reason ?? 'unknown';
+      const text = (data.content?.[0]?.text ?? '').trim();
+      return { stopReason, text };
+    };
 
-      const claudeData = await claudeRes.json();
-      const stopReason = claudeData.stop_reason ?? 'unknown';
-      const rawText = claudeData.content?.[0]?.text ?? '';
-      const responseText = rawText.trim();
-      rawAnswer = extractJsonFromLlmResponse(responseText);
+    try {
+      const first = await callClaude(systemPrompt, userMessage, controller.signal)
+        .finally(() => clearTimeout(timeout));
+      rawAnswer = extractJsonFromLlmResponse(first.text);
       if (!rawAnswer) {
-        console.warn('[askWeather] failed to parse LLM JSON', {
-          stop_reason: stopReason,
-          len: responseText.length,
-          head: responseText.slice(0, 200),
-          tail: responseText.slice(-200),
+        console.warn('[askWeather] LLM parse failed (attempt 1)', {
+          stop_reason: first.stopReason,
+          len: first.text.length,
+          head: first.text.slice(0, 200),
+          tail: first.text.slice(-200),
         });
+        // One stricter retry — cheap, and fixes most malformed JSON cases
+        // before we silently drop to the deterministic template.
+        const retryController = new AbortController();
+        const retryTimeout = setTimeout(() => retryController.abort(), 20000);
+        try {
+          const strictMsg =
+            userMessage +
+            `\n\nSTRICT FORMAT: Your previous reply was not valid JSON. Reply with ONE JSON object only. ` +
+            `No prose before "{", no text after "}", no markdown fences. ` +
+            `Every key must be valid JSON. Begin your reply with "{" right now.`;
+          const second = await callClaude(systemPrompt, strictMsg, retryController.signal)
+            .finally(() => clearTimeout(retryTimeout));
+          rawAnswer = extractJsonFromLlmResponse(second.text);
+          if (!rawAnswer) {
+            console.warn('[askWeather] LLM parse failed (attempt 2)', {
+              stop_reason: second.stopReason,
+              len: second.text.length,
+              head: second.text.slice(0, 200),
+              tail: second.text.slice(-200),
+            });
+          }
+        } catch (retryErr) {
+          console.warn('[askWeather] LLM retry failed:', (retryErr as Error)?.message);
+        }
       }
     } catch (err) {
       modelError = err instanceof Error ? err.message : String(err);
@@ -888,9 +949,18 @@ export const askWeather = createServerFn({ method: 'POST' })
               typeof hoursAhead === 'number' ? hoursAhead : 24,
               stageInfo.stage,
               typeof endHoursAhead === 'number' ? endHoursAhead : undefined,
+              popBlend,
             )
           : null;
       if (fb) {
+        console.warn('[askWeather] deterministic rain fallback fired', {
+          reason: modelError ? 'model_error' : 'schema_validation_failed',
+          modelError,
+          schemaIssues: validated.ok ? null : validated.issues,
+          blendedPop: popBlend?.blended ?? null,
+          blendMembers: popBlend?.members ?? null,
+          fallbackPercentage: fb.percentage,
+        });
         validated.data = {
           ...validated.data,
           verdict: fb.verdict,
@@ -902,7 +972,9 @@ export const askWeather = createServerFn({ method: 'POST' })
           confidence: fb.confidence,
           main_concern: fb.main_concern,
           headline_number: { value: `${fb.percentage}%`, label: 'CHANCE OF RAIN' },
-          confidence_reason: 'Derived directly from HRRR hourly forecast.',
+          confidence_reason: popBlend && popBlend.memberCount > 1
+            ? `Blended POP across ${popBlend.memberCount} models (${popBlend.spreadNote}).`
+            : 'Derived directly from HRRR hourly forecast.',
         };
       } else {
         // Truly unavailable — null the percentage so the UI doesn't show "0%".
@@ -1077,23 +1149,33 @@ export const askWeather = createServerFn({ method: 'POST' })
       if (popLines.length > 0 && typeof hoursAhead === 'number') {
         const idx = Math.max(0, Math.min(popLines.length - 1, Math.round(hoursAhead)));
         const popMatch = popLines[idx].match(/POP:(\d+)%/);
-        const nwsPop = popMatch ? parseInt(popMatch[1], 10) : null;
+        const hrrrPop = popMatch ? parseInt(popMatch[1], 10) : null;
+        // Prefer the multi-model blend so we don't drag a good LLM answer
+        // back down to single-source HRRR (which runs dry for warm-season
+        // Gulf convection).
+        const referencePop = popBlend && popBlend.memberCount > 0
+          ? popBlend.blended
+          : hrrrPop;
         const llmPct = (validated.data as any).impact_percent;
         if (
-          nwsPop != null &&
+          referencePop != null &&
           typeof llmPct === 'number' &&
           Number.isFinite(llmPct) &&
-          Math.abs(llmPct - nwsPop) > 20
+          Math.abs(llmPct - referencePop) > 20
         ) {
-          (validated.data as any).impact_percent = nwsPop;
+          (validated.data as any).impact_percent = referencePop;
           const prevReason = String((validated.data as any).confidence_reason ?? '').trim();
-          const note = 'Rain probability adjusted to match forecast data.';
+          const note = popBlend && popBlend.memberCount > 1
+            ? `Rain probability adjusted to match blended model POP (${popBlend.spreadNote}).`
+            : 'Rain probability adjusted to match forecast data.';
           (validated.data as any).confidence_reason = prevReason
             ? `${prevReason} ${note}`
             : note;
           console.log('[askWeather:diag] PoP verification adjusted', {
             llmPct,
-            nwsPop,
+            referencePop,
+            hrrrPop,
+            blended: popBlend?.blended ?? null,
             hoursAhead,
           });
         }
