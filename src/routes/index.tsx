@@ -955,12 +955,15 @@ function HomePage() {
   // model guidance change the verdict word and summary copy, never the
   // background. Each element below sets `color` explicitly using `isDarkMode`.
   const isDarkMode = !!warning;
-  const txtPrimary = isDarkMode ? severeWhite : INK;
-  const txtMuted = isDarkMode ? severeWhite : MUTED;
-  const stormCardText = isDarkMode ? 'rgba(255,255,255,0.88)' : INK;
+  // Any dark page background (NWS warning palette, STORMS verdict, or
+  // critical/high severity) must force light text for legibility.
+  const isDarkBg = isDarkSeverity || isStormsVerdict;
+  const txtPrimary = isDarkBg ? severeWhite : INK;
+  const txtMuted = isDarkBg ? severeMuted : MUTED;
+  const stormCardText = isDarkBg ? 'rgba(255,255,255,0.88)' : INK;
   const stormCardAction = isDarkMode ? '#ff8a65' : ACCENT;
   const stormCardBorder = isDarkMode ? '#ff8a65' : ACCENT;
-  const chipBorder = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
+  const chipBorder = isDarkBg ? 'rgba(255,255,255,0.6)' : 'rgba(11,16,24,0.12)';
 
   return (
     <div
@@ -1444,7 +1447,7 @@ function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRainSheetOpen(true)}
-                        style={{ ...chipBase, color: isDarkMode ? severeWhite : ACCENT, borderColor: isDarkMode ? 'rgba(255,255,255,0.6)' : `${ACCENT}55`, cursor: 'pointer' }}
+                        style={{ ...chipBase, color: isDarkBg ? severeWhite : ACCENT, borderColor: isDarkBg ? 'rgba(255,255,255,0.6)' : `${ACCENT}55`, cursor: 'pointer' }}
                       >
                         <span aria-hidden style={{ fontSize: '0.75rem' }}>⛆</span>
                         {pillText}
