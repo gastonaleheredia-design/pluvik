@@ -1897,7 +1897,7 @@ function AnswerPage() {
       (answerAny.impact_percent as number | undefined) ?? (answer.percentage as number | undefined) ?? 0
     ));
     const qText = (displayQuestion || question || '').toLowerCase();
-    const isMarine = /(wave|offshore|\bsea\b)/.test(qText);
+    const isMarine = qText.includes('wave') || qText.includes('offshore') || qText.includes('sea state');
     const isRain = /(rain|shower|storm|precip|snow)/.test(qText);
     const meterLabels = isRain
       ? ['0%', '25%', '50%', '75%+']
@@ -2045,34 +2045,36 @@ function AnswerPage() {
                 if (isMarine) {
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <svg width="64" height="36" viewBox="0 0 64 36" fill="none">
-                        <path d="M0 24 Q8 12 16 24 T32 24 T48 24 T64 24"
-                          stroke={accentColor} strokeWidth="2" fill="none" />
-                        <path d="M0 30 Q8 20 16 30 T32 30 T48 30 T64 30"
-                          stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
-                      </svg>
+                      <div dangerouslySetInnerHTML={{ __html: buildWaveSVG() }} />
                       <div style={{
-                        fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 28,
-                        color: '#fff', lineHeight: 1,
+                        fontFamily: 'monospace', fontWeight: 700, fontSize: 40, color: '#f8f5ef',
                       }}>
-                        {aExt.headline_number?.value ?? `${meterPct}%`}
+                        {aExt.headline_number?.value ?? '—'}
                       </div>
                     </div>
                   );
                 }
                 if (qType === 'hurricane') {
+                  const hStats = ((aExt as { signals?: Array<{ stats?: Array<{ val: string; label: string }> }> }).signals?.[0]?.stats) ?? [];
                   return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <svg width="60" height="40" viewBox="0 0 60 40">
-                        <path d="M6 36 L30 6 L54 36 Z"
-                          fill="rgba(255,255,255,0.08)" stroke={accentColor} strokeWidth="1.5" />
-                        <circle cx="30" cy="32" r="3" fill={accentColor} />
-                      </svg>
-                      <div style={{
-                        fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 24, color: '#fff',
-                      }}>
-                        {aExt.headline_number?.value ?? 'TRACK'}
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div dangerouslySetInnerHTML={{ __html: buildConeSVG() }} />
+                      {hStats.length > 0 && (
+                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                          {hStats.map((s, i) => (
+                            <div key={i} style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{
+                                fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 18, color: '#f8f5ef',
+                              }}>{s.val}</span>
+                              <span style={{
+                                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                                fontSize: 7, color: 'rgba(248,245,239,0.55)',
+                                letterSpacing: '0.16em', textTransform: 'uppercase',
+                              }}>{s.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 }
