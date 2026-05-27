@@ -1,27 +1,50 @@
+
 ## Problem
 
-Houston home screen shows "SNOW" verdict at 66°F. The METAR for KMCJ (the nearest station) actually reports clear skies with `DSNT` (distant lightning) in the remarks — there is no snow in the data. Our parser is mis-reading that remark as the wx code `SN` (snow).
+Right now the RADAR chip on the home screen only shows up when the verdict word is one of: `RAINING`, `STORMS`, `SNOW`, `RAIN SOON` — or when there's an active NWS warning, or a radar cell within 25 mi.
 
-Two bugs in `src/lib/metDataFetcher.ts` present-weather parser cause this:
-1. It keeps scanning tokens past the `RMK` boundary, so remarks-only tokens like `DSNT` enter the wx-code scan.
-2. It matches wx codes with `body.includes('SN')` (substring) instead of exact token equality, so `"DSNT".includes("SN")` is `true` → `SN` gets added to `presentWeather` → downstream classifier returns SNOW.
+But the verdict system actually emits a much wider set of precipitation words. With "CHANCE OF RAIN" (today's case), there can be real rain just a few miles south and the user has no quick way to see it.
 
-## Fix (surgical, parser-only)
+## All precipitation-related verdicts the system can emit
 
-In `src/lib/metDataFetcher.ts`, inside the present-weather parser:
+From `src/lib/homeBriefing.functions.ts` the full list of weather words that mean "there is or may be precipitation":
 
-1. **Truncate at `RMK`** — when splitting the METAR body into tokens, stop at the first `RMK` token so remarks never feed into wx-code scanning.
-2. **Exact-token matching** — for each token, strip leading intensity (`+`/`-`) and the `VC` prefix, then compare the remaining string with `===` against the known wx-code set (`SN`, `RA`, `DZ`, `PL`, `GR`, `GS`, `FZRA`, `FZDZ`, `SG`, `IC`, `TS`, `SH`, `BR`, `FG`, `HZ`, etc.). Never use `includes`.
-3. **Safety net** — keep the previously-proposed temperature guard: if current temp > 38°F, demote frozen-precip verdicts (`SNOW`/`SLEET`/`FREEZING RAIN`) to the rain equivalent in both the METAR path (`classifyByMetHierarchy`) and the Open-Meteo path (`pickWord`). `GR` (hail) is not demoted. Log `console.warn('[homeBriefing] suppressed frozen verdict: temp=…, code=…')` when it fires.
+**Active precipitation (happening now)**
+- `RAINING`, `RAIN`, `LIGHT RAIN`, `HEAVY RAIN`
+- `SHOWERS`, `DRIZZLE`
+- `STORMS`, `THUNDERSTORMS`
+- `SNOW`, `HEAVY SNOW`, `SLEET`, `FREEZING RAIN`, `HAIL`
+- `FLASH FLOOD`, `BLIZZARD`, `ICE STORM` (warning-driven)
 
-## Scope
+**Likely / soon**
+- `RAIN LIKELY`, `SHOWERS LIKELY`, `SHOWERS NEARBY`
+- `RAIN COMING`, `RAIN SOON`
+- `CHANCE OF RAIN`, `RAIN POSSIBLE`
 
-- Files: `src/lib/metDataFetcher.ts` (parser fix), `src/lib/homeBriefing.functions.ts` (temperature guard at both classification sites).
-- No schema, UI, copy, route, or backend changes.
-- No effect on legitimate snow events — the parser change only stops false positives from remark tokens, and the temp guard only fires above 38°F.
+**Not precipitation** (radar stays hidden unless a nearby cell or warning is present): `SUNNY`, `CLEAR`, `PARTLY CLOUDY`, `MOSTLY CLOUDY`, `OVERCAST`, `CLOUDY`, `BREEZY`, `WINDY`, `VERY WINDY`, `HOT`, `DANGEROUSLY HOT`, `FREEZING`, `VERY COLD`, `DANGEROUSLY COLD`, `FOGGY`, `DENSE FOG`, `HAZY`, `DRY`.
 
-## Verification
+## Proposed change
 
-- Re-pull KMCJ METAR and confirm `presentWeather` is empty (no `SN`).
-- Confirm Houston home screen no longer shows SNOW.
-- Spot-check a known snow METAR (e.g. a current northern-US station reporting `-SN`) still classifies as SNOW.
+Replace the small hard-coded list in `src/routes/index.tsx` (around line 1391) with a single `PRECIP_WORDS` set that contains every word above. The rest of the gate stays as-is:
+
+```text
+showRadarChip = location is set AND (
+  active NWS warning
+  OR verdict word is in PRECIP_WORDS
+  OR nearby radar cell within 25 mi
+)
+```
+
+Net effect: today's "CHANCE OF RAIN" (and every other precip-leaning verdict like SHOWERS NEARBY, RAIN POSSIBLE, DRIZZLE, FREEZING RAIN, HAIL, SLEET, etc.) will show the RADAR chip so the user can immediately check what's actually on screen near them.
+
+## Files touched
+
+- `src/routes/index.tsx` — only the `showRadarChip` predicate (one block, ~7 lines).
+
+No backend, schema, copy, or styling changes.
+
+## Out of scope
+
+- The 25-mile nearby-cell threshold stays the same.
+- No change to the verdict logic itself or how words are picked.
+- No change to the WHY chip or the rain-pill caption.

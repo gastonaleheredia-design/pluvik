@@ -1387,8 +1387,19 @@ function HomePage() {
             {(() => {
               const showRadarChip = selectedAddress.lat != null && selectedAddress.lon != null && (() => {
                 if (warning) return true;
-                const w = briefing.word;
-                if (w === 'RAINING' || w === 'STORMS' || w === 'SNOW' || w === 'RAIN SOON') return true;
+                const PRECIP_WORDS = new Set([
+                  // Active precipitation
+                  'RAINING', 'RAIN', 'LIGHT RAIN', 'HEAVY RAIN',
+                  'SHOWERS', 'DRIZZLE',
+                  'STORMS', 'THUNDERSTORMS',
+                  'SNOW', 'HEAVY SNOW', 'SLEET', 'FREEZING RAIN', 'HAIL',
+                  'FLASH FLOOD', 'BLIZZARD', 'ICE STORM',
+                  // Likely / soon
+                  'RAIN LIKELY', 'SHOWERS LIKELY', 'SHOWERS NEARBY',
+                  'RAIN COMING', 'RAIN SOON',
+                  'CHANCE OF RAIN', 'RAIN POSSIBLE',
+                ]);
+                if (briefing.word && PRECIP_WORDS.has(briefing.word)) return true;
                 const cell = briefing.nearby_cell;
                 if (cell && cell.distance_mi <= 25) return true;
                 return false;
