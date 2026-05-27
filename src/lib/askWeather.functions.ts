@@ -875,6 +875,11 @@ export const askWeather = createServerFn({ method: 'POST' })
       `User question: ${distilledQuestion}\n\n` +
       (hurricaneContextBlock ? `${hurricaneContextBlock}\n\n` : '') +
       `METEOROLOGICAL BRIEFING (filtered to active sources for this scenario):\n${briefingText}\n\n` +
+      `NWS_FORECAST_DISCUSSION: ${
+        (briefing.afd && briefing.afd.trim())
+          ? briefing.afd.trim().slice(0, 600)
+          : 'Not available — use atmospheric context only'
+      }\n\n` +
       `TIME-LABEL RULES (mandatory):\n` +
       `- Anchor every answer to the EXACT window the user asked about. Do not switch to a more dramatic forecast block outside that window.\n` +
       (eventLocalLabel
