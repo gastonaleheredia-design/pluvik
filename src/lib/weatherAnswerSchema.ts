@@ -45,7 +45,7 @@ export const WeatherAnswerSchema = z.object({
   atmo_layers: z.array(z.object({
     level: z.enum(['UPPER', 'MID', 'SURFACE']),
     desc: z.string(),
-  })).length(3).optional(),
+  })).min(1).max(3).optional(),
 
   // Forecast-maturity layer (Phase 2)
   forecast_stage: z.enum(['climate', 'outlook', 'model_trend', 'short_range', 'live']).optional(),
@@ -163,9 +163,9 @@ export const WeatherAnswerSchema = z.object({
    * AND the AFD section is available. Null otherwise.
    */
   maybe_explanation: z.object({
-    afd_quote: z.string().min(1),
-    model_reconciliation: z.string().min(1),
-    why_uncertain: z.string().min(1),
+    afd_quote: z.string(),
+    model_reconciliation: z.string(),
+    why_uncertain: z.string(),
   }).nullable().optional(),
 
   // Severe / hurricane fields — pass through untouched.
