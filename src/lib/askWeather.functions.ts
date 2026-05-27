@@ -1152,23 +1152,33 @@ export const askWeather = createServerFn({ method: 'POST' })
       if (popLines.length > 0 && typeof hoursAhead === 'number') {
         const idx = Math.max(0, Math.min(popLines.length - 1, Math.round(hoursAhead)));
         const popMatch = popLines[idx].match(/POP:(\d+)%/);
-        const nwsPop = popMatch ? parseInt(popMatch[1], 10) : null;
+        const hrrrPop = popMatch ? parseInt(popMatch[1], 10) : null;
+        // Prefer the multi-model blend so we don't drag a good LLM answer
+        // back down to single-source HRRR (which runs dry for warm-season
+        // Gulf convection).
+        const referencePop = popBlend && popBlend.memberCount > 0
+          ? popBlend.blended
+          : hrrrPop;
         const llmPct = (validated.data as any).impact_percent;
         if (
-          nwsPop != null &&
+          referencePop != null &&
           typeof llmPct === 'number' &&
           Number.isFinite(llmPct) &&
-          Math.abs(llmPct - nwsPop) > 20
+          Math.abs(llmPct - referencePop) > 20
         ) {
-          (validated.data as any).impact_percent = nwsPop;
+          (validated.data as any).impact_percent = referencePop;
           const prevReason = String((validated.data as any).confidence_reason ?? '').trim();
-          const note = 'Rain probability adjusted to match forecast data.';
+          const note = popBlend && popBlend.memberCount > 1
+            ? `Rain probability adjusted to match blended model POP (${popBlend.spreadNote}).`
+            : 'Rain probability adjusted to match forecast data.';
           (validated.data as any).confidence_reason = prevReason
             ? `${prevReason} ${note}`
             : note;
           console.log('[askWeather:diag] PoP verification adjusted', {
             llmPct,
-            nwsPop,
+            referencePop,
+            hrrrPop,
+            blended: popBlend?.blended ?? null,
             hoursAhead,
           });
         }
