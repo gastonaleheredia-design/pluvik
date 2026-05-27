@@ -515,7 +515,8 @@ Respond ONLY with valid JSON:
 export const askWeather = createServerFn({ method: 'POST' })
   .inputValidator((data: WeatherRequest) => data)
   .handler(async ({ data }: { data: WeatherRequest }) => {
-    const { question, lat, lon, language, address, hoursAhead, endHoursAhead } = data;
+    const { question, lat, lon, language, address, hoursAhead, endHoursAhead,
+            eventLocalLabel, eventLocalLong, nowLocalLabel } = data;
 
     // 1. Distill verbose / rambling questions to their core intent BEFORE
     //    parsing or prompting. The original `question` stays untouched so the
