@@ -687,6 +687,36 @@ const INK = '#0b1018';
 const MUTED = '#6b6357';
 const ACCENT = '#c2410c';
 
+function buildWaveSVG(): string {
+  return '<svg width="38" height="22" viewBox="0 0 38 22" fill="none"><path d="M0 13 C3 8,7 8,11 13 C15 18,19 18,23 13 C27 8,31 8,35 13 C39 18,43 18,47 13" stroke="rgba(248,245,239,.5)" stroke-width="2.5" stroke-linecap="round"/><path d="M0 19 C3 14,7 14,11 19 C15 24,19 24,23 19 C27 14,31 14,35 19 C39 24,43 24,47 19" stroke="rgba(248,245,239,.25)" stroke-width="2" stroke-linecap="round"/><path d="M5 6 C8 2,11 2,14 6" stroke="rgba(248,245,239,.38)" stroke-width="1.8" stroke-linecap="round"/><path d="M19 3 C23 0,27 0,31 3" stroke="rgba(248,245,239,.45)" stroke-width="2" stroke-linecap="round"/></svg>';
+}
+
+function buildConeSVG(): string {
+  return [
+    '<svg width="100%" height="160" viewBox="0 0 320 160" fill="none" xmlns="http://www.w3.org/2000/svg">',
+    '<rect width="320" height="160" fill="#1a1a2e"/>',
+    // Cone (pink, semi-transparent)
+    '<path d="M40 120 L130 60 L260 30 L260 80 L130 100 L40 140 Z" fill="rgba(236,72,153,0.18)" stroke="#ec4899" stroke-width="1.5"/>',
+    // Dashed track line
+    '<path d="M40 130 Q120 80 250 55" stroke="#ec4899" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>',
+    // Storm center with spiral arms
+    '<g transform="translate(40,130)">',
+    '<circle r="9" fill="#ec4899" opacity="0.25"/>',
+    '<circle r="4" fill="#ec4899"/>',
+    '<path d="M0 -10 Q8 -8 8 0 Q8 8 0 10 Q-8 8 -8 0 Q-8 -8 0 -10" stroke="#f8f5ef" stroke-width="1" fill="none" opacity="0.7"/>',
+    '</g>',
+    // User position (white dot labeled YOU)
+    '<g transform="translate(190,90)">',
+    '<circle r="4" fill="#f8f5ef"/>',
+    '<circle r="7" fill="none" stroke="#f8f5ef" stroke-width="1" opacity="0.5"/>',
+    '<text x="10" y="3" font-family="monospace" font-size="8" fill="#f8f5ef" letter-spacing="1">YOU</text>',
+    '</g>',
+    // Footer
+    '<text x="160" y="152" font-family="monospace" font-size="7" fill="rgba(248,245,239,0.5)" text-anchor="middle" letter-spacing="1.5">72-HR CONE · NHC</text>',
+    '</svg>',
+  ].join('');
+}
+
 function AnswerPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
