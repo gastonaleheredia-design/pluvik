@@ -193,6 +193,12 @@ interface WeatherRequest {
   endHoursAhead?: number;
   /** Pre-classified intent from the home screen (optional — server falls back to keyword classifier). */
   intent?: ForecastIntent;
+  /** Short canonical local label for the event ("TOMORROW 6 PM", "TONIGHT 9–11 PM"). Computed in the browser so timezone is the user's. */
+  eventLocalLabel?: string;
+  /** Long canonical local label ("Wed Nov 5 · 6 PM"). */
+  eventLocalLong?: string;
+  /** User-local "now" string ("Tue, Nov 4, 11:07 PM"). */
+  nowLocalLabel?: string;
 }
 
 export interface ExtendedWeatherAnswer {
