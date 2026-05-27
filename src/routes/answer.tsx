@@ -1039,7 +1039,7 @@ function AnswerPage() {
     setSaving(true);
     try {
       const a = answer as WeatherAnswer & {
-        verdict_word?: 'YES' | 'NO' | 'MAYBE';
+        verdict_word?: string;
         verdict_sentence?: string;
       };
       const verdictWord =
