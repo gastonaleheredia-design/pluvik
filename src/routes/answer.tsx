@@ -2254,6 +2254,19 @@ function AnswerPage() {
           confidenceReason={(answer as { confidence_reason?: string | null }).confidence_reason ?? undefined}
           atmoLayers={(answer as { atmo_layers?: Array<{ level: 'UPPER' | 'MID' | 'SURFACE'; desc: string }> | null }).atmo_layers ?? undefined}
           mechanism={(answer as { mechanism?: string | null }).mechanism ?? undefined}
+          accentColor={(() => {
+            const vw = ((answer as unknown as Record<string, unknown>).verdict_word as string | undefined ?? 'MONITOR').toUpperCase();
+            if (!(answer as unknown as Record<string, unknown>).verdict_word) return '#6b7280';
+            if (/(NO-GO|TAKE COVER|SHELTER NOW|EVACUATE)/.test(vw)) return '#991b1b';
+            if (/\bNO\b/.test(vw)) return '#991b1b';
+            if (/(PREPARE|FINAL PREP|SHELTER)/.test(vw)) return '#9d174d';
+            if (/(GO|YES|LIKELY|ALL CLEAR)/.test(vw)) return '#16a34a';
+            if (/(WINDOW|WATCH|BACKUP|POSSIBLE|LEANING)/.test(vw)) return '#d97706';
+            return '#6b7280';
+          })()}
+          forecastStage={stage}
+          signals={(answer as { signals?: import('../components/SignalCard').SignalCardData[] | null }).signals ?? null}
+          answerSummary={answer.summary ?? null}
           onBack={() => setShowWhy(false)}
           onSaveTrack={handleSaveTrack}
           saving={saving}
