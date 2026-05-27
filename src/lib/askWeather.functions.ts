@@ -30,6 +30,7 @@ import {
   impactProfileToBriefingText,
   type HurricaneImpactProfile,
 } from './hurricaneImpact';
+import { blendPopForWindow, type PopBlend } from './blendPop';
 
 /**
  * Robust JSON extraction from an LLM response. Handles markdown fences,
