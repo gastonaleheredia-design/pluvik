@@ -739,13 +739,8 @@ function AnswerPage() {
     return extractPlaceFromQuestion(question)?.place ?? null;
   })();
 
-  // Three-step progressive loader. The labels mirror what the pipeline is
-  // actually doing, so the wait feels like progress instead of a spinner.
-  const loadingSteps: { key: LoadingStep; label: string }[] = [
-    { key: 'warnings', label: 'Checking active warnings' },
-    { key: 'radar',    label: 'Reading radar and forecast' },
-    { key: 'writing',  label: 'Writing your answer' },
-  ];
+  // Loader copy lives inline in the render block — a single rotating
+  // status line is more honest than the old scripted 3-step list.
 
   // Increment daily question count in user_profiles on every successful
   // answer. Resets the counter when last_question_date is not today.
