@@ -53,6 +53,34 @@ const VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
   YES: { bg: '#15803d', text: '#faf7f0' },
   MAYBE: { bg: '#f59e0b', text: '#0b1018' },
   NO: { bg: '#b91c1c', text: '#faf7f0' },
+  'GO EARLY': { bg: '#15803d', text: '#faf7f0' },
+  'GO LATE': { bg: '#15803d', text: '#faf7f0' },
+  'WINDOW': { bg: '#d97706', text: '#faf7f0' },
+  'WATCH IT': { bg: '#d97706', text: '#faf7f0' },
+  'BACKUP PLAN': { bg: '#d97706', text: '#faf7f0' },
+  'TOUGH CALL': { bg: '#6b7280', text: '#faf7f0' },
+  'HOLD OFF': { bg: '#d97706', text: '#faf7f0' },
+  'CONDITIONAL': { bg: '#d97706', text: '#faf7f0' },
+  'RESCHEDULE': { bg: '#d97706', text: '#faf7f0' },
+  'NOT TODAY': { bg: '#b91c1c', text: '#faf7f0' },
+  'LIKELY': { bg: '#15803d', text: '#faf7f0' },
+  'LEANING YES': { bg: '#15803d', text: '#faf7f0' },
+  'POSSIBLE': { bg: '#d97706', text: '#faf7f0' },
+  'FLIP OF A COIN': { bg: '#6b7280', text: '#faf7f0' },
+  'LEANING NO': { bg: '#b91c1c', text: '#faf7f0' },
+  'UNLIKELY': { bg: '#b91c1c', text: '#faf7f0' },
+  'CHECK BACK': { bg: '#6b7280', text: '#faf7f0' },
+  'PATTERN SUGGESTS': { bg: '#6b7280', text: '#faf7f0' },
+  'MONITOR': { bg: '#d97706', text: '#faf7f0' },
+  'GET READY': { bg: '#d97706', text: '#faf7f0' },
+  'PREPARE NOW': { bg: '#9d174d', text: '#faf7f0' },
+  'FINAL PREP': { bg: '#9d174d', text: '#faf7f0' },
+  'EVACUATE': { bg: '#b91c1c', text: '#faf7f0' },
+  'SHELTER': { bg: '#b91c1c', text: '#faf7f0' },
+  'TAKE COVER': { bg: '#b91c1c', text: '#faf7f0' },
+  'SHELTER NOW': { bg: '#b91c1c', text: '#faf7f0' },
+  'ALL CLEAR': { bg: '#15803d', text: '#faf7f0' },
+  'SURVEY SAFELY': { bg: '#d97706', text: '#faf7f0' },
 };
 
 const PAGE_BG = '#faf7f0';
@@ -412,7 +440,7 @@ function EventPage() {
           : VERDICT_COLORS.CAUTION)
     : (VERDICT_COLORS[displayVerdict] ??
        VERDICT_COLORS[event.current_verdict] ??
-       VERDICT_COLORS.UNKNOWN);
+       { bg: '#6b7280', text: '#faf7f0' });
   const showPercentage =
     typeof event.current_percentage === 'number' &&
     event.current_percentage > 0;
