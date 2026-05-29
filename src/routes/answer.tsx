@@ -749,6 +749,10 @@ function AnswerPage() {
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  // First-tap explainer for TRACK THIS EVENT. Surfaces what tracking
+  // actually does (auto-refresh + push-on-change) so users understand the
+  // value before committing. Shown once per device.
+  const [showTrackExplainer, setShowTrackExplainer] = useState(false);
 
   // Severe-weather intercept state (parallel to the normal pipeline).
   const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
@@ -1118,6 +1122,16 @@ function AnswerPage() {
 
   const handleSaveTrack = () => {
     if (!answer) return;
+    // Show the explainer once per device, before any auth/upgrade gate.
+    try {
+      const seen = localStorage.getItem('pluvik-track-explained');
+      if (!seen) {
+        setShowTrackExplainer(true);
+        return;
+      }
+    } catch {
+      // localStorage unavailable — fall through to existing flow.
+    }
     if (tier === 'free') {
       setShowUpgradeSheet(true);
       return;
