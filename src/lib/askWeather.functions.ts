@@ -25,6 +25,8 @@ import { isRainYesNoQuestion } from './headlineAnswer';
 import { pickConfidenceAwareWord } from './headlineAnswer';
 import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
 import { fetchNearbyStorms, type NhcStorm } from './fetchers/fetchNhcStorm';
+import { fetchTropicalOutlook, type TropicalDisturbance } from './fetchers/fetchTropicalOutlook';
+import { pickRelevantDisturbances, classifyTropicalVerdict, questionMentionsTropical } from './tropicalWatchClassifier';
 import {
   computeHurricaneImpact,
   impactProfileToBriefingText,
