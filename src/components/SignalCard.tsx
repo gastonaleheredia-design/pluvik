@@ -17,8 +17,13 @@ export interface SignalCardData {
 interface SignalCardProps {
   signal: SignalCardData;
   accentColor: string;
-  isOpen: boolean;
-  onToggle: () => void;
+  /**
+   * Default true. Cards render expanded with their data visualization
+   * (stats, bars, timeline) inline — no tap-to-expand pattern.
+   * Pass false only if you intentionally want the legacy collapsed mode.
+   */
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 function bgForAccent(accent: string): string {
@@ -33,7 +38,7 @@ function bgForAccent(accent: string): string {
 const monoFont = 'JetBrains Mono, ui-monospace, monospace';
 const serifFont = 'Georgia, serif';
 
-export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCardProps) {
+export function SignalCard({ signal, accentColor, isOpen = true, onToggle }: SignalCardProps) {
   const bg = bgForAccent(accentColor);
 
   const riskColor = (r: 'low' | 'med' | 'high'): string =>
@@ -42,16 +47,16 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
   const wrapperStyle: CSSProperties = {
     backgroundColor: bg,
     borderRadius: 11,
-    marginBottom: 7,
+    marginBottom: 10,
     overflow: 'hidden',
-    cursor: 'pointer',
+    cursor: onToggle ? 'pointer' : 'default',
   };
 
   const topRowStyle: CSSProperties = {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
-    padding: '10px 12px',
+    padding: '11px 12px 6px',
   };
 
   const iconStyle: CSSProperties = {
@@ -68,19 +73,19 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
 
   const titleStyle: CSSProperties = {
     fontFamily: monoFont,
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: 700,
     color: accentColor,
-    letterSpacing: '0.16em',
+    letterSpacing: '0.18em',
     textTransform: 'uppercase',
-    marginBottom: 2,
+    marginBottom: 3,
   };
 
   const descStyle: CSSProperties = {
     fontFamily: serifFont,
     fontSize: 13,
-    color: '#4b5563',
-    lineHeight: 1.35,
+    color: '#374151',
+    lineHeight: 1.4,
   };
 
   const arrowStyle: CSSProperties = {
@@ -93,19 +98,9 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
   };
 
   const expandStyle: CSSProperties = {
-    maxHeight: isOpen ? 500 : 0,
+    maxHeight: isOpen ? 600 : 0,
     overflow: 'hidden',
     transition: 'max-height 0.32s ease',
-  };
-
-  const sourceStyle: CSSProperties = {
-    fontFamily: monoFont,
-    fontSize: 8,
-    color: '#9ca3af',
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    padding: '0 12px',
-    marginBottom: 8,
   };
 
   return (
@@ -116,13 +111,11 @@ export function SignalCard({ signal, accentColor, isOpen, onToggle }: SignalCard
           <div style={titleStyle}>{signal.title}</div>
           <div style={descStyle}>{signal.desc}</div>
         </div>
-        <div style={arrowStyle}>›</div>
+        {onToggle && <div style={arrowStyle}>›</div>}
       </div>
 
       <div style={expandStyle}>
-        <div style={{ paddingBottom: 12 }}>
-          <div style={sourceStyle}>{signal.source}</div>
-
+        <div style={{ paddingBottom: 12, paddingTop: 4 }}>
           {signal.expand_type === 'stats_quote' && (
             <div style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {signal.quote && (
