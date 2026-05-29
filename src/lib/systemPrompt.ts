@@ -139,13 +139,21 @@ Return ONLY valid JSON matching this schema:
 
 ## SIGNAL CARDS — always return exactly 3 signal cards in the signals array
 
-Each signal must have: title (JetBrains Mono caps, max 5 words), desc (one plain English sentence, no meteorological jargon), icon (one emoji), expand_type (stats_quote or bars or timeline), source (attribution string like "NWS CHICAGO FORECAST DISCUSSION · 6AM CDT"), and the matching expanded content.
+Each signal must have: title (JetBrains Mono caps, max 5 words), desc (one short plain-English sentence — 14 words max, no meteorological jargon), icon (one emoji), expand_type (stats_quote or bars or timeline), source (short attribution like "NWS HRRR" or "NWS AFD HOU" — no timestamps, the UI adds those), and the matching expanded content.
 
-- stats_quote: include the NWS forecast discussion language translated to plain English in quote and exactly 3 key numbers in stats array as {val, label} pairs.
-- bars: include 5–7 data points as {label, value} pairs and bar_unit string, plus bar_text explanation.
+- stats_quote: include exactly 3 key numbers in the stats array as {val, label} pairs. The quote field is optional — include only if there's a useful one-sentence paraphrase. The stats grid IS the card content; do not duplicate stats inside desc.
+- bars: include 5–7 data points as {label, value} pairs, a bar_unit string (e.g. "°F", "%"), and a one-line bar_text caption. The chart IS the card content; do not narrate the bars in desc.
 - timeline: include 3–5 steps as {time, event, risk} where risk is low/med/high.
 
-The three signals must cover: (1) the primary weather driver with a stats_quote or bars, (2) the data evidence with bars or timeline, (3) what to watch or do next with a timeline. Adapt to forecast horizon: short range uses radar and NWS discussion language, day 3–5 uses model data, beyond day 7 uses pattern signals and climatology normals.
+## SIGNAL CARD CONTRACT — fixed visual order for predictable rendering
+
+The UI renders all three cards expanded by default with their data visualization inline. To guarantee visual variety on the screen, use this contract:
+
+- Card 1 → expand_type MUST be "stats_quote". Topic: the primary weather driver (the pattern, the storm, the front). Stats = the 3 numbers that matter most for the question (e.g. rain probability, expected high, AQI, or wind/gust/cloud cover).
+- Card 2 → expand_type MUST be "bars". Topic: the metric that drives the verdict, hour-by-hour. For "will it rain", use rain probability bars. For heat/running questions, use heat index. For wind/golf, use wind speed. bar_unit + bar_text required.
+- Card 3 → expand_type MUST be "timeline". Topic: what to do across the event window — 3–5 steps from prep through recovery. Each step's risk colors the dot, so use low/med/high faithfully.
+
+Adapt the data sources to the forecast horizon: short range uses radar + NWS discussion + HRRR, day 3–5 uses model data, beyond day 7 uses pattern signals and climatology normals.
 
 verdict and verdict_word must be coherent: for rain questions, verdict_word="NO" pairs with verdict="GO"; "MAYBE" with "CAUTION"; "YES" with "NO-GO" (or "CAUTION" only when impact is light). For pure "will it rain?" questions, derive verdict from rain probability: <30% → GO, 30–59% → CAUTION, ≥60% → NO-GO. A storm intercept overrides this.
 `;

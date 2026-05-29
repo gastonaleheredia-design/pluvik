@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { SignalCard, type SignalCardData } from './SignalCard';
 
 export type BriefingScenario =
@@ -81,15 +81,6 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
     answerSummary,
   } = props;
 
-  const [openCards, setOpenCards] = useState<Set<number>>(new Set());
-  const toggleCard = (i: number) =>
-    setOpenCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-
   const hasSignals = Array.isArray(signals) && signals.length > 0;
 
   // ──────── Answer-screen WHY layout (signal-card mode) ────────
@@ -122,6 +113,24 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
 
     const monoFont = 'JetBrains Mono, ui-monospace, monospace';
     const serifFont = 'Georgia, serif';
+
+    // Dedupe sources across cards into one footer line so the page feels
+    // "bound to real data" without each card repeating it.
+    const sources = Array.from(
+      new Set(
+        signals!
+          .map((s) => (s.source ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+    const updatedAt = (() => {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes().toString().padStart(2, '0');
+      const suffix = h >= 12 ? 'PM' : 'AM';
+      const hr12 = ((h + 11) % 12) + 1;
+      return `${hr12}:${m} ${suffix}`;
+    })();
 
     return (
       <div style={{
@@ -160,7 +169,7 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
             borderRadius: 999, padding: '4px 9px',
             fontFamily: monoFont, fontSize: 7, fontWeight: 700,
             letterSpacing: '0.18em', textTransform: 'uppercase',
-            marginBottom: 10,
+            marginBottom: 12,
           }}>
             {stageLabel}
           </div>
@@ -168,23 +177,37 @@ export function BriefingScreen(props: BriefingProps): ReactElement {
           {/* Intro sentence */}
           {introSentence && (
             <div style={{
-              fontFamily: serifFont, fontStyle: 'italic', fontSize: 12,
-              color: '#374151', lineHeight: 1.45, marginBottom: 12,
+              fontFamily: serifFont, fontStyle: 'italic', fontSize: 14,
+              color: '#1f2937', lineHeight: 1.45, marginBottom: 16,
             }}>
               {introSentence}
             </div>
           )}
 
-          {/* Signal cards */}
+          {/* Signal cards — open by default, data visible inline */}
           {signals!.map((sig, i) => (
             <SignalCard
               key={i}
               signal={sig}
               accentColor={accent}
-              isOpen={openCards.has(i)}
-              onToggle={() => toggleCard(i)}
             />
           ))}
+
+          {/* Provenance footer — single source of truth for "where this came from" */}
+          {(sources.length > 0 || updatedAt) && (
+            <div style={{
+              marginTop: 18, paddingTop: 12,
+              borderTop: '1px solid rgba(11,16,24,0.08)',
+              display: 'flex', flexDirection: 'column', gap: 4,
+              fontFamily: monoFont, fontSize: 8, color: '#9ca3af',
+              letterSpacing: '0.14em', textTransform: 'uppercase',
+            }}>
+              {sources.length > 0 && (
+                <div>Source: {sources.join(' · ')}</div>
+              )}
+              <div>Updated {updatedAt}</div>
+            </div>
+          )}
         </div>
 
         {/* Fixed bottom bar */}

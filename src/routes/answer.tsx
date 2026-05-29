@@ -749,6 +749,10 @@ function AnswerPage() {
   const [resolvedAddress, setResolvedAddress] = useState<string>(address);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  // First-tap explainer for TRACK THIS EVENT. Surfaces what tracking
+  // actually does (auto-refresh + push-on-change) so users understand the
+  // value before committing. Shown once per device.
+  const [showTrackExplainer, setShowTrackExplainer] = useState(false);
 
   // Severe-weather intercept state (parallel to the normal pipeline).
   const [severeAnswer, setSevereAnswer] = useState<SevereAnswer | null>(null);
@@ -1118,6 +1122,16 @@ function AnswerPage() {
 
   const handleSaveTrack = () => {
     if (!answer) return;
+    // Show the explainer once per device, before any auth/upgrade gate.
+    try {
+      const seen = localStorage.getItem('pluvik-track-explained');
+      if (!seen) {
+        setShowTrackExplainer(true);
+        return;
+      }
+    } catch {
+      // localStorage unavailable — fall through to existing flow.
+    }
     if (tier === 'free') {
       setShowUpgradeSheet(true);
       return;
@@ -2345,6 +2359,95 @@ function AnswerPage() {
           muted={MUTED}
           onClose={() => setShowUpgradeSheet(false)}
         />
+      )}
+      {showTrackExplainer && (
+        <div
+          onClick={() => setShowTrackExplainer(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            backgroundColor: 'rgba(11,16,24,0.55)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 460,
+              backgroundColor: '#faf7f0',
+              borderTopLeftRadius: 20, borderTopRightRadius: 20,
+              padding: '20px 22px 28px',
+              paddingBottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
+              boxShadow: '0 -8px 32px rgba(11,16,24,0.18)',
+            }}
+          >
+            <div style={{
+              width: 40, height: 4, borderRadius: 3,
+              backgroundColor: 'rgba(11,16,24,0.18)',
+              margin: '0 auto 16px',
+            }} />
+            <div style={{
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+              fontSize: '0.6rem', letterSpacing: '0.2em', fontWeight: 700,
+              color: ACCENT, marginBottom: 8,
+            }}>
+              TRACK THIS EVENT
+            </div>
+            <div style={{
+              fontFamily: 'Fraunces, serif', fontSize: '1.35rem',
+              lineHeight: 1.25, color: INK, marginBottom: 12,
+            }}>
+              We'll watch this for you.
+            </div>
+            <div style={{
+              fontFamily: 'Georgia, serif', fontSize: '0.95rem',
+              lineHeight: 1.5, color: '#4b5563', marginBottom: 18,
+            }}>
+              Once tracked, the forecast refreshes automatically. We'll send you a
+              push notification only when something meaningful changes — the
+              verdict flips, rain probability jumps, or a watch is issued. No
+              checking back every hour.
+            </div>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22,
+              fontFamily: 'Georgia, serif', fontSize: '0.88rem',
+              color: '#374151', lineHeight: 1.45,
+            }}>
+              <div>· Auto-refreshes on a schedule until the event passes</div>
+              <div>· Pings you only on real changes — no noise</div>
+              <div>· See how the forecast evolved on the event page</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowTrackExplainer(false)}
+                style={{
+                  flex: '0 0 auto', padding: '12px 18px',
+                  border: `1px solid ${INK}33`, borderRadius: 100,
+                  background: 'transparent', color: INK, cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.7rem', letterSpacing: '0.18em', fontWeight: 700,
+                }}
+              >
+                NOT NOW
+              </button>
+              <button
+                onClick={() => {
+                  try { localStorage.setItem('pluvik-track-explained', '1'); } catch { /* ignore */ }
+                  setShowTrackExplainer(false);
+                  // Re-enter the normal save flow now that the user understands it.
+                  handleSaveTrack();
+                }}
+                style={{
+                  flex: 1, padding: '12px', border: 'none', borderRadius: 100,
+                  backgroundColor: ACCENT, color: '#faf7f0', cursor: 'pointer',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                  fontSize: '0.7rem', letterSpacing: '0.18em', fontWeight: 700,
+                }}
+              >
+                START TRACKING →
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
