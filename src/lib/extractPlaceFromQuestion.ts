@@ -266,6 +266,51 @@ export function extractPlaceFromQuestion(question: string): ExtractedPlace | nul
     return { place: `${titleCase(city)}, ${abbr}`, confidence: 'high' };
   }
 
+  // 4a. Destination phrases — "going to Hawaii", "visiting Cabo",
+  // "flying to Miami", "trip to the Bahamas". Distinct from the generic
+  // preposition scan because "to" alone matches too much English filler
+  // ("planning to go", "want to know"), so we require a destination verb.
+  const DEST_RE =
+    /\b(?:going to|headed to|heading to|traveling to|travelling to|flying to|driving to|sailing to|cruising to|moving to|trip to|on a trip to|vacationing in|on vacation in|visiting)\s+(?:the\s+)?([A-Za-z][A-Za-z .'\-]{2,40}?)(?=[,.!?]|\s+(?:and|but|or|so|because|since|when|tomorrow|tonight|today|this|next|on|at|by|for|about|to|–|—)\b|$)/i;
+  const destMatch = q.match(DEST_RE);
+  if (destMatch) {
+    const cand = destMatch[1].trim().replace(/[.,!?]+$/g, '');
+    const firstWord = cand.split(/\s+/)[0].toLowerCase();
+    if (cand.length >= 3 && !STOP_WORDS.has(firstWord) && !/^\d/.test(cand)) {
+      return { place: titleCase(cand), confidence: 'high' };
+    }
+  }
+
+  // 4b. Standalone US state name mentioned anywhere ("rain in Hawaii?",
+  // "what's happening in Florida"). Step 4 only matches when a city sits
+  // before the state. Mapbox/the geocoder validates the result.
+  for (const state of STATE_NAMES) {
+    const stateRe = new RegExp(`(^|[\\s,.!?])${state}(\\s|[,.!?]|$)`, 'i');
+    if (stateRe.test(q)) {
+      return { place: titleCase(state), confidence: 'high' };
+    }
+  }
+
+  // 4c. Well-known international / tropical destinations. These are the
+  // common ones users care about for tropical-weather questions.
+  const FOREIGN_DESTINATIONS = [
+    'bahamas', 'jamaica', 'cuba', 'puerto rico', 'dominican republic',
+    'haiti', 'cayman islands', 'cayman',
+    'mexico', 'cabo', 'cabo san lucas', 'cancun', 'cozumel', 'tulum',
+    'playa del carmen', 'baja california', 'baja',
+    'caribbean', 'bermuda', 'barbados', 'aruba', 'curacao',
+    'st thomas', 'st john', 'st lucia', 'st martin', 'st maarten',
+    'turks and caicos', 'virgin islands', 'antigua', 'grenada',
+    'belize', 'costa rica', 'panama', 'guatemala',
+    'dominica', 'martinique', 'guadeloupe',
+  ];
+  for (const dest of FOREIGN_DESTINATIONS) {
+    const re = new RegExp(`(^|[\\s,.!?])${dest.replace(/ /g, '\\s+')}(\\s|[,.!?]|$)`, 'i');
+    if (re.test(q)) {
+      return { place: titleCase(dest), confidence: 'medium' };
+    }
+  }
+
   // 5. "City ST" — two-letter abbreviation, no comma.
   // CASE-SENSITIVE: the abbreviation must be uppercase, otherwise common
   // English words (in, or, me, hi, ok, la, pa, co, de) would be misread as
