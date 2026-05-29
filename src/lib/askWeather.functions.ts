@@ -204,7 +204,7 @@ interface WeatherRequest {
 }
 
 export interface ExtendedWeatherAnswer {
-  mode: 'regular' | 'severe' | 'hurricane';
+  mode: 'regular' | 'severe' | 'hurricane' | 'tropical_watch';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
   /** Classification of the user's question shape. */
   question_type?: 'decision' | 'measurement' | 'timing' | 'severe' | 'hurricane';
@@ -321,6 +321,23 @@ export interface ExtendedWeatherAnswer {
   last_change?: string;
   /** Deterministic per-location impact profile (hurricane mode only). */
   hurricane_profile?: HurricaneImpactProfile | null;
+  /** Pre-formation tropical disturbances relevant to this location. */
+  tropical_disturbances?: Array<{
+    id: string | null;
+    basin: string;
+    name: string;
+    formation2dPct: number | null;
+    formation7dPct: number | null;
+    summary: string;
+    distanceMiles: number | null;
+    bearingFromUser: string | null;
+    insidePolygon: boolean;
+    verdict_word: string;
+    verdict_sentence: string;
+    polygon: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+    issuedAt: string | null;
+    sourceUrl: string;
+  }> | null;
   /** Minimal storm metadata + GIS layers for map overlay. */
   hurricane_storm?: {
     id: string;
