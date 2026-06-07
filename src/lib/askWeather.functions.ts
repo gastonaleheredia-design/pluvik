@@ -1297,7 +1297,8 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     return {
       ...validated.data,
-      mode,
+      mode: tropicalClassifications && tropicalClassifications.length > 0 ? 'tropical' : mode,
+      tropical_classifications: tropicalClassifications,
       forecast_stage: stageInfo.stage,
       activity_type: parsed.activityType,
       stage_outro: validated.data.stage_outro ?? undefined,
