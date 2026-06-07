@@ -206,7 +206,7 @@ interface WeatherRequest {
 }
 
 export interface ExtendedWeatherAnswer {
-  mode: 'regular' | 'severe' | 'hurricane' | 'tropical_watch';
+  mode: 'regular' | 'severe' | 'hurricane' | 'tropical_watch' | 'tropical';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
   /** Classification of the user's question shape. */
   question_type?: 'decision' | 'measurement' | 'timing' | 'severe' | 'hurricane';
