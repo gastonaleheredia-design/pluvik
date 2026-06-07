@@ -2251,14 +2251,6 @@ function AnswerPage() {
           userLon={coords?.lon ?? null}
         />
       ) : answer.mode === 'tropical' ? (
-        <TropicalAnswerScreen
-          answer={answer}
-          question={displayQuestion}
-          address={resolvedAddress || address}
-          onBack={() => setShowWhy(false)}
-          onSaveTrack={handleSaveTrack}
-          saving={saving}
-        />
       ) : answer.mode === 'hurricane' ? (
         <HurricaneAnswerScreen
           answer={answer}
