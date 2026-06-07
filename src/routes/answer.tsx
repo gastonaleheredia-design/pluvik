@@ -1429,6 +1429,22 @@ function AnswerPage() {
 
   if (!answer) return null;
 
+  // Tropical mode owns its own full-screen layout — bypass the briefing
+  // card and dispatch directly so the user sees the unified lifecycle
+  // screen without having to tap "Why?".
+  if (answer.mode === 'tropical') {
+    return (
+      <TropicalAnswerScreen
+        answer={answer}
+        question={displayQuestion}
+        address={resolvedAddress || address}
+        onBack={() => navigate({ to: '/' })}
+        onSaveTrack={handleSaveTrack}
+        saving={saving}
+      />
+    );
+  }
+
   // Forecast maturity stage drives the entire layout below. The server
   // already enforces stage-appropriate verdicts; the UI matches that here.
   const stage: ForecastStage =
