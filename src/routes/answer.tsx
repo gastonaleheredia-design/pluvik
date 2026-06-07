@@ -2250,7 +2250,6 @@ function AnswerPage() {
           userLat={coords?.lat ?? null}
           userLon={coords?.lon ?? null}
         />
-      ) : answer.mode === 'tropical' ? (
       ) : answer.mode === 'hurricane' ? (
         <HurricaneAnswerScreen
           answer={answer}
