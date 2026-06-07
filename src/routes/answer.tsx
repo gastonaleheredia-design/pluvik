@@ -6,6 +6,7 @@ import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
+import { TropicalAnswerScreen } from '../components/TropicalAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
 import { BriefingScreen, type BriefingFact, type BriefingVerdict } from '../components/BriefingScreen';
 import { RainRateBar, type RainHour } from '../components/briefing/RainRateBar';
@@ -1427,6 +1428,22 @@ function AnswerPage() {
   }
 
   if (!answer) return null;
+
+  // Tropical mode owns its own full-screen layout — bypass the briefing
+  // card and dispatch directly so the user sees the unified lifecycle
+  // screen without having to tap "Why?".
+  if (answer.mode === 'tropical') {
+    return (
+      <TropicalAnswerScreen
+        answer={answer}
+        question={displayQuestion}
+        address={resolvedAddress || address}
+        onBack={() => navigate({ to: '/' })}
+        onSaveTrack={handleSaveTrack}
+        saving={saving}
+      />
+    );
+  }
 
   // Forecast maturity stage drives the entire layout below. The server
   // already enforces stage-appropriate verdicts; the UI matches that here.

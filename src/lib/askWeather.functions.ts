@@ -27,6 +27,8 @@ import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
 import { fetchNearbyStorms, type NhcStorm } from './fetchers/fetchNhcStorm';
 import { fetchTropicalOutlook, type TropicalDisturbance } from './fetchers/fetchTropicalOutlook';
 import { pickRelevantDisturbances, classifyTropicalVerdict, questionMentionsTropical } from './tropicalWatchClassifier';
+import { fetchTropicalSystems } from './fetchers/fetchTropicalSystems';
+import { classifyTropicalSystems, type TropicalClassification } from './tropicalClassifier';
 import {
   computeHurricaneImpact,
   impactProfileToBriefingText,
@@ -204,7 +206,7 @@ interface WeatherRequest {
 }
 
 export interface ExtendedWeatherAnswer {
-  mode: 'regular' | 'severe' | 'hurricane' | 'tropical_watch';
+  mode: 'regular' | 'severe' | 'hurricane' | 'tropical_watch' | 'tropical';
   verdict: 'GO' | 'CAUTION' | 'NO-GO' | 'UNKNOWN' | null;
   /** Classification of the user's question shape. */
   question_type?: 'decision' | 'measurement' | 'timing' | 'severe' | 'hurricane';
@@ -351,6 +353,8 @@ export interface ExtendedWeatherAnswer {
     track: GeoJSON.FeatureCollection | null;
     watchesWarnings: GeoJSON.FeatureCollection | null;
   } | null;
+  /** Unified tropical lifecycle classifications (TWO + named systems). */
+  tropical_classifications?: TropicalClassification[] | null;
 }
 
 function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -672,6 +676,29 @@ export const askWeather = createServerFn({ method: 'POST' })
       } catch (err) {
         console.warn('[askWeather] hurricane profile failed:', (err as Error)?.message);
       }
+    }
+
+    // Unified tropical lifecycle classification — runs regardless of mode so
+    // pre-formation disturbances are surfaced even when there's no named
+    // storm. Best-effort: failure leaves classifications null and downstream
+    // code falls back to the legacy hurricane path.
+    let tropicalClassifications: TropicalClassification[] | null = null;
+    try {
+      const systems = await fetchTropicalSystems(lat, lon, 1500);
+      if (systems.length > 0) {
+        const classified = classifyTropicalSystems(systems, lat, lon);
+        // Keep only systems that aren't "far_away" with nothing brewing.
+        const relevant = classified.filter(c =>
+          c.position !== 'far_away' ||
+          c.stage === 'high_chance' || c.stage === 'invest' ||
+          c.stage === 'potential_tc' ||
+          c.stage.startsWith('hurricane') || c.stage === 'tropical_storm' ||
+          c.stage === 'tropical_depression',
+        );
+        if (relevant.length > 0) tropicalClassifications = relevant;
+      }
+    } catch (err) {
+      console.warn('[askWeather] tropical classification failed:', (err as Error)?.message);
     }
 
     // 7b. Forecast maturity stage. Active warnings → live regardless of hoursAhead.
@@ -1270,7 +1297,8 @@ export const askWeather = createServerFn({ method: 'POST' })
 
     return {
       ...validated.data,
-      mode,
+      mode: tropicalClassifications && tropicalClassifications.length > 0 ? 'tropical' : mode,
+      tropical_classifications: tropicalClassifications,
       forecast_stage: stageInfo.stage,
       activity_type: parsed.activityType,
       stage_outro: validated.data.stage_outro ?? undefined,
