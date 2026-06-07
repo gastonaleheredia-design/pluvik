@@ -27,6 +27,8 @@ import { getNextHourNowcast, isNextHourQuestion } from './nowcastShared';
 import { fetchNearbyStorms, type NhcStorm } from './fetchers/fetchNhcStorm';
 import { fetchTropicalOutlook, type TropicalDisturbance } from './fetchers/fetchTropicalOutlook';
 import { pickRelevantDisturbances, classifyTropicalVerdict, questionMentionsTropical } from './tropicalWatchClassifier';
+import { fetchTropicalSystems } from './fetchers/fetchTropicalSystems';
+import { classifyTropicalSystems, type TropicalClassification } from './tropicalClassifier';
 import {
   computeHurricaneImpact,
   impactProfileToBriefingText,
