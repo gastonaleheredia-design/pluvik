@@ -6,6 +6,7 @@ import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import { recordEventSnapshot } from '../lib/eventSnapshots.functions';
 import { SevereAnswerScreen } from '../components/SevereAnswerScreen';
 import { HurricaneAnswerScreen } from '../components/HurricaneAnswerScreen';
+import { TropicalAnswerScreen } from '../components/TropicalAnswerScreen';
 import { MAPBOX_TOKEN } from '../config/keys';
 import { BriefingScreen, type BriefingFact, type BriefingVerdict } from '../components/BriefingScreen';
 import { RainRateBar, type RainHour } from '../components/briefing/RainRateBar';
