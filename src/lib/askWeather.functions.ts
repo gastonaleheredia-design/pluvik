@@ -353,6 +353,8 @@ export interface ExtendedWeatherAnswer {
     track: GeoJSON.FeatureCollection | null;
     watchesWarnings: GeoJSON.FeatureCollection | null;
   } | null;
+  /** Unified tropical lifecycle classifications (TWO + named systems). */
+  tropical_classifications?: TropicalClassification[] | null;
 }
 
 function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
