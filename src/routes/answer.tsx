@@ -1438,6 +1438,8 @@ function AnswerPage() {
         answer={answer}
         question={displayQuestion}
         address={resolvedAddress || address}
+        userLat={coords?.lat ?? null}
+        userLon={coords?.lon ?? null}
         onBack={() => navigate({ to: '/' })}
         onSaveTrack={handleSaveTrack}
         saving={saving}

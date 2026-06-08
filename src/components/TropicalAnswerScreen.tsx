@@ -1,11 +1,14 @@
 import type { ExtendedWeatherAnswer } from '../lib/askWeather.functions';
 import type { TropicalClassification } from '../lib/tropicalClassifier';
 import { stageLabel, isMajor, isPreFormation } from '../lib/tropicalStages';
+import { TropicalMap } from './TropicalMap';
 
 interface TropicalAnswerScreenProps {
   answer: ExtendedWeatherAnswer;
   question: string;
   address: string;
+  userLat: number | null;
+  userLon: number | null;
   onBack: () => void;
   onSaveTrack: () => void;
   saving: boolean;
@@ -215,6 +218,8 @@ export function TropicalAnswerScreen({
   answer,
   question,
   address,
+  userLat,
+  userLon,
   onBack,
   onSaveTrack,
   saving,
@@ -328,7 +333,19 @@ export function TropicalAnswerScreen({
             </div>
 
             {classifications.map((c, i) => (
-              <SystemCard key={c.system.id} c={c} index={i} />
+              <div key={c.system.id}>
+                {i === 0 && userLat != null && userLon != null && (
+                  <div style={{ marginBottom: 12 }}>
+                    <TropicalMap
+                      classification={c}
+                      userLat={userLat}
+                      userLon={userLon}
+                      height={240}
+                    />
+                  </div>
+                )}
+                <SystemCard c={c} index={i} />
+              </div>
             ))}
           </>
         )}
